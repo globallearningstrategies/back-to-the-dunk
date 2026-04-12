@@ -33,6 +33,7 @@ const SESSIONS = [
       { id: "a3", name: "Calf Raises", sets: 4, reps: 20 },
       { id: "a4", name: "Step-Ups", sets: 3, reps: 12 },
       { id: "a5", name: "Goblet Squats", sets: 3, reps: 12 },
+      { id: "a6", name: "Bench Press", sets: 4, reps: 8 },
     ]
   },
   {
@@ -53,6 +54,7 @@ const SESSIONS = [
       { id: "c3", name: "Wall Sit", sets: 3, reps: "30s", timed: true },
       { id: "c4", name: "Calf Raises", sets: 3, reps: 20 },
       { id: "c5", name: "Step-Ups", sets: 3, reps: 12 },
+      { id: "c6", name: "Overhead Press", sets: 3, reps: 10 },
     ]
   }
 ];
