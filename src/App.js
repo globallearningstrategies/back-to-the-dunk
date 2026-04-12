@@ -28,12 +28,12 @@ const SESSIONS = [
   {
     id: "A", label: "DAY A", name: "Strength + Power", location: "Gym", color: COLORS.orange,
     exercises: [
-      { id: "a1", name: "Barbell Squats", sets: 4, reps: 8 },
+      { id: "a1", name: "Barbell Squats", sets: 4, reps: 8, barbell: true },
       { id: "a2", name: "Box Jumps", sets: 4, reps: 5 },
       { id: "a3", name: "Calf Raises", sets: 4, reps: 20 },
       { id: "a4", name: "Step-Ups", sets: 3, reps: 12 },
       { id: "a5", name: "Goblet Squats", sets: 3, reps: 12 },
-      { id: "a6", name: "Bench Press", sets: 4, reps: 8 },
+      { id: "a6", name: "Bench Press", sets: 4, reps: 8, barbell: true },
     ]
   },
   {
@@ -54,7 +54,7 @@ const SESSIONS = [
       { id: "c3", name: "Wall Sit", sets: 3, reps: "30s", timed: true },
       { id: "c4", name: "Calf Raises", sets: 3, reps: 20 },
       { id: "c5", name: "Step-Ups", sets: 3, reps: 12 },
-      { id: "c6", name: "Overhead Press", sets: 3, reps: 10 },
+      { id: "c6", name: "Overhead Press", sets: 3, reps: 10, barbell: true },
     ]
   }
 ];
@@ -82,26 +82,65 @@ const STACKS = [
   { trigger: "After every workout", habit: "Log it in the app before the shower" },
 ];
 
+function BarbellInput({ vals, onVal }) {
+  const BAR = 45;
+  const perSide = parseFloat(vals?.perSide) || 0;
+  const total = BAR + perSide * 2;
+  return (
+    <div style={{ background: "#1A1A1A", border: "1px solid #333", borderRadius: 8, padding: "8px 10px", marginTop: 6, marginBottom: 2 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <span style={{ fontSize: 11, color: COLORS.muted, width: 90 }}>Bar</span>
+        <span style={{ fontSize: 13, color: COLORS.orange, fontWeight: "bold" }}>45 lbs</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <span style={{ fontSize: 11, color: COLORS.muted, width: 90 }}>+ Each side</span>
+        <input
+          style={{ ...S.input, width: 70 }}
+          type="number" min="0" step="2.5" placeholder="0"
+          value={vals?.perSide || ""}
+          onChange={e => onVal("perSide", e.target.value)}
+        />
+        <span style={{ fontSize: 11, color: COLORS.muted }}>lbs</span>
+      </div>
+      <div style={{ borderTop: "1px solid #333", paddingTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 11, color: COLORS.muted, width: 90 }}>= Total</span>
+        <span style={{ fontSize: 15, fontWeight: "bold", color: COLORS.yellow }}>{total} lbs</span>
+      </div>
+    </div>
+  );
+}
+
 function ExRow({ ex, checked, onCheck, vals, onVal, color }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid #222" }}>
-      <input type="checkbox" checked={!!checked} onChange={onCheck} style={{ width: 18, height: 18, accentColor: color, cursor: "pointer", flexShrink: 0 }} />
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 14 }}>{ex.name}</div>
-        <div style={{ fontSize: 11, color: COLORS.muted }}>{ex.sets} sets x {ex.reps}</div>
-      </div>
-      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        {!ex.timed && !ex.noWeight && (
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 9, color: COLORS.muted, marginBottom: 2 }}>lbs</div>
-            <input style={S.input} type="number" min="0" placeholder="0" value={vals?.weight || ""} onChange={e => onVal("weight", e.target.value)} />
+    <div style={{ padding: "8px 0", borderBottom: "1px solid #222" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <input type="checkbox" checked={!!checked} onChange={onCheck} style={{ width: 18, height: 18, accentColor: color, cursor: "pointer", flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14 }}>{ex.name}</div>
+          <div style={{ fontSize: 11, color: COLORS.muted }}>{ex.sets} sets x {ex.reps}</div>
+        </div>
+        {!ex.barbell && (
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {!ex.timed && !ex.noWeight && (
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 9, color: COLORS.muted, marginBottom: 2 }}>lbs</div>
+                <input style={S.input} type="number" min="0" placeholder="0" value={vals?.weight || ""} onChange={e => onVal("weight", e.target.value)} />
+              </div>
+            )}
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 9, color: COLORS.muted, marginBottom: 2 }}>sets done</div>
+              <input style={S.input} type="number" min="0" max={ex.sets} placeholder={ex.sets} value={vals?.setsDone || ""} onChange={e => onVal("setsDone", e.target.value)} />
+            </div>
           </div>
         )}
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 9, color: COLORS.muted, marginBottom: 2 }}>sets done</div>
-          <input style={S.input} type="number" min="0" max={ex.sets} placeholder={ex.sets} value={vals?.setsDone || ""} onChange={e => onVal("setsDone", e.target.value)} />
-        </div>
+        {ex.barbell && (
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 9, color: COLORS.muted, marginBottom: 2 }}>sets done</div>
+            <input style={S.input} type="number" min="0" max={ex.sets} placeholder={ex.sets} value={vals?.setsDone || ""} onChange={e => onVal("setsDone", e.target.value)} />
+          </div>
+        )}
       </div>
+      {ex.barbell && <BarbellInput vals={vals} onVal={onVal} />}
     </div>
   );
 }
@@ -110,7 +149,13 @@ function calcVolume(exercises, checked, vals) {
   let v = 0;
   exercises.forEach(ex => {
     if (!checked[ex.id] || ex.noWeight || ex.timed) return;
-    const w = parseFloat(vals[ex.id]?.weight) || 0;
+    let w;
+    if (ex.barbell) {
+      const perSide = parseFloat(vals[ex.id]?.perSide) || 0;
+      w = 45 + perSide * 2;
+    } else {
+      w = parseFloat(vals[ex.id]?.weight) || 0;
+    }
     const s = parseInt(vals[ex.id]?.setsDone) || parseInt(ex.sets);
     const r = parseInt(ex.reps) || 0;
     v += w * s * r;
@@ -478,7 +523,13 @@ export default function App() {
     const exVols = exercises
       .filter(ex => checked[sessionKey + "_" + ex.id])
       .map(ex => {
-        const w = parseFloat(vals[sessionKey + "_" + ex.id]?.weight) || 0;
+        let w;
+        if (ex.barbell) {
+          const perSide = parseFloat(vals[sessionKey + "_" + ex.id]?.perSide) || 0;
+          w = 45 + perSide * 2;
+        } else {
+          w = parseFloat(vals[sessionKey + "_" + ex.id]?.weight) || 0;
+        }
         const s = parseInt(vals[sessionKey + "_" + ex.id]?.setsDone) || parseInt(ex.sets);
         const r = parseInt(ex.reps) || 0;
         const vol = ex.noWeight || ex.timed ? 0 : w * s * r;
