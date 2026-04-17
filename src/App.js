@@ -82,18 +82,31 @@ const STACKS = [
   { trigger: "After every workout", habit: "Log it in the app before the shower" },
 ];
 
+let _audioCtx = null;
+function getAudioCtx() {
+  if (!_audioCtx || _audioCtx.state === "closed") {
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (_audioCtx.state === "suspended") {
+    _audioCtx.resume();
+  }
+  return _audioCtx;
+}
+
 function beep(freq, duration, vol) {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = getAudioCtx();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.frequency.value = freq || 880;
     gain.gain.value = vol || 0.3;
-    osc.start();
+    gain.gain.setValueAtTime(vol || 0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (duration || 0.1));
+    osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + (duration || 0.1));
-  } catch(e) {}
+  } catch(e) { console.log("beep error", e); }
 }
 
 function BarbellInput({ vals, onVal }) {
@@ -197,7 +210,12 @@ function TabataTimer({ onLog }) {
     } catch(e) {}
   };
 
-  const start = () => { requestWakeLock(); setCountdown(5); };
+  const start = () => {
+    // Unlock audio on user gesture
+    getAudioCtx();
+    requestWakeLock();
+    setCountdown(5);
+  };
 
   useEffect(() => {
     if (countdown === null) return;
@@ -219,7 +237,7 @@ function TabataTimer({ onLog }) {
     const interval = setInterval(() => {
       setCount(c => {
         if (c > 1) {
-          beep(440, 0.05, 0.15);
+          beep(660, 0.12, 0.4);
           return c - 1;
         }
         if (phase === "sprint") {
