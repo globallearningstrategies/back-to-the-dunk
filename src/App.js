@@ -186,6 +186,17 @@ function calcVolume(exercises, checked, vals) {
   return v;
 }
 
+function speak(text) {
+  try {
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = 1.1;
+    utter.pitch = 1.1;
+    utter.volume = 1;
+    window.speechSynthesis.speak(utter);
+  } catch(e) {}
+}
+
 function TabataTimer({ onLog }) {
   const [phase, setPhase] = useState("idle");
   const [round, setRound] = useState(1);
@@ -222,12 +233,14 @@ function TabataTimer({ onLog }) {
     if (countdown === 0) {
       setCountdown(null);
       beep(1046, 0.3, 0.5);
+      speak("Sprint!");
       setPhase("sprint");
       setRound(1);
       setCount(TABATA.sprintSec);
       return;
     }
     beep(660, 0.08, 0.3);
+    if (countdown === 3) speak("Get ready!");
     const t = setTimeout(() => setCountdown(c => c - 1), 1000);
     return () => clearTimeout(t);
   }, [countdown]);
@@ -242,17 +255,20 @@ function TabataTimer({ onLog }) {
         }
         if (phase === "sprint") {
           beep(523, 0.15, 0.4);
+          speak("Rest");
           setPhase("rest");
           return TABATA.restSec;
         } else {
           setRound(r => {
             if (r >= TABATA.rounds) {
               beep(880, 0.5, 0.6);
+              speak("Done! Great work!");
               releaseWakeLock();
               setPhase("done");
               return r;
             }
             beep(880, 0.2, 0.5);
+            speak("Sprint!");
             setPhase("sprint");
             return r + 1;
           });
