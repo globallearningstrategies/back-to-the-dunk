@@ -318,19 +318,153 @@ function PageTitle({ kicker, children }) {
    COMPONENTS
    ════════════════════════════════════════════════════════════ */
 
+const PLATES = [
+  { weight: 45, color: "#3B82F6", height: 80, width: 12 },
+  { weight: 35, color: "#EAB308", height: 70, width: 11 },
+  { weight: 25, color: "#22C55E", height: 60, width: 10 },
+  { weight: 10, color: "#F5F1EA", height: 44, width: 9  },
+  { weight: 5,  color: "#6B7280", height: 34, width: 8  },
+  { weight: 2.5,color: "#374151", height: 26, width: 7  },
+];
+
+function parsePlates(str) {
+  if (!str) return [];
+  try { return JSON.parse(str); } catch(e) { return []; }
+}
+
 function BarbellInput({ vals, onVal }) {
-  const perSide = parseFloat(vals?.perSide) || 0;
+  const platesStr = vals?.plates || "[]";
+  const plates = parsePlates(platesStr);
+  const perSide = plates.reduce((sum, w) => sum + w, 0);
   const total = 45 + perSide * 2;
+
+  const addPlate = (weight) => {
+    const next = [...plates, weight].sort((a,b) => b-a);
+    onVal("plates", JSON.stringify(next));
+    onVal("perSide", String(perSide + weight));
+  };
+
+  const removePlate = (idx) => {
+    const next = [...plates];
+    next.splice(idx, 1);
+    onVal("plates", JSON.stringify(next));
+    onVal("perSide", String(plates.reduce((s,w,i) => i === idx ? s : s+w, 0)));
+  };
+
+  const clearAll = () => {
+    onVal("plates", "[]");
+    onVal("perSide", "0");
+  };
+
+  // Visualize: render plates from heaviest (innermost) to lightest (outermost)
   return (
     <div style={{
-      background: C.raised, borderRadius: 12, padding: "12px 14px", marginTop: 10,
+      background: C.raised, borderRadius: 14, padding: 14, marginTop: 10,
       border: `1px solid ${C.line}`,
     }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-        <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>BAR 45 + EACH SIDE</span>
-        <span className="num-tab" style={{ fontSize: 18, fontWeight: 700, color: C.rust, letterSpacing: "-0.02em" }}>{total} <span style={{ fontSize: 11, color: C.dim, fontWeight: 500 }}>lbs</span></span>
+      {/* Total readout */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+        <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>BARBELL · 45 LB BAR</span>
+        <span className="num-tab" style={{ fontSize: 24, fontWeight: 700, color: C.rust, letterSpacing: "-0.03em", lineHeight: 1 }}>
+          {total}<span style={{ fontSize: 12, color: C.dim, fontWeight: 500, marginLeft: 4 }}>lbs</span>
+        </span>
       </div>
-      <NumIn value={vals?.perSide} onChange={v => onVal("perSide", v)} placeholder="lbs per side" />
+
+      {/* Visual barbell */}
+      <div style={{
+        background: C.ink, borderRadius: 10, padding: "16px 8px",
+        marginBottom: 14, height: 110,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        position: "relative", overflow: "hidden",
+        border: `1px solid ${C.line}`,
+      }}>
+        {/* Bar end caps */}
+        <div style={{ display: "flex", alignItems: "center", gap: 1 }}>
+          {/* Left side plates - reversed (lightest outside) */}
+          {[...plates].reverse().map((w, i) => {
+            const p = PLATES.find(pl => pl.weight === w);
+            if (!p) return null;
+            return (
+              <div key={"L"+i} onClick={() => removePlate(plates.length - 1 - i)} className="btn"
+                style={{
+                  width: p.width, height: p.height,
+                  background: p.color, borderRadius: 2,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 9, fontWeight: 700, color: p.color === "#F5F1EA" ? "#000" : "#fff",
+                  cursor: "pointer", flexShrink: 0,
+                  boxShadow: "inset -1px 0 0 rgba(0,0,0,0.2)",
+                }}>
+                {p.weight === 2.5 ? "" : Math.floor(p.weight)}
+              </div>
+            );
+          })}
+          {/* Bar */}
+          <div style={{ width: 6, height: 14, background: C.cream, borderRadius: 1 }} />
+          <div style={{ width: 60, height: 5, background: `linear-gradient(180deg, ${C.cream} 0%, ${C.dim} 100%)`, borderRadius: 1 }} />
+          <div style={{ width: 6, height: 14, background: C.cream, borderRadius: 1 }} />
+          {/* Right side plates */}
+          {plates.map((w, i) => {
+            const p = PLATES.find(pl => pl.weight === w);
+            if (!p) return null;
+            return (
+              <div key={"R"+i} onClick={() => removePlate(i)} className="btn"
+                style={{
+                  width: p.width, height: p.height,
+                  background: p.color, borderRadius: 2,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 9, fontWeight: 700, color: p.color === "#F5F1EA" ? "#000" : "#fff",
+                  cursor: "pointer", flexShrink: 0,
+                  boxShadow: "inset 1px 0 0 rgba(0,0,0,0.2)",
+                }}>
+                {p.weight === 2.5 ? "" : Math.floor(p.weight)}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Empty state */}
+        {plates.length === 0 && (
+          <div style={{ position: "absolute", bottom: 6, fontSize: 10, color: C.mute, fontFamily: FONT_MONO, letterSpacing: "0.1em" }}>
+            JUST THE BAR · TAP A PLATE BELOW
+          </div>
+        )}
+        {plates.length > 0 && (
+          <div style={{ position: "absolute", bottom: 6, fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>
+            +{perSide} lbs PER SIDE · TAP PLATE TO REMOVE
+          </div>
+        )}
+      </div>
+
+      {/* Plate selector buttons */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6, marginBottom: 10 }}>
+        {PLATES.map(p => (
+          <button key={p.weight} onClick={() => addPlate(p.weight)} className="btn"
+            style={{
+              padding: "10px 4px", borderRadius: 10,
+              background: p.color + "22",
+              border: `1.5px solid ${p.color}`,
+              color: p.color === "#F5F1EA" ? C.cream : p.color,
+              fontFamily: FONT_DISPLAY,
+              fontSize: 13, fontWeight: 700, cursor: "pointer",
+              letterSpacing: "-0.01em",
+            }}>
+            +{p.weight}
+          </button>
+        ))}
+      </div>
+
+      {/* Clear */}
+      {plates.length > 0 && (
+        <button onClick={clearAll} className="btn"
+          style={{
+            width: "100%", padding: "8px", borderRadius: 8,
+            background: "transparent", border: `1px solid ${C.line}`,
+            color: C.dim, fontSize: 11, cursor: "pointer",
+            fontFamily: FONT_MONO, letterSpacing: "0.05em",
+          }}>
+          CLEAR ALL PLATES
+        </button>
+      )}
     </div>
   );
 }
