@@ -6,160 +6,285 @@ const supabase = createClient(
   process.env.REACT_APP_SUPABASE_KEY
 );
 
-const COLORS = {
-  bg: "#0A0A0A", card: "#141414", border: "#222", text: "#F0F0F0",
-  muted: "#888", orange: "#FF6B35", yellow: "#F7C948", teal: "#4ECDC4",
-  green: "#A8E063", purple: "#B388FF"
+// ─── Design Tokens ────────────────────────────────────────────────────────────
+const C = {
+  bg:       "#080808",
+  surface:  "#111111",
+  surface2: "#1A1A1A",
+  border:   "#2A2A2A",
+  text:     "#F5F5F7",
+  muted:    "#6E6E73",
+  orange:   "#FF6B35",
+  yellow:   "#FFD60A",
+  teal:     "#30D158",
+  blue:     "#0A84FF",
+  purple:   "#BF5AF2",
+  red:      "#FF453A",
 };
 
-const S = {
-  app: { background: COLORS.bg, minHeight: "100vh", fontFamily: "Georgia, serif", color: COLORS.text },
-  header: { background: "#111", borderBottom: "1px solid #222", padding: "16px 20px", display: "flex", alignItems: "center", gap: 12 },
-  tabs: { display: "flex", borderBottom: "1px solid #222", background: "#0D0D0D", overflowX: "auto" },
-  tab: (a) => ({ flexShrink: 0, padding: "12px 10px", border: "none", background: "none", fontFamily: "Georgia, serif", fontSize: 12, cursor: "pointer", color: a ? COLORS.orange : COLORS.muted, borderBottom: a ? "2px solid #FF6B35" : "2px solid transparent", whiteSpace: "nowrap" }),
-  card: (border) => ({ background: COLORS.card, border: "1px solid " + (border || COLORS.border), borderRadius: 10, padding: 16, marginBottom: 14 }),
-  btn: (c, ghost) => ({ background: ghost ? "transparent" : c, border: "1px solid " + c, color: ghost ? c : "#000", padding: "9px 18px", borderRadius: 8, cursor: "pointer", fontFamily: "Georgia, serif", fontSize: 13, fontWeight: "bold" }),
-  input: { background: "#1A1A1A", border: "1px solid #222", borderRadius: 6, color: "#F0F0F0", padding: "5px 8px", width: 62, fontSize: 12, fontFamily: "Georgia, serif", textAlign: "center" },
-  badge: (c) => ({ background: c + "22", color: c, border: "1px solid " + c + "44", borderRadius: 20, padding: "3px 10px", fontSize: 11, display: "inline-block" }),
-  statBox: (c) => ({ background: COLORS.card, border: "1px solid " + (c || COLORS.border), borderRadius: 10, padding: 14, textAlign: "center" }),
+const injectStyles = () => {
+  if (document.getElementById("bttd-styles")) return;
+  const style = document.createElement("style");
+  style.id = "bttd-styles";
+  style.textContent = `
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { margin: 0; background: ${C.bg}; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    input[type=number] { -moz-appearance: textfield; }
+    ::-webkit-scrollbar { display: none; }
+    .tab-bar { display: flex; overflow-x: auto; scrollbar-width: none; }
+    .pill-btn { transition: all 0.18s ease; }
+    .pill-btn:active { transform: scale(0.96); opacity: 0.85; }
+    .card-tap:active { transform: scale(0.99); opacity: 0.9; }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+    .fade-up { animation: fadeUp 0.3s ease forwards; }
+    .pulse { animation: pulse 1.5s ease infinite; }
+    .countdown-num { font-variant-numeric: tabular-nums; }
+  `;
+  document.head.appendChild(style);
 };
 
+// ─── Exercise Data ─────────────────────────────────────────────────────────────
 const SESSIONS = [
   {
-    id: "A", label: "DAY A", name: "Strength + Power", location: "Gym", color: COLORS.orange,
+    id: "A", label: "Day A", name: "Strength & Power", location: "Gym", color: C.orange,
     exercises: [
-      { id: "a1", name: "Barbell Squats", sets: 4, reps: 8, barbell: true },
-      { id: "a2", name: "Box Jumps", sets: 4, reps: 5 },
-      { id: "a3", name: "Calf Raises", sets: 4, reps: 20 },
-      { id: "a4", name: "Step-Ups", sets: 3, reps: 12 },
-      { id: "a5", name: "Goblet Squats", sets: 3, reps: 12 },
-      { id: "a6", name: "Bench Press", sets: 4, reps: 8, barbell: true },
+      { id: "a1", name: "Barbell Squat",    sets: 4, reps: 6,  barbell: true,  note: "Full depth" },
+      { id: "a2", name: "Bench Press",      sets: 4, reps: 8,  barbell: true,  note: "Controlled descent" },
+      { id: "a3", name: "Romanian Deadlift",sets: 3, reps: 8,  barbell: true,  note: "Hinge, don't squat" },
+      { id: "a4", name: "Box Jump",         sets: 4, reps: 5,  bodyweight: true, note: "Max height" },
+      { id: "a5", name: "Calf Raise",       sets: 4, reps: 20, note: "Slow & controlled" },
     ]
   },
   {
-    id: "B", label: "DAY B", name: "Basketball + Conditioning", location: "Court", color: COLORS.yellow,
+    id: "B", label: "Day B", name: "Court & Conditioning", location: "Court", color: C.yellow,
     exercises: [
-      { id: "b1", name: "Defensive Slides", sets: 3, reps: "30s", timed: true },
-      { id: "b2", name: "Court Sprints", sets: 6, reps: "x", noWeight: true },
-      { id: "b3", name: "Layup Drills", sets: 1, reps: "drill", noWeight: true },
-      { id: "b4", name: "Vertical Jump Practice", sets: 3, reps: 8 },
-      { id: "b5", name: "Pickup / Solo Play", sets: 1, reps: "play", noWeight: true },
+      { id: "b1", name: "Defensive Slides", sets: 4, reps: "45s", timed: true, note: "Stay low" },
+      { id: "b2", name: "Full-Court Sprint", sets: 8, reps: "x",  noWeight: true, note: "Walk back = rest" },
+      { id: "b3", name: "Vertical Jump",    sets: 3, reps: 8,  bodyweight: true, note: "Touch highest point" },
+      { id: "b4", name: "Layup Drill",      sets: 2, reps: "drill", noWeight: true, note: "Both sides" },
+      { id: "b5", name: "Pickup / Solo Play", sets: 1, reps: "20min", noWeight: true, note: "Cardio + IQ" },
     ]
   },
   {
-    id: "C", label: "DAY C", name: "Full Body Circuit", location: "Gym", color: COLORS.teal,
+    id: "C", label: "Day C", name: "Full Body Circuit", location: "Gym", color: C.teal,
     exercises: [
-      { id: "c1", name: "Dumbbell Rows", sets: 3, reps: 12 },
-      { id: "c2", name: "Goblet Squats", sets: 3, reps: 15 },
-      { id: "c3", name: "Wall Sit", sets: 3, reps: "30s", timed: true },
-      { id: "c4", name: "Calf Raises", sets: 3, reps: 20 },
-      { id: "c5", name: "Step-Ups", sets: 3, reps: 12 },
-      { id: "c6", name: "Overhead Press", sets: 3, reps: 10, barbell: true },
+      { id: "c1", name: "Dumbbell Row",     sets: 3, reps: 12, note: "Chest-supported preferred" },
+      { id: "c2", name: "Goblet Squat",     sets: 3, reps: 15, note: "Pause at bottom" },
+      { id: "c3", name: "Overhead Press",   sets: 3, reps: 10, barbell: true, note: "Strict form" },
+      { id: "c4", name: "Step-Up",          sets: 3, reps: 12, note: "Each leg" },
+      { id: "c5", name: "Wall Sit",         sets: 3, reps: "45s", timed: true, note: "Quads parallel" },
     ]
   }
 ];
 
-const TABATA = { rounds: 5, sprintSec: 5, restSec: 5 };
+const TABATA_CONFIG = { rounds: 5, sprintSec: 5, restSec: 5 };
 
-const PHASES = [
-  { weeks: "Weeks 1-4", color: COLORS.orange, weight: "225 to 218 lbs", focus: "Build the habit. Nail form. Ease joints back in.", goals: ["2x gym sessions/week", "1x court session/week", "Sleep 7+ hrs", "Cut late-night eating"] },
-  { weeks: "Weeks 5-8", color: COLORS.yellow, weight: "218 to 212 lbs", focus: "Add intensity. Increase court time. Track weight weekly.", goals: ["Progress weights in gym", "Add 1 sprint set/court day", "Drop 1 processed meal/day", "Vertical jump baseline test"] },
-  { weeks: "Weeks 9-12", color: COLORS.teal, weight: "212 to 206 lbs", focus: "Peak conditioning. Power training becomes primary.", goals: ["Max out box jump height", "3 sessions/week consistently", "Nutrition locked in", "Rim touches target: every session"] },
-  { weeks: "Weeks 13-16", color: COLORS.green, weight: "206 to 200 lbs", focus: "Dunk attempt. You have earned it.", goals: ["Full vertical test", "Attempt dunk - document it", "Assess next 16-week cycle", "Celebrate the comeback"] },
-];
+const CARDIO_TYPES = {
+  tabata: {
+    label: "Tabata Bike",
+    icon: "🚴",
+    color: C.teal,
+    duration: "15 min",
+    detail: "8 rounds · 20s on / 10s off · 4 min work + warmup/cooldown",
+  },
+  court_intervals: {
+    label: "Court Intervals",
+    icon: "🏀",
+    color: C.yellow,
+    duration: "20 min",
+    detail: "10 rounds · 30s hard / 30s rest · suicides, sprints, layups",
+  },
+};
 
-const HABITS = [
-  { law: "1st Law: Make It Obvious", color: COLORS.orange, items: ["Pack your gym bag the night before", "Put your basketball shoes by the door", "Set a recurring phone reminder: Train today?", "Keep a water bottle visible at all times"] },
-  { law: "2nd Law: Make It Attractive", color: COLORS.yellow, items: ["Only listen to your favorite playlist during workouts", "Find a training partner or court regular", "Watch dunk compilations before hard sessions", "Visualize the dunk attempt in detail"] },
-  { law: "3rd Law: Make It Easy", color: COLORS.teal, items: ["Choose a gym within 10 min of home or work", "Pre-log your session before you arrive", "Start with the exercise you like most", "Have a minimum viable workout for bad days: 3 sets, 20 min"] },
-  { law: "4th Law: Make It Satisfying", color: COLORS.green, items: ["Log every session - the streak is the reward", "Take a vertical jump video monthly", "Weigh in every Sunday morning, same conditions", "Tell someone about your progress weekly"] },
-];
-
-const STACKS = [
-  { trigger: "Before shower", habit: "Run your daily Tabata - every single day" },
-  { trigger: "Sunday morning", habit: "Weigh in + treadmill walk" },
-  { trigger: "After putting kids to bed", habit: "Pack gym bag for tomorrow" },
-  { trigger: "After every workout", habit: "Log it in the app before the shower" },
-];
-
+// ─── Audio ─────────────────────────────────────────────────────────────────────
 let _audioCtx = null;
 function getAudioCtx() {
-  if (!_audioCtx || _audioCtx.state === "closed") {
-    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (_audioCtx.state === "suspended") {
-    _audioCtx.resume();
-  }
+  if (!_audioCtx || _audioCtx.state === "closed") _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (_audioCtx.state === "suspended") _audioCtx.resume();
   return _audioCtx;
 }
-
-function beep(freq, duration, vol) {
+function beep(freq, dur, vol) {
   try {
     const ctx = getAudioCtx();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
+    osc.connect(gain); gain.connect(ctx.destination);
     osc.frequency.value = freq || 880;
-    gain.gain.value = vol || 0.3;
     gain.gain.setValueAtTime(vol || 0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (duration || 0.1));
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + (duration || 0.1));
-  } catch(e) { console.log("beep error", e); }
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (dur || 0.12));
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + (dur || 0.12));
+  } catch(e) {}
+}
+function speak(text) {
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.1; u.pitch = 1.1; u.volume = 1;
+    window.speechSynthesis.speak(u);
+  } catch(e) {}
 }
 
-function BarbellInput({ vals, onVal }) {
-  const BAR = 45;
-  const perSide = parseFloat(vals && vals.perSide) || 0;
-  const total = BAR + perSide * 2;
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function daysAgo(iso) {
+  const d = Math.floor((Date.now() - new Date(iso)) / 86400000);
+  return d === 0 ? "Today" : d === 1 ? "Yesterday" : d + "d ago";
+}
+function calcVolume(exercises, checked, vals) {
+  return exercises.reduce((v, ex) => {
+    if (!checked[ex.id] || ex.noWeight || ex.timed || ex.bodyweight) return v;
+    const w = ex.barbell ? 45 + (parseFloat(vals[ex.id]?.perSide) || 0) * 2 : parseFloat(vals[ex.id]?.weight) || 0;
+    const s = parseInt(vals[ex.id]?.setsDone || ex.sets);
+    const r = parseInt(ex.reps) || 0;
+    return v + w * s * r;
+  }, 0);
+}
+
+// ─── UI Primitives ─────────────────────────────────────────────────────────────
+function Card({ children, color, style = {}, onClick }) {
   return (
-    <div style={{ background: "#1A1A1A", border: "1px solid #333", borderRadius: 8, padding: "8px 10px", marginTop: 6, marginBottom: 2 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-        <span style={{ fontSize: 11, color: COLORS.muted, width: 90 }}>Bar</span>
-        <span style={{ fontSize: 13, color: COLORS.orange, fontWeight: "bold" }}>45 lbs</span>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-        <span style={{ fontSize: 11, color: COLORS.muted, width: 90 }}>+ Each side</span>
-        <input style={{ ...S.input, width: 70 }} type="number" min="0" step="2.5" placeholder="0"
-          value={(vals && vals.perSide) || ""} onChange={e => onVal("perSide", e.target.value)} />
-        <span style={{ fontSize: 11, color: COLORS.muted }}>lbs</span>
-      </div>
-      <div style={{ borderTop: "1px solid #333", paddingTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 11, color: COLORS.muted, width: 90 }}>= Total</span>
-        <span style={{ fontSize: 15, fontWeight: "bold", color: COLORS.yellow }}>{total} lbs</span>
-      </div>
+    <div
+      onClick={onClick}
+      className={onClick ? "card-tap" : ""}
+      style={{
+        background: C.surface,
+        border: "1px solid " + (color ? color + "30" : C.border),
+        borderRadius: 16,
+        padding: 18,
+        marginBottom: 12,
+        ...style,
+      }}
+    >
+      {children}
     </div>
   );
 }
 
+function Label({ children, color }) {
+  return (
+    <span style={{
+      background: (color || C.orange) + "18",
+      color: color || C.orange,
+      border: "1px solid " + (color || C.orange) + "30",
+      borderRadius: 20,
+      padding: "3px 10px",
+      fontSize: 11,
+      fontWeight: 600,
+      letterSpacing: 0.3,
+    }}>
+      {children}
+    </span>
+  );
+}
+
+function Btn({ children, color, ghost, onClick, disabled, style = {}, full }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="pill-btn"
+      style={{
+        background: ghost ? "transparent" : (color || C.orange),
+        border: "1px solid " + (color || C.orange),
+        color: ghost ? (color || C.orange) : "#000",
+        padding: "11px 22px",
+        borderRadius: 12,
+        cursor: disabled ? "default" : "pointer",
+        fontFamily: "-apple-system, SF Pro Display, Georgia, serif",
+        fontSize: 14,
+        fontWeight: 600,
+        letterSpacing: 0.1,
+        opacity: disabled ? 0.38 : 1,
+        width: full ? "100%" : undefined,
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function NumInput({ value, onChange, placeholder, style = {} }) {
+  return (
+    <input
+      type="number"
+      value={value || ""}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      style={{
+        background: C.surface2,
+        border: "1px solid " + C.border,
+        borderRadius: 8,
+        color: C.text,
+        padding: "7px 10px",
+        fontSize: 13,
+        fontFamily: "-apple-system, SF Pro Display, Georgia, serif",
+        textAlign: "center",
+        width: "100%",
+        ...style,
+      }}
+    />
+  );
+}
+
+function SectionTitle({ children }) {
+  return <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 6, letterSpacing: -0.5 }}>{children}</div>;
+}
+function SectionSub({ children }) {
+  return <div style={{ fontSize: 14, color: C.muted, marginBottom: 20, lineHeight: 1.4 }}>{children}</div>;
+}
+function Divider() {
+  return <div style={{ height: 1, background: C.border, margin: "8px 0" }} />;
+}
+
+// ─── Barbell Widget ────────────────────────────────────────────────────────────
+function BarbellInput({ vals, onVal }) {
+  const perSide = parseFloat(vals?.perSide) || 0;
+  const total = 45 + perSide * 2;
+  return (
+    <div style={{ background: C.surface2, borderRadius: 10, padding: "10px 14px", marginTop: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <span style={{ fontSize: 12, color: C.muted }}>Bar (45) + each side</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: C.orange }}>{total} lbs total</span>
+      </div>
+      <NumInput value={vals?.perSide} onChange={v => onVal("perSide", v)} placeholder="lbs per side" />
+    </div>
+  );
+}
+
+// ─── Exercise Row ──────────────────────────────────────────────────────────────
 function ExRow({ ex, checked, onCheck, vals, onVal, color }) {
   return (
-    <div style={{ padding: "8px 0", borderBottom: "1px solid #222" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <input type="checkbox" checked={!!checked} onChange={onCheck} style={{ width: 18, height: 18, accentColor: color, cursor: "pointer", flexShrink: 0 }} />
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14 }}>{ex.name}</div>
-          <div style={{ fontSize: 11, color: COLORS.muted }}>{ex.sets} sets x {ex.reps}</div>
+    <div style={{ paddingTop: 12, paddingBottom: 12, borderBottom: "1px solid " + C.border }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+        <div
+          onClick={onCheck}
+          style={{
+            width: 22, height: 22, borderRadius: "50%", flexShrink: 0, marginTop: 1,
+            background: checked ? color : "transparent",
+            border: "2px solid " + (checked ? color : C.border),
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", transition: "all 0.15s ease",
+          }}
+        >
+          {checked && <svg width="11" height="8" viewBox="0 0 11 8" fill="none"><path d="M1 4L4 7L10 1" stroke="#000" strokeWidth="1.8" strokeLinecap="round"/></svg>}
         </div>
-        {!ex.barbell && (
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            {!ex.timed && !ex.noWeight && (
-              <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 9, color: COLORS.muted, marginBottom: 2 }}>lbs</div>
-                <input style={S.input} type="number" min="0" placeholder="0" value={(vals && vals.weight) || ""} onChange={e => onVal("weight", e.target.value)} />
-              </div>
-            )}
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 9, color: COLORS.muted, marginBottom: 2 }}>sets done</div>
-              <input style={S.input} type="number" min="0" max={ex.sets} placeholder={ex.sets} value={(vals && vals.setsDone) || ""} onChange={e => onVal("setsDone", e.target.value)} />
-            </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 500, color: checked ? C.muted : C.text, textDecoration: checked ? "line-through" : "none" }}>{ex.name}</div>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 1 }}>{ex.sets} × {ex.reps} {ex.note ? "· " + ex.note : ""}</div>
+        </div>
+        {!ex.noWeight && !ex.timed && !ex.bodyweight && !ex.barbell && (
+          <div style={{ width: 64, flexShrink: 0 }}>
+            <div style={{ fontSize: 10, color: C.muted, textAlign: "center", marginBottom: 3 }}>lbs</div>
+            <NumInput value={vals?.weight} onChange={v => onVal("weight", v)} placeholder="0" />
           </div>
         )}
-        {ex.barbell && (
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 9, color: COLORS.muted, marginBottom: 2 }}>sets done</div>
-            <input style={S.input} type="number" min="0" max={ex.sets} placeholder={ex.sets} value={(vals && vals.setsDone) || ""} onChange={e => onVal("setsDone", e.target.value)} />
+        {!ex.noWeight && !ex.timed && (
+          <div style={{ width: 52, flexShrink: 0 }}>
+            <div style={{ fontSize: 10, color: C.muted, textAlign: "center", marginBottom: 3 }}>sets</div>
+            <NumInput value={vals?.setsDone} onChange={v => onVal("setsDone", v)} placeholder={String(ex.sets)} />
           </div>
         )}
       </div>
@@ -168,79 +293,32 @@ function ExRow({ ex, checked, onCheck, vals, onVal, color }) {
   );
 }
 
-function calcVolume(exercises, checked, vals) {
-  let v = 0;
-  exercises.forEach(ex => {
-    if (!checked[ex.id] || ex.noWeight || ex.timed) return;
-    let w;
-    if (ex.barbell) {
-      const perSide = parseFloat(vals[ex.id] && vals[ex.id].perSide) || 0;
-      w = 45 + perSide * 2;
-    } else {
-      w = parseFloat(vals[ex.id] && vals[ex.id].weight) || 0;
-    }
-    const s = parseInt((vals[ex.id] && vals[ex.id].setsDone) || ex.sets);
-    const r = parseInt(ex.reps) || 0;
-    v += w * s * r;
-  });
-  return v;
-}
-
-function speak(text) {
-  try {
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.rate = 1.1;
-    utter.pitch = 1.1;
-    utter.volume = 1;
-    window.speechSynthesis.speak(utter);
-  } catch(e) {}
-}
-
+// ─── Tabata Timer ──────────────────────────────────────────────────────────────
 function TabataTimer({ onLog }) {
   const [phase, setPhase] = useState("idle");
   const [round, setRound] = useState(1);
-  const [count, setCount] = useState(TABATA.sprintSec);
+  const [count, setCount] = useState(TABATA_CONFIG.sprintSec);
   const [countdown, setCountdown] = useState(null);
   const wakeLockRef = useRef(null);
 
   const requestWakeLock = async () => {
-    try {
-      if ("wakeLock" in navigator) {
-        wakeLockRef.current = await navigator.wakeLock.request("screen");
-      }
-    } catch(e) {}
+    try { if ("wakeLock" in navigator) wakeLockRef.current = await navigator.wakeLock.request("screen"); } catch(e) {}
   };
-
   const releaseWakeLock = () => {
-    try {
-      if (wakeLockRef.current) {
-        wakeLockRef.current.release();
-        wakeLockRef.current = null;
-      }
-    } catch(e) {}
+    try { if (wakeLockRef.current) { wakeLockRef.current.release(); wakeLockRef.current = null; } } catch(e) {}
   };
 
-  const start = () => {
-    // Unlock audio on user gesture
-    getAudioCtx();
-    requestWakeLock();
-    setCountdown(5);
-  };
+  const start = () => { getAudioCtx(); requestWakeLock(); setCountdown(5); };
+  const reset = () => { releaseWakeLock(); setPhase("idle"); setRound(1); setCount(TABATA_CONFIG.sprintSec); setCountdown(null); };
 
   useEffect(() => {
     if (countdown === null) return;
     if (countdown === 0) {
-      setCountdown(null);
-      beep(1046, 0.3, 0.5);
-      speak("Sprint!");
-      setPhase("sprint");
-      setRound(1);
-      setCount(TABATA.sprintSec);
-      return;
+      setCountdown(null); beep(1046, 0.25, 0.5); speak("Sprint!");
+      setPhase("sprint"); setRound(1); setCount(TABATA_CONFIG.sprintSec); return;
     }
     beep(660, 0.08, 0.3);
-    if (countdown === 3) speak("Get ready!");
+    if (countdown === 3) speak("Get ready");
     const t = setTimeout(() => setCountdown(c => c - 1), 1000);
     return () => clearTimeout(t);
   }, [countdown]);
@@ -249,100 +327,82 @@ function TabataTimer({ onLog }) {
     if (phase === "idle" || phase === "done") return;
     const interval = setInterval(() => {
       setCount(c => {
-        if (c > 1) {
-          beep(660, 0.12, 0.4);
-          return c - 1;
-        }
-        if (phase === "sprint") {
-          beep(523, 0.15, 0.4);
-          speak("Rest");
-          setPhase("rest");
-          return TABATA.restSec;
-        } else {
+        if (c > 1) { beep(440, 0.06, 0.2); return c - 1; }
+        if (phase === "sprint") { beep(523, 0.15, 0.4); speak("Rest"); setPhase("rest"); return TABATA_CONFIG.restSec; }
+        else {
           setRound(r => {
-            if (r >= TABATA.rounds) {
-              beep(880, 0.5, 0.6);
-              speak("Done! Great work!");
-              releaseWakeLock();
-              setPhase("done");
-              return r;
-            }
-            beep(880, 0.2, 0.5);
-            speak("Sprint!");
-            setPhase("sprint");
-            return r + 1;
+            if (r >= TABATA_CONFIG.rounds) { beep(880, 0.5, 0.6); speak("Done! Great work!"); releaseWakeLock(); setPhase("done"); return r; }
+            beep(880, 0.18, 0.5); speak("Sprint!"); setPhase("sprint"); return r + 1;
           });
-          return TABATA.sprintSec;
+          return TABATA_CONFIG.sprintSec;
         }
       });
     }, 1000);
     return () => clearInterval(interval);
   }, [phase]);
 
-  const reset = () => {
-    releaseWakeLock();
-    setPhase("idle");
-    setRound(1);
-    setCount(TABATA.sprintSec);
-    setCountdown(null);
-  };
+  const isSprint = phase === "sprint";
+  const isRest = phase === "rest";
+  const activeColor = isSprint ? C.teal : C.yellow;
 
   return (
-    <div style={{ ...S.card(COLORS.green + "44"), background: COLORS.green + "08" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: (phase !== "idle" || countdown !== null) ? 12 : 0 }}>
+    <Card color={C.teal} style={{ background: C.teal + "08" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <div style={{ ...S.badge(COLORS.green), marginBottom: 4 }}>DAILY</div>
-          <div style={{ fontWeight: "bold", fontSize: 15 }}>Tabata Sprints</div>
-          <div style={{ fontSize: 11, color: COLORS.muted }}>5 rounds, 5s on / 5s off, before every shower</div>
+          <Label color={C.teal}>DAILY TABATA</Label>
+          <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginTop: 8 }}>Sprint Timer</div>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{TABATA_CONFIG.rounds} rounds · {TABATA_CONFIG.sprintSec}s on / {TABATA_CONFIG.restSec}s off</div>
         </div>
         {phase === "idle" && countdown === null && (
-          <button onClick={start} style={{ ...S.btn(COLORS.green), padding: "10px 20px" }}>Start</button>
+          <Btn color={C.teal} onClick={start}>Start</Btn>
         )}
       </div>
 
       {countdown !== null && (
-        <div style={{ textAlign: "center", padding: "16px 0" }}>
-          <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 2 }}>Get Ready...</div>
-          <div style={{ fontSize: 96, fontWeight: "bold", color: COLORS.yellow, lineHeight: 1 }}>{countdown}</div>
-          <div style={{ fontSize: 14, color: COLORS.muted, marginTop: 8 }}>Starting in {countdown} second{countdown !== 1 ? "s" : ""}...</div>
-          <button onClick={reset} style={{ ...S.btn(COLORS.muted, true), fontSize: 12, marginTop: 16 }}>Cancel</button>
+        <div className="fade-up" style={{ textAlign: "center", padding: "24px 0 8px" }}>
+          <div style={{ fontSize: 13, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>Get Ready</div>
+          <div className="countdown-num" style={{ fontSize: 88, fontWeight: 800, color: C.yellow, lineHeight: 1 }}>{countdown}</div>
+          <Btn ghost color={C.muted} onClick={reset} style={{ marginTop: 20, fontSize: 13 }}>Cancel</Btn>
         </div>
       )}
 
       {countdown === null && phase !== "idle" && (
-        <div style={{ textAlign: "center", padding: "12px 0" }}>
-          {(phase === "sprint" || phase === "rest") && (
+        <div className="fade-up" style={{ marginTop: 16 }}>
+          {(isSprint || isRest) && (
             <>
-              <div style={{ fontSize: 11, color: COLORS.muted, marginBottom: 2 }}>Round {round} of {TABATA.rounds}</div>
-              <div style={{ fontSize: 72, fontWeight: "bold", color: phase === "sprint" ? COLORS.green : COLORS.yellow, lineHeight: 1, marginBottom: 6 }}>{count}</div>
-              <div style={{ fontSize: 20, fontWeight: "bold", color: phase === "sprint" ? COLORS.green : COLORS.yellow, marginBottom: 16 }}>
-                {phase === "sprint" ? "SPRINT!" : "REST"}
+              <div style={{ textAlign: "center", padding: "8px 0" }}>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>Round {round} of {TABATA_CONFIG.rounds}</div>
+                <div className="countdown-num" style={{ fontSize: 80, fontWeight: 800, color: activeColor, lineHeight: 1 }}>{count}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: activeColor, marginTop: 4, letterSpacing: 1 }}>
+                  {isSprint ? "SPRINT" : "REST"}
+                </div>
+                <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 16, marginBottom: 16 }}>
+                  {Array.from({ length: TABATA_CONFIG.rounds }).map((_, i) => (
+                    <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: i < round - 1 ? C.teal : i === round - 1 ? C.teal + "88" : C.border, transition: "background 0.3s" }} />
+                  ))}
+                </div>
               </div>
-              <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 16 }}>
-                {Array.from({ length: TABATA.rounds }).map((_, i) => (
-                  <div key={i} style={{ width: 12, height: 12, borderRadius: "50%", background: i < round - 1 ? COLORS.green : i === round - 1 ? COLORS.green + "99" : COLORS.border }} />
-                ))}
-              </div>
-              <button onClick={reset} style={{ ...S.btn(COLORS.muted, true), fontSize: 12 }}>Reset</button>
+              <Btn ghost color={C.muted} onClick={reset} full style={{ fontSize: 13 }}>Reset</Btn>
             </>
           )}
           {phase === "done" && (
-            <>
-              <div style={{ fontSize: 36, marginBottom: 6 }}>Done!</div>
-              <div style={{ fontSize: 17, fontWeight: "bold", color: COLORS.green, marginBottom: 4 }}>5 rounds complete.</div>
-              <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 18 }}>25 seconds of work. Go shower.</div>
-              <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-                <button onClick={reset} style={{ ...S.btn(COLORS.muted, true), fontSize: 12 }}>Reset</button>
-                <button onClick={() => { onLog(); reset(); }} style={{ ...S.btn(COLORS.green), boxShadow: "0 0 14px #A8E06355" }}>Log It</button>
+            <div style={{ textAlign: "center", padding: "8px 0" }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: C.teal, marginBottom: 4 }}>5 Rounds Complete</div>
+              <div style={{ fontSize: 13, color: C.muted, marginBottom: 20 }}>25 seconds of work. Go shower.</div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <Btn ghost color={C.muted} onClick={reset} style={{ flex: 1, fontSize: 13 }}>Reset</Btn>
+                <Btn color={C.teal} onClick={() => { onLog(); reset(); }} style={{ flex: 1, fontSize: 13 }}>Log It</Btn>
               </div>
-            </>
+            </div>
           )}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
+// ─── Treadmill Logger ──────────────────────────────────────────────────────────
 function TreadmillLogger({ onLog }) {
   const [duration, setDuration] = useState("");
   const [speed, setSpeed] = useState("");
@@ -356,214 +416,159 @@ function TreadmillLogger({ onLog }) {
     if (!canLog) return;
     onLog({ duration: parseFloat(duration) || 0, speed: parseFloat(speed) || 0, incline: parseFloat(incline) || 0, miles: parseFloat(miles) || 0, notes });
     setDuration(""); setSpeed(""); setIncline(""); setNotes("");
-    setDone(true);
-    setTimeout(() => setDone(false), 2000);
+    setDone(true); setTimeout(() => setDone(false), 2500);
   };
 
   return (
-    <div style={{ ...S.card(COLORS.purple + "44"), background: COLORS.purple + "08" }}>
-      <div style={{ ...S.badge(COLORS.purple), marginBottom: 6 }}>ANYTIME</div>
-      <div style={{ fontWeight: "bold", fontSize: 15, marginBottom: 2 }}>Treadmill Walk</div>
-      <div style={{ fontSize: 11, color: COLORS.muted, marginBottom: 14 }}>Log duration, speed, and incline</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
-        {[
-          { label: "Duration (min)", val: duration, set: setDuration, placeholder: "45" },
-          { label: "Speed (mph)", val: speed, set: setSpeed, placeholder: "3.5" },
-          { label: "Incline (%)", val: incline, set: setIncline, placeholder: "10" },
-        ].map(f => (
-          <div key={f.label} style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 10, color: COLORS.muted, marginBottom: 4 }}>{f.label}</div>
-            <input style={{ ...S.input, width: "100%" }} type="number" min="0" step="0.1"
-              placeholder={f.placeholder} value={f.val} onChange={e => f.set(e.target.value)} />
+    <Card color={C.purple} style={{ background: C.purple + "08" }}>
+      <Label color={C.purple}>TREADMILL</Label>
+      <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginTop: 8, marginBottom: 2 }}>Walk Logger</div>
+      <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>Duration · speed · incline</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
+        {[["Duration", "min", duration, setDuration, "45"],["Speed", "mph", speed, setSpeed, "3.5"],["Incline", "%", incline, setIncline, "8"]].map(([label, unit, val, set, ph]) => (
+          <div key={label} style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 10, color: C.muted, marginBottom: 4 }}>{label} ({unit})</div>
+            <NumInput value={val} onChange={set} placeholder={ph} />
           </div>
         ))}
       </div>
-      {miles && <div style={{ textAlign: "center", color: COLORS.purple, fontSize: 13, marginBottom: 10 }}>Est. distance: {miles} miles</div>}
-      <input style={{ ...S.input, width: "100%", textAlign: "left", padding: "8px 10px", marginBottom: 12, fontSize: 12 }}
-        type="text" placeholder="Notes (optional)" value={notes} onChange={e => setNotes(e.target.value)} />
-      <button onClick={handleLog} disabled={!canLog}
-        style={{ ...S.btn(COLORS.purple), width: "100%", opacity: canLog ? 1 : 0.4, boxShadow: canLog ? "0 0 14px #B388FF55" : "none", transition: "all .3s" }}>
-        {done ? "Logged!" : "Log Treadmill Walk"}
-      </button>
-    </div>
+      {miles && <div style={{ textAlign: "center", color: C.purple, fontSize: 13, marginBottom: 10 }}>≈ {miles} miles</div>}
+      <input
+        type="text" placeholder="Notes (optional)" value={notes} onChange={e => setNotes(e.target.value)}
+        style={{ background: C.surface2, border: "1px solid " + C.border, borderRadius: 8, color: C.text, padding: "9px 12px", fontSize: 13, width: "100%", marginBottom: 10, fontFamily: "-apple-system, SF Pro Display, Georgia, serif" }}
+      />
+      <Btn color={C.purple} onClick={handleLog} disabled={!canLog} full>
+        {done ? "Logged ✓" : "Log Walk"}
+      </Btn>
+    </Card>
   );
 }
 
-function StatsTab({ history, weightLog }) {
-  const gymSessions = history.filter(h => h.session_name && h.session_name.startsWith("DAY"));
+// ─── Stats Tab ────────────────────────────────────────────────────────────────
+function StatsTab({ history, weightLog, cardioSessions }) {
+  const gymSessions = history.filter(h => h.session_name?.startsWith("DAY"));
   const treadmillSessions = history.filter(h => h.session_name === "Treadmill Walk");
   const tabataSessions = history.filter(h => h.session_name === "Daily Tabata Sprints");
+  const cardioCount = cardioSessions.length;
+
   const totalVolume = gymSessions.reduce((a, h) => a + (h.total_volume || 0), 0);
-  const thisWeekVolume = gymSessions.filter(h => (Date.now() - new Date(h.logged_at)) < 7 * 86400000).reduce((a, h) => a + (h.total_volume || 0), 0);
-  const totalMiles = treadmillSessions.reduce((a, h) => { const ex = h.exercises && h.exercises[0]; return a + (ex ? ex.miles || 0 : 0); }, 0);
-  const totalTreadmillMin = treadmillSessions.reduce((a, h) => a + ((h.exercises && h.exercises[0] && h.exercises[0].duration) || 0), 0);
-  const speedSessions = treadmillSessions.filter(h => h.exercises && h.exercises[0] && h.exercises[0].speed > 0);
-  const avgSpeed = speedSessions.length > 0 ? (speedSessions.reduce((a, h) => a + h.exercises[0].speed, 0) / speedSessions.length).toFixed(1) : 0;
-  const inclineSessions = treadmillSessions.filter(h => h.exercises && h.exercises[0] && h.exercises[0].incline > 0);
-  const avgIncline = inclineSessions.length > 0 ? (inclineSessions.reduce((a, h) => a + h.exercises[0].incline, 0) / inclineSessions.length).toFixed(1) : 0;
-
-  const allDates = [...new Set(history.map(h => new Date(h.logged_at).toDateString()))].sort((a, b) => new Date(b) - new Date(a));
-  let currentStreak = 0, longestStreak = 0, streak = 0;
-  for (let i = 0; i < allDates.length; i++) {
-    const diff = i === 0 ? Math.floor((Date.now() - new Date(allDates[0])) / 86400000) : Math.floor((new Date(allDates[i - 1]) - new Date(allDates[i])) / 86400000);
-    if (i === 0 && diff <= 1) { currentStreak = 1; streak = 1; }
-    else if (diff === 1) { streak++; if (i < (currentStreak > 0 ? currentStreak : 1) + 1) currentStreak = streak; }
-    else { streak = 1; }
-    longestStreak = Math.max(longestStreak, streak);
-  }
-
-  const sessionCount = { A: 0, B: 0, C: 0 };
-  gymSessions.forEach(h => {
-    if (h.session_name && h.session_name.includes("DAY A")) sessionCount.A++;
-    else if (h.session_name && h.session_name.includes("DAY B")) sessionCount.B++;
-    else if (h.session_name && h.session_name.includes("DAY C")) sessionCount.C++;
-  });
+  const thisWeekVol = gymSessions.filter(h => (Date.now() - new Date(h.logged_at)) < 7*86400000).reduce((a,h) => a+(h.total_volume||0),0);
+  const totalMiles = treadmillSessions.reduce((a,h) => a + (h.exercises?.[0]?.miles||0), 0);
+  const totalMin = treadmillSessions.reduce((a,h) => a + (h.exercises?.[0]?.duration||0), 0);
 
   const pbs = {};
-  gymSessions.forEach(h => {
-    (h.exercises || []).forEach(ex => {
-      if (ex.weight > 0) {
-        if (!pbs[ex.name] || ex.weight > pbs[ex.name]) pbs[ex.name] = ex.weight;
-      }
-    });
-  });
+  gymSessions.forEach(h => (h.exercises||[]).forEach(ex => { if (ex.weight > 0 && (!pbs[ex.name] || ex.weight > pbs[ex.name])) pbs[ex.name] = ex.weight; }));
 
   const weeklyVol = {};
   gymSessions.forEach(h => {
-    const d = new Date(h.logged_at);
-    const weekStart = new Date(d);
-    weekStart.setDate(d.getDate() - d.getDay());
-    const key = weekStart.toLocaleDateString("en-CA", { month: "short", day: "numeric" });
-    weeklyVol[key] = (weeklyVol[key] || 0) + (h.total_volume || 0);
+    const d = new Date(h.logged_at); const ws = new Date(d); ws.setDate(d.getDate()-d.getDay());
+    const key = ws.toLocaleDateString("en-CA",{month:"short",day:"numeric"});
+    weeklyVol[key] = (weeklyVol[key]||0) + (h.total_volume||0);
   });
-  const weekKeys = Object.keys(weeklyVol).slice(-6);
-  const weekVals = weekKeys.map(k => weeklyVol[k]);
-  const maxWeekVol = Math.max(...weekVals, 1);
+  const wks = Object.keys(weeklyVol).slice(-6);
+  const wvs = wks.map(k => weeklyVol[k]);
+  const maxWv = Math.max(...wvs, 1);
 
-  const startWeight = 225, goalWeight = 200;
-  const currentWeight = (weightLog[0] && weightLog[0].weight) || startWeight;
-  const weightLost = startWeight - currentWeight;
-  const weeksElapsed = history.length > 0 ? Math.ceil((Date.now() - new Date(history[history.length - 1].logged_at)) / (7 * 86400000)) : 1;
-  const pacePerWeek = weightLost / Math.max(weeksElapsed, 1);
-  const weeksToGoal = pacePerWeek > 0 ? Math.ceil((currentWeight - goalWeight) / pacePerWeek) : null;
+  const startW = 225, goalW = 200;
+  const curW = weightLog[0]?.weight || startW;
+  const lost = startW - curW;
+
+  const StatBox = ({ label, value, color, sub }) => (
+    <div style={{ background: C.surface2, borderRadius: 14, padding: 16, textAlign: "center", border: "1px solid " + C.border }}>
+      <div style={{ fontSize: 28, fontWeight: 700, color: color || C.text, letterSpacing: -1 }}>{value}</div>
+      <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>{label}</div>
+      {sub && <div style={{ fontSize: 11, color: color || C.muted, marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
 
   return (
     <>
-      <div style={{ fontWeight: "bold", fontSize: 18, marginBottom: 4 }}>Your Stats</div>
-      <div style={{ color: COLORS.muted, fontSize: 13, marginBottom: 16 }}>Everything you have built so far.</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-        {[
-          { label: "Gym Sessions", value: gymSessions.length, color: COLORS.orange },
-          { label: "Court Sessions", value: sessionCount.B, color: COLORS.yellow },
-          { label: "Tabatas", value: tabataSessions.length, color: COLORS.green },
-          { label: "Treadmill Walks", value: treadmillSessions.length, color: COLORS.purple },
-        ].map(s => (
-          <div key={s.label} style={{ ...S.statBox(s.color + "33") }}>
-            <div style={{ fontSize: 26, fontWeight: "bold", color: s.color }}>{s.value}</div>
-            <div style={{ fontSize: 11, color: COLORS.muted }}>{s.label}</div>
-          </div>
-        ))}
+      <SectionTitle>Stats</SectionTitle>
+      <SectionSub>Everything you've built so far.</SectionSub>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+        <StatBox label="Gym Sessions" value={gymSessions.length} color={C.orange} />
+        <StatBox label="HIIT Sessions" value={cardioCount} color={C.teal} />
+        <StatBox label="Tabatas" value={tabataSessions.length} color={C.teal} />
+        <StatBox label="Treadmill Walks" value={treadmillSessions.length} color={C.purple} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-        <div style={{ ...S.statBox(COLORS.orange + "33") }}>
-          <div style={{ fontSize: 26, fontWeight: "bold", color: COLORS.orange }}>{currentStreak}</div>
-          <div style={{ fontSize: 11, color: COLORS.muted }}>Day Streak</div>
-        </div>
-        <div style={{ ...S.statBox(COLORS.yellow + "33") }}>
-          <div style={{ fontSize: 26, fontWeight: "bold", color: COLORS.yellow }}>{longestStreak}</div>
-          <div style={{ fontSize: 11, color: COLORS.muted }}>Longest Streak</div>
-        </div>
-      </div>
-      <div style={S.card(COLORS.orange + "44")}>
-        <div style={{ color: COLORS.orange, fontWeight: "bold", fontSize: 14, marginBottom: 12 }}>Weight Lifted</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+
+      <Card>
+        <div style={{ color: C.orange, fontWeight: 700, fontSize: 13, marginBottom: 14, letterSpacing: 0.2 }}>VOLUME LIFTED</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: wks.length >= 2 ? 16 : 0 }}>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 22, fontWeight: "bold", color: COLORS.orange }}>{totalVolume >= 1000 ? (totalVolume / 1000).toFixed(1) + "k" : totalVolume.toLocaleString()}</div>
-            <div style={{ fontSize: 11, color: COLORS.muted }}>Total lbs lifted</div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: C.orange }}>{totalVolume >= 1000 ? (totalVolume/1000).toFixed(1)+"k" : totalVolume.toLocaleString()}</div>
+            <div style={{ fontSize: 11, color: C.muted }}>Total lbs</div>
           </div>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 22, fontWeight: "bold", color: COLORS.yellow }}>{thisWeekVolume >= 1000 ? (thisWeekVolume / 1000).toFixed(1) + "k" : thisWeekVolume.toLocaleString()}</div>
-            <div style={{ fontSize: 11, color: COLORS.muted }}>This week</div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: C.yellow }}>{thisWeekVol >= 1000 ? (thisWeekVol/1000).toFixed(1)+"k" : thisWeekVol.toLocaleString()}</div>
+            <div style={{ fontSize: 11, color: C.muted }}>This week</div>
           </div>
         </div>
-        {gymSessions.length > 0 && (
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 11, color: COLORS.muted, marginBottom: 8 }}>Sessions by type</div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              {[{ k: "A", c: COLORS.orange }, { k: "B", c: COLORS.yellow }, { k: "C", c: COLORS.teal }].map(t => (
-                <div key={t.k} style={{ flex: 1, textAlign: "center" }}>
-                  <div style={{ background: "#222", borderRadius: 6, height: 6, overflow: "hidden", marginBottom: 4 }}>
-                    <div style={{ width: gymSessions.length > 0 ? (sessionCount[t.k] / Math.max(...Object.values(sessionCount), 1) * 100) + "%" : "0%", height: "100%", background: t.c, borderRadius: 6 }} />
-                  </div>
-                  <div style={{ fontSize: 11, color: t.c }}>Day {t.k}: {sessionCount[t.k]}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-      {weekKeys.length >= 2 && (
-        <div style={S.card()}>
-          <div style={{ color: COLORS.orange, fontWeight: "bold", fontSize: 14, marginBottom: 14 }}>Volume by Week</div>
-          <div style={{ display: "flex", gap: 6, alignItems: "flex-end", height: 80 }}>
-            {weekKeys.map((k, i) => (
+        {wks.length >= 2 && (
+          <div style={{ display: "flex", gap: 5, alignItems: "flex-end", height: 60 }}>
+            {wks.map((k,i) => (
               <div key={k} style={{ flex: 1, textAlign: "center" }}>
-                <div style={{ width: "100%", background: COLORS.orange, borderRadius: "4px 4px 0 0", height: Math.max(4, (weekVals[i] / maxWeekVol) * 70) }} />
-                <div style={{ fontSize: 9, color: COLORS.muted, marginTop: 4 }}>{k}</div>
+                <div style={{ width: "100%", background: C.orange, borderRadius: "4px 4px 0 0", height: Math.max(3, (wvs[i]/maxWv)*52), transition: "height 0.4s ease" }} />
+                <div style={{ fontSize: 8, color: C.muted, marginTop: 4 }}>{k}</div>
               </div>
             ))}
           </div>
-        </div>
-      )}
-      <div style={S.card(COLORS.purple + "44")}>
-        <div style={{ color: COLORS.purple, fontWeight: "bold", fontSize: 14, marginBottom: 12 }}>Treadmill</div>
+        )}
+      </Card>
+
+      <Card color={C.purple}>
+        <div style={{ color: C.purple, fontWeight: 700, fontSize: 13, marginBottom: 14 }}>TREADMILL</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           {[
-            { label: "Total Miles", value: totalMiles.toFixed(1), color: COLORS.purple },
-            { label: "Total Time", value: totalTreadmillMin >= 60 ? (totalTreadmillMin / 60).toFixed(1) + " hrs" : totalTreadmillMin + " min", color: COLORS.purple },
-            { label: "Avg Speed", value: avgSpeed + " mph", color: COLORS.muted },
-            { label: "Avg Incline", value: avgIncline + "%", color: COLORS.muted },
-          ].map(s => (
-            <div key={s.label} style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 20, fontWeight: "bold", color: s.color }}>{s.value || "-"}</div>
-              <div style={{ fontSize: 11, color: COLORS.muted }}>{s.label}</div>
+            ["Miles", totalMiles.toFixed(1), C.purple],
+            ["Time", totalMin >= 60 ? (totalMin/60).toFixed(1)+" hrs" : totalMin+" min", C.purple],
+          ].map(([l,v,c]) => (
+            <div key={l} style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: c }}>{v || "—"}</div>
+              <div style={{ fontSize: 11, color: C.muted }}>{l}</div>
             </div>
           ))}
         </div>
-      </div>
-      <div style={S.card(COLORS.green + "44")}>
-        <div style={{ color: COLORS.green, fontWeight: "bold", fontSize: 14, marginBottom: 12 }}>Weight Progress</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+      </Card>
+
+      <Card color={C.teal}>
+        <div style={{ color: C.teal, fontWeight: 700, fontSize: 13, marginBottom: 14 }}>WEIGHT PROGRESS</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 20, fontWeight: "bold", color: COLORS.green }}>{weightLost > 0 ? weightLost.toFixed(1) : "0"} lbs</div>
-            <div style={{ fontSize: 11, color: COLORS.muted }}>Lost</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: C.teal }}>{lost > 0 ? "-"+lost.toFixed(1) : "0"}</div>
+            <div style={{ fontSize: 11, color: C.muted }}>lbs lost</div>
           </div>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 20, fontWeight: "bold", color: COLORS.yellow }}>{(currentWeight - goalWeight).toFixed(1)} lbs</div>
-            <div style={{ fontSize: 11, color: COLORS.muted }}>To Goal</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>{curW}</div>
+            <div style={{ fontSize: 11, color: C.muted }}>current</div>
           </div>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 20, fontWeight: "bold", color: COLORS.teal }}>{weeksToGoal ? weeksToGoal + " wks" : "-"}</div>
-            <div style={{ fontSize: 11, color: COLORS.muted }}>At this pace</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: C.yellow }}>{(curW-goalW).toFixed(1)}</div>
+            <div style={{ fontSize: 11, color: C.muted }}>to goal</div>
           </div>
         </div>
-      </div>
+      </Card>
+
       {Object.keys(pbs).length > 0 && (
-        <div style={S.card()}>
-          <div style={{ color: COLORS.yellow, fontWeight: "bold", fontSize: 14, marginBottom: 12 }}>Personal Bests</div>
+        <Card>
+          <div style={{ color: C.yellow, fontWeight: 700, fontSize: 13, marginBottom: 14 }}>PERSONAL BESTS</div>
           {Object.entries(pbs).map(([name, weight]) => (
-            <div key={name} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #222", fontSize: 13 }}>
-              <span style={{ color: COLORS.muted }}>{name}</span>
-              <span style={{ color: COLORS.yellow, fontWeight: "bold" }}>{weight} lbs</span>
+            <div key={name} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid " + C.border, fontSize: 14 }}>
+              <span style={{ color: C.muted }}>{name}</span>
+              <span style={{ color: C.yellow, fontWeight: 700 }}>{weight} lbs</span>
             </div>
           ))}
-        </div>
+        </Card>
       )}
     </>
   );
 }
 
+// ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
+  useEffect(() => { injectStyles(); }, []);
+
   const [tab, setTab] = useState("workout");
   const [loading, setLoading] = useState(true);
   const [activeSession, setActiveSession] = useState(0);
@@ -578,7 +583,7 @@ export default function App() {
   const [cardioNotes, setCardioNotes] = useState("");
   const [cardioLogging, setCardioLogging] = useState(null);
 
-  const showSave = (ok) => { setSaveMsg(ok ? "Saved" : "Save failed"); setTimeout(() => setSaveMsg(""), 2000); };
+  const showSave = (ok) => { setSaveMsg(ok ? "✓ Saved" : "Save failed"); setTimeout(() => setSaveMsg(""), 2500); };
 
   const loadData = useCallback(async () => {
     try {
@@ -590,550 +595,508 @@ export default function App() {
       if (workouts) setHistory(workouts);
       if (weights) setWeightLog(weights);
       if (cardio) setCardioSessions(cardio);
-    } catch (e) {}
+    } catch(e) {}
     setLoading(false);
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
 
   const session = SESSIONS[activeSession];
-  const sessionKey = session.id;
-  const sessionColor = session.color;
-  const exercises = session.exercises;
-  const anyChecked = exercises.some(ex => checked[sessionKey + "_" + ex.id]);
+  const sk = session.id;
+  const anyChecked = session.exercises.some(ex => checked[sk+"_"+ex.id]);
   const volume = calcVolume(
-    exercises,
-    Object.fromEntries(exercises.map(ex => [ex.id, checked[sessionKey + "_" + ex.id]])),
-    Object.fromEntries(exercises.map(ex => [ex.id, (vals[sessionKey + "_" + ex.id]) || {}]))
+    session.exercises,
+    Object.fromEntries(session.exercises.map(ex => [ex.id, checked[sk+"_"+ex.id]])),
+    Object.fromEntries(session.exercises.map(ex => [ex.id, vals[sk+"_"+ex.id] || {}]))
   );
 
-  const toggleCheck = (id) => setChecked(p => ({ ...p, [id]: !p[id] }));
-  const setVal = (id, field, value) => setVals(p => ({ ...p, [id]: { ...(p[id] || {}), [field]: value } }));
+  const toggleCheck = id => setChecked(p => ({...p, [id]: !p[id]}));
+  const setVal = (id, f, v) => setVals(p => ({...p, [id]: {...(p[id]||{}), [f]: v}}));
 
   const logSession = async () => {
-    const exVols = exercises
-      .filter(ex => checked[sessionKey + "_" + ex.id])
-      .map(ex => {
-        let w;
-        if (ex.barbell) {
-          const perSide = parseFloat((vals[sessionKey + "_" + ex.id] && vals[sessionKey + "_" + ex.id].perSide)) || 0;
-          w = 45 + perSide * 2;
-        } else {
-          w = parseFloat((vals[sessionKey + "_" + ex.id] && vals[sessionKey + "_" + ex.id].weight)) || 0;
-        }
-        const s = parseInt((vals[sessionKey + "_" + ex.id] && vals[sessionKey + "_" + ex.id].setsDone) || ex.sets);
-        const r = parseInt(ex.reps) || 0;
-        const vol = ex.noWeight || ex.timed ? 0 : w * s * r;
-        return { name: ex.name, sets: s, reps: ex.reps, weight: w, volume: vol };
-      });
-    const payload = { session_name: session.label + ": " + session.name, color: sessionColor, total_volume: exVols.reduce((a, e) => a + e.volume, 0), exercises: exVols };
+    const exVols = session.exercises.filter(ex => checked[sk+"_"+ex.id]).map(ex => {
+      const w = ex.barbell ? 45+(parseFloat(vals[sk+"_"+ex.id]?.perSide)||0)*2 : parseFloat(vals[sk+"_"+ex.id]?.weight)||0;
+      const s = parseInt(vals[sk+"_"+ex.id]?.setsDone || ex.sets);
+      const r = parseInt(ex.reps) || 0;
+      return { name: ex.name, sets: s, reps: ex.reps, weight: w, volume: (ex.noWeight||ex.timed||ex.bodyweight) ? 0 : w*s*r };
+    });
+    const payload = { session_name: session.label+": "+session.name, color: session.color, total_volume: exVols.reduce((a,e)=>a+e.volume,0), exercises: exVols };
     const { data, error } = await supabase.from("workouts").insert([payload]).select();
     if (!error && data) {
-      setHistory(p => [data[0], ...p]);
-      const nc = { ...checked };
-      exercises.forEach(ex => delete nc[sessionKey + "_" + ex.id]);
-      setChecked(nc);
+      setHistory(p => [data[0],...p]);
+      const nc = {...checked}; session.exercises.forEach(ex => delete nc[sk+"_"+ex.id]); setChecked(nc);
       showSave(true);
     } else showSave(false);
   };
 
   const logTabata = async () => {
-    const payload = { session_name: "Daily Tabata Sprints", color: COLORS.green, total_volume: 0, exercises: [{ name: "Sprint in place", sets: 5, reps: "5s on/5s off", weight: 0, volume: 0 }] };
-    const { data, error } = await supabase.from("workouts").insert([payload]).select();
-    if (!error && data) { setHistory(p => [data[0], ...p]); showSave(true); }
-    else showSave(false);
+    const { data, error } = await supabase.from("workouts").insert([{ session_name: "Daily Tabata Sprints", color: C.teal, total_volume: 0, exercises: [{ name: "Sprint in place", sets: 5, reps: "5s on/5s off", weight: 0, volume: 0 }] }]).select();
+    if (!error && data) { setHistory(p => [data[0],...p]); showSave(true); } else showSave(false);
   };
 
   const logTreadmill = async ({ duration, speed, incline, miles, notes }) => {
-    const label = [duration ? duration + " min" : null, speed ? speed + " mph" : null, incline ? incline + "% incline" : null, miles ? miles + " mi" : null, notes || null].filter(Boolean).join(" | ");
-    const payload = { session_name: "Treadmill Walk", color: COLORS.purple, total_volume: 0, exercises: [{ name: label, sets: 1, reps: "walk", weight: 0, volume: 0, duration, speed, incline, miles }] };
-    const { data, error } = await supabase.from("workouts").insert([payload]).select();
-    if (!error && data) { setHistory(p => [data[0], ...p]); showSave(true); }
-    else showSave(false);
+    const label = [duration?duration+" min":null, speed?speed+" mph":null, incline?incline+"% incline":null, miles?miles+" mi":null, notes||null].filter(Boolean).join(" · ");
+    const { data, error } = await supabase.from("workouts").insert([{ session_name: "Treadmill Walk", color: C.purple, total_volume: 0, exercises: [{ name: label, sets: 1, reps: "walk", weight: 0, volume: 0, duration, speed, incline, miles }] }]).select();
+    if (!error && data) { setHistory(p => [data[0],...p]); showSave(true); } else showSave(false);
   };
 
   const logCardio = async (workoutType) => {
     setCardioLogging(workoutType);
-    const payload = { workout_type: workoutType, completed_at: new Date().toISOString(), notes: cardioNotes || null };
-    const { data, error } = await supabase.from("cardio_sessions").insert([payload]).select();
-    if (!error && data) {
-      setCardioSessions(p => [data[0], ...p]);
-      setCardioNotes("");
-      showSave(true);
-    } else showSave(false);
+    const { data, error } = await supabase.from("cardio_sessions").insert([{ workout_type: workoutType, completed_at: new Date().toISOString(), notes: cardioNotes || null }]).select();
+    if (!error && data) { setCardioSessions(p => [data[0],...p]); setCardioNotes(""); showSave(true); } else showSave(false);
     setCardioLogging(null);
   };
 
-  const deleteCardio = async (id) => {
-    await supabase.from("cardio_sessions").delete().eq("id", id);
-    setCardioSessions(p => p.filter(s => s.id !== id));
-  };
-
-  const deleteLog = async (id) => { await supabase.from("workouts").delete().eq("id", id); setHistory(p => p.filter(h => h.id !== id)); };
-
+  const deleteCardio = async id => { await supabase.from("cardio_sessions").delete().eq("id", id); setCardioSessions(p => p.filter(s => s.id !== id)); };
+  const deleteLog = async id => { await supabase.from("workouts").delete().eq("id", id); setHistory(p => p.filter(h => h.id !== id)); };
   const logWeight = async () => {
     const w = parseFloat(weightInput);
     if (!w || w < 100 || w > 400) return;
     const { data, error } = await supabase.from("weight_log").insert([{ weight: w }]).select();
-    if (!error && data) { setWeightLog(p => [data[0], ...p]); setWeightInput(""); showSave(true); }
-    else showSave(false);
+    if (!error && data) { setWeightLog(p => [data[0],...p]); setWeightInput(""); showSave(true); } else showSave(false);
   };
+  const deleteWeight = async id => { await supabase.from("weight_log").delete().eq("id", id); setWeightLog(p => p.filter(e => e.id !== id)); };
 
-  const deleteWeight = async (id) => { await supabase.from("weight_log").delete().eq("id", id); setWeightLog(p => p.filter(e => e.id !== id)); };
+  const thisWeek = history.filter(h => (Date.now()-new Date(h.logged_at)) < 7*86400000).length;
+  const totalLbs = history.reduce((a,h) => a+(h.total_volume||0), 0);
+  const lastGym = history.find(h => h.session_name && ["A","B","C"].some(x => h.session_name.includes("DAY "+x)));
+  const restDay = lastGym && Math.floor((Date.now()-new Date(lastGym.logged_at))/86400000) < 1;
 
-  const daysAgo = (iso) => { const d = Math.floor((Date.now() - new Date(iso)) / 86400000); return d === 0 ? "Today" : d === 1 ? "Yesterday" : d + " days ago"; };
-  const thisWeek = history.filter(h => (Date.now() - new Date(h.logged_at)) < 7 * 86400000).length;
-  const totalLbs = history.reduce((a, h) => a + (h.total_volume || 0), 0);
-  const lastGymSession = history.find(h => h.session_name && ["A", "B", "C"].some(x => h.session_name.includes("DAY " + x)));
-  const lastDay = lastGymSession ? Math.floor((Date.now() - new Date(lastGymSession.logged_at)) / 86400000) : null;
-  const restDay = lastDay !== null && lastDay < 1;
+  // Cardio logic
+  const lastCardio = cardioSessions[0] || null;
+  const lastCardioType = lastCardio?.workout_type || null;
+  const hoursSinceCardio = lastCardio ? (Date.now()-new Date(lastCardio.completed_at))/3600000 : null;
+  const cardioInRecovery = hoursSinceCardio !== null && hoursSinceCardio < 48;
+  const nextCardioType = lastCardioType === "tabata" ? "court_intervals" : "tabata";
+  const hoursUntilCardio = cardioInRecovery ? Math.ceil(48-hoursSinceCardio) : 0;
+  const cardioOverdue = !cardioInRecovery && hoursSinceCardio !== null && hoursSinceCardio/24 > 3;
+
+  const TABS = [
+    { id: "workout", label: "Workout" },
+    { id: "cardio",  label: "Cardio" },
+    { id: "history", label: "History" },
+    { id: "stats",   label: "Stats" },
+    { id: "weight",  label: "Weight" },
+    { id: "goals",   label: "Goals" },
+  ];
 
   if (loading) return (
-    <div style={{ ...S.app, display: "flex", alignItems: "center", justifyContent: "center", height: "100vh" }}>
+    <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "-apple-system, SF Pro Display, Georgia, serif" }}>
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 32, marginBottom: 8 }}>🏀</div>
-        <div style={{ color: COLORS.orange, fontSize: 16 }}>Loading your plan...</div>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>🏀</div>
+        <div style={{ color: C.orange, fontSize: 17, fontWeight: 600 }}>Loading…</div>
       </div>
     </div>
   );
 
   return (
-    <div style={S.app}>
-      <div style={{ ...S.header, justifyContent: "space-between" }}>
+    <div style={{ background: C.bg, minHeight: "100vh", fontFamily: "-apple-system, SF Pro Display, Georgia, serif", color: C.text }}>
+
+      {/* Header */}
+      <div style={{ background: C.bg, borderBottom: "1px solid " + C.border, padding: "16px 20px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 100, backdropFilter: "blur(20px)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 22 }}>🏀</span>
+          <span style={{ fontSize: 24 }}>🏀</span>
           <div>
-            <div style={{ fontWeight: "bold", fontSize: 18, color: COLORS.orange }}>Back to the Dunk</div>
-            <div style={{ fontSize: 11, color: COLORS.muted }}>16-Week Basketball Comeback</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.orange, letterSpacing: -0.3 }}>Back to the Dunk</div>
+            <div style={{ fontSize: 11, color: C.muted }}>16-Week Comeback</div>
           </div>
         </div>
-        <div style={{ fontSize: 11, color: saveMsg === "Saved" ? COLORS.green : "#ff4444" }}>{saveMsg}</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: saveMsg.includes("Saved") ? C.teal : C.red }}>{saveMsg}</div>
       </div>
 
-      <div style={S.tabs}>
-        {["workout", "cardio", "history", "stats", "weight", "goals", "habits"].map(t => (
-          <button key={t} style={S.tab(tab === t)} onClick={() => setTab(t)}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>
+      {/* Tab Bar */}
+      <div className="tab-bar" style={{ background: C.bg, borderBottom: "1px solid " + C.border, padding: "0 4px" }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            flexShrink: 0, padding: "12px 14px", border: "none", background: "none",
+            fontFamily: "-apple-system, SF Pro Display, Georgia, serif",
+            fontSize: 13, fontWeight: tab === t.id ? 600 : 400,
+            cursor: "pointer", color: tab === t.id ? C.orange : C.muted,
+            borderBottom: tab === t.id ? "2px solid " + C.orange : "2px solid transparent",
+            whiteSpace: "nowrap", transition: "color 0.15s",
+          }}>
+            {t.label}
+          </button>
         ))}
       </div>
 
-      <div style={{ padding: "16px 16px 80px" }}>
+      <div style={{ padding: "20px 16px 100px" }}>
 
+        {/* ── WORKOUT ── */}
         {tab === "workout" && (
-          <>
+          <div className="fade-up">
             <TabataTimer onLog={logTabata} />
             <TreadmillLogger onLog={logTreadmill} />
-            <div style={{ ...S.card(restDay ? "#333" : COLORS.orange + "44"), background: restDay ? "#111" : COLORS.orange + "11", marginBottom: 14 }}>
-              <div style={{ fontSize: 11, color: COLORS.muted, marginBottom: 4 }}>NEXT UP</div>
-              {restDay
-                ? <div style={{ fontSize: 14 }}>Rest today. Last session was {daysAgo(lastGymSession && lastGymSession.logged_at)}. Recovery is training.</div>
-                : <div style={{ fontSize: 14 }}>Ready to train. <strong>{session.label}: {session.name}</strong> <span style={{ color: COLORS.muted, fontSize: 12, marginLeft: 6 }}>{session.location}</span></div>
-              }
-            </div>
-            {/* HIIT Next Up */}
-            {(() => {
-              const lastCardio = cardioSessions[0] || null;
-              const lastType = lastCardio ? lastCardio.workout_type : null;
-              const hoursSince = lastCardio ? (Date.now() - new Date(lastCardio.completed_at)) / 3600000 : null;
-              const inRecovery = hoursSince !== null && hoursSince < 48;
-              const nextHIIT = lastType === "tabata" ? "Court Intervals 🏀" : "Tabata Bike/Sprint 🚴";
-              const nextColor = lastType === "tabata" ? COLORS.yellow : COLORS.green;
-              const hoursLeft = inRecovery ? Math.ceil(48 - hoursSince) : 0;
-              return (
-                <div style={{ ...S.card(nextColor + "33"), background: nextColor + "08", marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, color: COLORS.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>HIIT · Next Up</div>
-                  {inRecovery
-                    ? <div style={{ fontSize: 14 }}>Recovering — <strong>{nextHIIT}</strong> ready in {hoursLeft}h</div>
-                    : <div style={{ fontSize: 14 }}>Ready for HIIT → <strong>{nextHIIT}</strong> <span style={{ color: nextColor }}>· Go!</span></div>
-                  }
-                </div>
-              );
-            })()}
 
-            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            {/* Next Up */}
+            <Card color={restDay ? C.border : C.orange} style={{ background: restDay ? C.surface2 : C.orange + "0C", marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>Next Workout</div>
+              {restDay
+                ? <div style={{ fontSize: 15 }}>Rest day — last session was {daysAgo(lastGym.logged_at)}. Recovery counts.</div>
+                : <div style={{ fontSize: 15 }}><strong>{session.label}: {session.name}</strong> <span style={{ color: C.muted, fontSize: 12 }}>· {session.location}</span></div>
+              }
+            </Card>
+
+            {/* HIIT Next Up */}
+            <Card color={cardioOverdue ? C.red : cardioInRecovery ? C.border : CARDIO_TYPES[nextCardioType].color} style={{ background: cardioOverdue ? C.red+"0C" : C.surface2, marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>HIIT · Next Up</div>
+              {cardioInRecovery
+                ? <div style={{ fontSize: 15 }}>Recovering — <strong>{CARDIO_TYPES[nextCardioType].label}</strong> in {hoursUntilCardio}h</div>
+                : cardioOverdue
+                ? <div style={{ fontSize: 15, color: C.red }}>Overdue — <strong>{CARDIO_TYPES[nextCardioType].label}</strong> · Do today</div>
+                : <div style={{ fontSize: 15 }}><strong>{CARDIO_TYPES[nextCardioType].icon} {CARDIO_TYPES[nextCardioType].label}</strong> <span style={{ color: C.teal }}>· Ready</span></div>
+              }
+            </Card>
+
+            {/* Session Selector */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
               {SESSIONS.map((s, i) => (
-                <button key={s.id} onClick={() => setActiveSession(i)} style={{ ...S.btn(s.color, activeSession !== i), fontSize: 12, padding: "7px 14px" }}>{s.label}</button>
+                <Btn key={s.id} color={s.color} ghost={activeSession !== i} onClick={() => setActiveSession(i)} style={{ flex: 1, fontSize: 13, padding: "9px 0", textAlign: "center" }}>
+                  {s.label}
+                </Btn>
               ))}
             </div>
-            <div style={S.card(sessionColor + "44")}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+
+            <Card color={session.color}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
                 <div>
-                  <div style={{ ...S.badge(sessionColor), marginBottom: 6 }}>{session.location.toUpperCase()}</div>
-                  <div style={{ fontWeight: "bold", fontSize: 16 }}>{session.label}: {session.name}</div>
-                  <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 3 }}>Check what you did. Log when ready.</div>
+                  <Label color={session.color}>{session.location.toUpperCase()}</Label>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginTop: 8, letterSpacing: -0.3 }}>{session.name}</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Check off each exercise · enter weight</div>
                 </div>
                 {volume > 0 && (
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 11, color: COLORS.muted }}>Volume</div>
-                    <div style={{ color: sessionColor, fontWeight: "bold", fontSize: 15 }}>{volume.toLocaleString()} lbs</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>Volume</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: session.color }}>{volume.toLocaleString()}</div>
+                    <div style={{ fontSize: 10, color: C.muted }}>lbs</div>
                   </div>
                 )}
               </div>
-              {exercises.map(ex => (
+              {session.exercises.map(ex => (
                 <ExRow key={ex.id} ex={ex}
-                  checked={checked[sessionKey + "_" + ex.id]}
-                  onCheck={() => toggleCheck(sessionKey + "_" + ex.id)}
-                  vals={vals[sessionKey + "_" + ex.id] || {}}
-                  onVal={(f, v) => setVal(sessionKey + "_" + ex.id, f, v)}
-                  color={sessionColor} />
+                  checked={checked[sk+"_"+ex.id]}
+                  onCheck={() => toggleCheck(sk+"_"+ex.id)}
+                  vals={vals[sk+"_"+ex.id] || {}}
+                  onVal={(f,v) => setVal(sk+"_"+ex.id, f, v)}
+                  color={session.color}
+                />
               ))}
-              <button onClick={logSession}
-                style={{ ...S.btn(sessionColor), width: "100%", marginTop: 16, fontSize: 14, padding: 12, opacity: anyChecked ? 1 : 0.5, boxShadow: anyChecked ? "0 0 18px " + sessionColor + "66" : "none", transition: "all .3s" }}>
-                {anyChecked ? "End Workout & Log Session" : "Check at least one exercise to log"}
-              </button>
+              <Btn color={session.color} onClick={logSession} disabled={!anyChecked} full style={{ marginTop: 18, padding: 14, fontSize: 15 }}>
+                {anyChecked ? "End Workout & Log" : "Check an exercise to log"}
+              </Btn>
+            </Card>
+
+            <div style={{ textAlign: "center", color: C.muted, fontSize: 12, fontStyle: "italic", marginTop: 8 }}>
+              "I am a basketball player who trains." — James Clear
             </div>
-            <div style={{ textAlign: "center", color: COLORS.muted, fontSize: 12, fontStyle: "italic", marginTop: 16 }}>
-              I am a basketball player who trains. - James Clear
-            </div>
-          </>
+          </div>
         )}
 
-        {tab === "history" && (
-          <>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
-              {[
-                { label: "Sessions", value: history.length, color: COLORS.orange },
-                { label: "This Week", value: thisWeek, color: COLORS.yellow },
-                { label: "Total lbs", value: totalLbs > 0 ? (totalLbs / 1000).toFixed(1) + "k" : "0", color: COLORS.teal },
-              ].map(s => (
-                <div key={s.label} style={{ ...S.card(s.color + "33"), textAlign: "center", padding: 12 }}>
-                  <div style={{ fontSize: 20, fontWeight: "bold", color: s.color }}>{s.value}</div>
-                  <div style={{ fontSize: 11, color: COLORS.muted }}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-            {history.length === 0 && <div style={{ textAlign: "center", color: COLORS.muted, padding: 40 }}>No sessions logged yet. Get to work.</div>}
-            {history.map((h, i) => {
-              const prev = history[i + 1];
-              const gap = prev ? Math.floor((new Date(h.logged_at) - new Date(prev.logged_at)) / 86400000) : null;
-              const expanded = expandedLog[h.id];
-              const color = h.color || COLORS.orange;
-              return (
-                <div key={h.id} style={S.card(color + "33")}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <div style={{ ...S.badge(color), marginBottom: 4 }}>{daysAgo(h.logged_at)}</div>
-                      <div style={{ fontWeight: "bold", fontSize: 14 }}>{h.session_name}</div>
-                      <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 2 }}>
-                        {new Date(h.logged_at).toLocaleDateString("en-CA")}
-                        {gap !== null && <span style={{ marginLeft: 8 }}>{gap}d rest before</span>}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      {h.total_volume > 0 && <div style={{ color, fontWeight: "bold", fontSize: 14 }}>{h.total_volume.toLocaleString()} lbs</div>}
-                      <button onClick={() => setExpandedLog(p => ({ ...p, [h.id]: !p[h.id] }))} style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer", fontSize: 16 }}>{expanded ? "▲" : "▼"}</button>
-                      <button onClick={() => deleteLog(h.id)} style={{ background: "none", border: "none", color: "#ff4444", cursor: "pointer", fontSize: 16 }}>🗑</button>
-                    </div>
-                  </div>
-                  {expanded && (
-                    <div style={{ marginTop: 10, borderTop: "1px solid #222", paddingTop: 10 }}>
-                      {(h.exercises || []).map((ex, j) => (
-                        <div key={j} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 12 }}>
-                          <span style={{ color: COLORS.muted }}>{ex.name}</span>
-                          <span>{ex.sets}x{ex.reps}{ex.weight > 0 ? " @ " + ex.weight + "lbs" : ""}{ex.volume > 0 ? " = " + ex.volume.toLocaleString() + " lbs" : ""}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </>
-        )}
-
-        {tab === "stats" && <StatsTab history={history} weightLog={weightLog} />}
-
-        {tab === "weight" && (() => {
-          const sorted = [...weightLog].sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at));
-          const latest = weightLog[0];
-          const start = 225, goal = 200;
-          const current = (latest && latest.weight) || start;
-          const lost = start - current;
-          const remaining = current - goal;
-          const pct = Math.min(100, Math.max(0, (lost / (start - goal)) * 100));
-          const last8 = sorted.slice(-8);
-          return (
-            <>
-              <div style={{ fontWeight: "bold", fontSize: 18, marginBottom: 4 }}>Weight Tracker</div>
-              <div style={{ color: COLORS.muted, fontSize: 13, marginBottom: 16 }}>Sunday morning, same conditions.</div>
-              <div style={S.card(COLORS.orange + "44")}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                  <span style={{ fontSize: 12, color: COLORS.muted }}>Start: 225 lbs</span>
-                  <span style={{ fontSize: 12, color: COLORS.green }}>Goal: 200 lbs</span>
-                </div>
-                <div style={{ background: "#222", borderRadius: 8, height: 14, overflow: "hidden", marginBottom: 8 }}>
-                  <div style={{ width: pct + "%", height: "100%", background: "linear-gradient(90deg, #FF6B35, #A8E063)", borderRadius: 8, transition: "width .5s" }} />
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  {[
-                    { label: "Current", val: current + " lbs", c: COLORS.orange },
-                    { label: "Lost", val: lost > 0 ? "-" + lost.toFixed(1) + " lbs" : "0 lbs", c: lost > 0 ? COLORS.green : COLORS.muted },
-                    { label: "To Go", val: (remaining > 0 ? remaining.toFixed(1) : "0") + " lbs", c: COLORS.yellow }
-                  ].map(x => (
-                    <div key={x.label} style={{ textAlign: "center" }}>
-                      <div style={{ fontSize: 20, fontWeight: "bold", color: x.c }}>{x.val}</div>
-                      <div style={{ fontSize: 11, color: COLORS.muted }}>{x.label}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div style={S.card()}>
-                <div style={{ fontSize: 14, fontWeight: "bold", marginBottom: 10 }}>Log Today's Weight</div>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <input style={{ ...S.input, flex: 1, width: "auto", fontSize: 15, padding: "10px 12px", textAlign: "left" }}
-                    type="number" min="150" max="350" step="0.1" placeholder="e.g. 223.5"
-                    value={weightInput} onChange={e => setWeightInput(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && logWeight()} />
-                  <button onClick={logWeight} style={{ ...S.btn(COLORS.orange), padding: "10px 20px" }}>Log</button>
-                </div>
-              </div>
-              {last8.length >= 2 && (
-                <div style={S.card()}>
-                  <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 10 }}>Trend (last {last8.length} entries)</div>
-                  <svg width="100%" height="70" viewBox="0 0 300 70">
-                    {(() => {
-                      const weights = last8.map(e => e.weight);
-                      const mn = Math.min(...weights) - 1, mx = Math.max(...weights) + 1;
-                      const pts = weights.map((w, i) => ((i / (weights.length - 1)) * 280 + 10) + "," + (60 - ((w - mn) / (mx - mn)) * 55)).join(" ");
-                      return (
-                        <>
-                          <polyline points={pts} fill="none" stroke={COLORS.orange} strokeWidth="2.5" strokeLinejoin="round" />
-                          {weights.map((w, i) => <circle key={i} cx={(i / (weights.length - 1)) * 280 + 10} cy={60 - ((w - mn) / (mx - mn)) * 55} r="4" fill={COLORS.orange} />)}
-                        </>
-                      );
-                    })()}
-                  </svg>
-                </div>
-              )}
-              {weightLog.map((e, i) => {
-                const prev = weightLog[i + 1];
-                const delta = prev ? e.weight - prev.weight : null;
-                return (
-                  <div key={e.id} style={{ ...S.card(), display: "flex", justifyContent: "space-between", alignItems: "center", padding: 12 }}>
-                    <div>
-                      <div style={{ fontWeight: "bold", fontSize: 15 }}>{e.weight} lbs</div>
-                      <div style={{ fontSize: 11, color: COLORS.muted }}>{new Date(e.logged_at).toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric" })} - {daysAgo(e.logged_at)}</div>
-                    </div>
-                    <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                      {delta !== null && <div style={{ fontSize: 13, fontWeight: "bold", color: delta < 0 ? COLORS.green : delta > 0 ? "#ff4444" : COLORS.muted }}>{delta < 0 ? "▼" : delta > 0 ? "▲" : "-"} {Math.abs(delta).toFixed(1)} lbs</div>}
-                      <button onClick={() => deleteWeight(e.id)} style={{ background: "none", border: "none", color: "#ff4444", cursor: "pointer", fontSize: 16 }}>🗑</button>
-                    </div>
-                  </div>
-                );
-              })}
-            </>
-          );
-        })()}
-
-        {tab === "goals" && (
-          <>
-            <div style={{ fontWeight: "bold", fontSize: 18, marginBottom: 4 }}>16-Week Roadmap</div>
-            <div style={{ color: COLORS.muted, fontSize: 13, marginBottom: 16 }}>225 to 200 lbs. Dunk again.</div>
-            {PHASES.map((p, i) => (
-              <div key={i} style={S.card(p.color + "44")}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <div style={S.badge(p.color)}>{p.weeks}</div>
-                  <div style={{ color: p.color, fontWeight: "bold", fontSize: 14 }}>{p.weight}</div>
-                </div>
-                <div style={{ fontSize: 14, marginBottom: 10 }}>{p.focus}</div>
-                {p.goals.map((g, j) => <div key={j} style={{ fontSize: 13, color: COLORS.muted, padding: "3px 0", display: "flex", gap: 8 }}><span style={{ color: p.color }}>→</span>{g}</div>)}
-              </div>
-            ))}
-            <div style={{ ...S.card(), background: "#111" }}>
-              <div style={{ color: COLORS.orange, fontWeight: "bold", marginBottom: 8 }}>Nutrition Note</div>
-              <div style={{ fontSize: 13, color: COLORS.muted, lineHeight: 1.7 }}>Target 200g protein/day. Prioritize whole foods. Eat the bulk of carbs around training. Cut alcohol to weekends only. Hydrate: 3L water minimum on training days.</div>
-            </div>
-          </>
-        )}
-
+        {/* ── CARDIO ── */}
         {tab === "cardio" && (() => {
-          const now = Date.now();
-          const last30Days = cardioSessions.filter(s => (now - new Date(s.completed_at)) / 86400000 <= 30);
-          const lastSession = cardioSessions[0] || null;
-          const lastType = lastSession ? lastSession.workout_type : null;
-          const hoursSinceLast = lastSession ? (now - new Date(lastSession.completed_at)) / 3600000 : null;
-          const daysSinceLast = hoursSinceLast !== null ? hoursSinceLast / 24 : null;
-          const inRecovery = hoursSinceLast !== null && hoursSinceLast < 48;
-          const nextType = lastType === "tabata" ? "court_intervals" : "tabata";
-          const hoursUntilNext = inRecovery ? Math.ceil(48 - hoursSinceLast) : 0;
-          const daysUntilNext = Math.ceil(hoursUntilNext / 24);
-          const isOverdue = !inRecovery && daysSinceLast !== null && daysSinceLast > 3;
-
-          // Weekly view Sun-Sat
-          const startOfWeek = new Date(); startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); startOfWeek.setHours(0,0,0,0);
+          const last30 = cardioSessions.filter(s => (Date.now()-new Date(s.completed_at))/86400000 <= 30);
+          const startOfWeek = new Date(); startOfWeek.setDate(startOfWeek.getDate()-startOfWeek.getDay()); startOfWeek.setHours(0,0,0,0);
           const thisWeekCardio = cardioSessions.filter(s => new Date(s.completed_at) >= startOfWeek);
           const weekDays = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-          const weekSessions = weekDays.map((d, i) => {
-            const day = new Date(startOfWeek); day.setDate(startOfWeek.getDate() + i);
-            const dayStr = day.toDateString();
-            return cardioSessions.find(s => new Date(s.completed_at).toDateString() === dayStr) || null;
+          const weekSessions = weekDays.map((d,i) => {
+            const day = new Date(startOfWeek); day.setDate(startOfWeek.getDate()+i);
+            return cardioSessions.find(s => new Date(s.completed_at).toDateString() === day.toDateString()) || null;
           });
-
-          const WORKOUTS = {
-            tabata: { label: "Tabata Bike/Sprint", icon: "🚴", color: COLORS.green, duration: "~15 min", description: "8 rounds · 20s on / 10s off · + 10 min warmup/cooldown" },
-            court_intervals: { label: "Court Intervals", icon: "🏀", color: COLORS.yellow, duration: "~20 min", description: "10 rounds · 30s hard / 30s rest · suicides, sprints, layups" },
-          };
-
           const surpriseMe = () => {
-            const pick = inRecovery ? nextType : (Math.random() > 0.5 ? "tabata" : "court_intervals");
-            alert("Do this: " + WORKOUTS[pick].label + "! " + WORKOUTS[pick].description);
+            const pick = cardioInRecovery ? nextCardioType : (Math.random() > 0.5 ? "tabata" : "court_intervals");
+            const w = CARDIO_TYPES[pick];
+            alert(w.icon + " " + w.label + "
+" + w.detail);
           };
-
-          const daysAgoCardio = (iso) => {
-            const d = Math.floor((Date.now() - new Date(iso)) / 86400000);
-            return d === 0 ? "Today" : d === 1 ? "Yesterday" : d + "d ago";
-          };
-
           return (
-            <>
-              <div style={{ fontWeight: "bold", fontSize: 18, marginBottom: 4 }}>Cardio HIIT</div>
-              <div style={{ color: COLORS.muted, fontSize: 13, marginBottom: 16 }}>2 sessions/week · 48hr recovery between sessions</div>
+            <div className="fade-up">
+              <SectionTitle>Cardio HIIT</SectionTitle>
+              <SectionSub>2 sessions/week · 48h recovery between sessions</SectionSub>
 
-              {/* What's Next Card */}
-              <div style={{ ...S.card(isOverdue ? "#ff444444" : inRecovery ? COLORS.border : COLORS.green + "44"), background: isOverdue ? "#ff444411" : inRecovery ? "#111" : COLORS.green + "11", marginBottom: 14 }}>
-                <div style={{ fontSize: 11, color: COLORS.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>What's Next</div>
-                {lastSession === null ? (
-                  <div style={{ fontSize: 15 }}>No sessions yet — pick one below and get started! 🏁</div>
-                ) : inRecovery ? (
+              {/* What's Next */}
+              <Card color={cardioOverdue ? C.red : cardioInRecovery ? C.border : CARDIO_TYPES[nextCardioType].color}>
+                <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>What's Next</div>
+                {!lastCardio ? (
+                  <div style={{ fontSize: 16 }}>No sessions yet — pick one below 🏁</div>
+                ) : cardioInRecovery ? (
                   <>
-                    <div style={{ fontSize: 14, color: COLORS.muted, marginBottom: 4 }}>Rest day — body still recovering</div>
-                    <div style={{ fontSize: 16, fontWeight: "bold" }}>Next up: {WORKOUTS[nextType].icon} {WORKOUTS[nextType].label}</div>
-                    <div style={{ fontSize: 13, color: COLORS.teal, marginTop: 4 }}>Ready in {daysUntilNext} day{daysUntilNext !== 1 ? "s" : ""} ({hoursUntilNext}hrs)</div>
+                    <div style={{ fontSize: 14, color: C.muted }}>Recovering · ready in {hoursUntilCardio}h</div>
+                    <div style={{ fontSize: 17, fontWeight: 700, marginTop: 4 }}>{CARDIO_TYPES[nextCardioType].icon} {CARDIO_TYPES[nextCardioType].label}</div>
                   </>
-                ) : isOverdue ? (
+                ) : cardioOverdue ? (
                   <>
-                    <div style={{ fontSize: 13, color: "#ff6666", marginBottom: 4 }}>Overdue! Last session was {Math.floor(daysSinceLast)}d ago</div>
-                    <div style={{ fontSize: 16, fontWeight: "bold" }}>{WORKOUTS[nextType].icon} {WORKOUTS[nextType].label}</div>
-                    <div style={{ fontSize: 13, color: "#ff6666", marginTop: 4, fontWeight: "bold" }}>Do today</div>
+                    <div style={{ fontSize: 13, color: C.red }}>Overdue — {Math.floor(hoursSinceCardio/24)}d since last session</div>
+                    <div style={{ fontSize: 17, fontWeight: 700, marginTop: 4, color: C.red }}>{CARDIO_TYPES[nextCardioType].icon} {CARDIO_TYPES[nextCardioType].label} · Do today</div>
                   </>
                 ) : (
                   <>
-                    <div style={{ fontSize: 16, fontWeight: "bold" }}>{WORKOUTS[nextType].icon} {WORKOUTS[nextType].label}</div>
-                    <div style={{ fontSize: 13, color: COLORS.green, marginTop: 4 }}>Ready to go!</div>
+                    <div style={{ fontSize: 17, fontWeight: 700 }}>{CARDIO_TYPES[nextCardioType].icon} {CARDIO_TYPES[nextCardioType].label}</div>
+                    <div style={{ fontSize: 13, color: C.teal, marginTop: 4 }}>Ready to go!</div>
                   </>
                 )}
-              </div>
+              </Card>
 
-              {/* Weekly View */}
-              <div style={S.card()}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <div style={{ fontSize: 14, fontWeight: "bold" }}>This Week</div>
-                  <div style={{ fontSize: 13, color: thisWeekCardio.length >= 2 ? COLORS.green : COLORS.muted }}>
-                    {thisWeekCardio.length}/2 sessions {thisWeekCardio.length >= 2 ? "✅" : ""}
+              {/* Weekly Grid */}
+              <Card>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>This Week</div>
+                  <div style={{ fontSize: 13, color: thisWeekCardio.length >= 2 ? C.teal : C.muted, fontWeight: 600 }}>
+                    {thisWeekCardio.length}/2 {thisWeekCardio.length >= 2 ? "✅" : ""}
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 4 }}>
-                  {weekDays.map((d, i) => {
+                <div style={{ display: "flex", gap: 6 }}>
+                  {weekDays.map((d,i) => {
                     const s = weekSessions[i];
-                    const w = s ? WORKOUTS[s.workout_type] : null;
+                    const w = s ? CARDIO_TYPES[s.workout_type] : null;
                     const isToday = new Date().getDay() === i;
                     return (
                       <div key={d} style={{ flex: 1, textAlign: "center" }}>
-                        <div style={{ fontSize: 9, color: isToday ? COLORS.orange : COLORS.muted, marginBottom: 4, fontWeight: isToday ? "bold" : "normal" }}>{d}</div>
-                        <div style={{ width: "100%", aspectRatio: "1", borderRadius: 6, background: s ? w.color + "33" : "#1a1a1a", border: "1px solid " + (s ? w.color + "66" : "#333"), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>
-                          {s ? w.icon : isToday ? <span style={{ color: COLORS.orange, fontSize: 10 }}>now</span> : ""}
+                        <div style={{ fontSize: 9, color: isToday ? C.orange : C.muted, marginBottom: 5, fontWeight: isToday ? 700 : 400 }}>{d}</div>
+                        <div style={{ aspectRatio: "1", borderRadius: 8, background: s ? w.color+"22" : C.surface2, border: "1px solid "+(s ? w.color+"55" : C.border), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>
+                          {s ? w.icon : isToday ? <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.orange }} /> : ""}
                         </div>
                       </div>
                     );
                   })}
                 </div>
-              </div>
+              </Card>
 
-              {/* Surprise Me */}
-              <button onClick={surpriseMe} style={{ ...S.btn(COLORS.purple), width: "100%", marginBottom: 14, fontSize: 14, padding: 12 }}>
-                🎲 Surprise Me
-              </button>
+              <Btn color={C.purple} onClick={surpriseMe} full style={{ marginBottom: 14, padding: 13, fontSize: 14 }}>🎲 Surprise Me</Btn>
 
-              {/* Log Workout Cards */}
-              {Object.entries(WORKOUTS).map(([key, w]) => (
-                <div key={key} style={{ ...S.card(w.color + "44"), background: w.color + "08", marginBottom: 14 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                    <div>
-                      <div style={{ fontSize: 22, marginBottom: 4 }}>{w.icon}</div>
-                      <div style={{ fontWeight: "bold", fontSize: 16 }}>{w.label}</div>
-                      <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 2 }}>{w.description}</div>
-                      <div style={{ ...S.badge(w.color), marginTop: 8 }}>{w.duration}</div>
-                    </div>
+              {/* Log Cards */}
+              {Object.entries(CARDIO_TYPES).map(([key, w]) => (
+                <Card key={key} color={w.color} style={{ background: w.color+"08" }}>
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 26, marginBottom: 6 }}>{w.icon}</div>
+                    <div style={{ fontSize: 17, fontWeight: 700 }}>{w.label}</div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>{w.detail}</div>
+                    <Label color={w.color} style={{ marginTop: 8, display: "inline-block" }}>{w.duration}</Label>
                   </div>
                   <input
-                    style={{ ...S.input, width: "100%", textAlign: "left", padding: "8px 10px", marginBottom: 10, fontSize: 12 }}
-                    type="text" placeholder="Notes (optional)" value={cardioNotes}
-                    onChange={e => setCardioNotes(e.target.value)}
+                    type="text" placeholder="Notes (optional)" value={cardioNotes} onChange={e => setCardioNotes(e.target.value)}
+                    style={{ background: C.surface2, border: "1px solid "+C.border, borderRadius: 8, color: C.text, padding: "9px 12px", fontSize: 13, width: "100%", marginBottom: 10, fontFamily: "-apple-system, SF Pro Display, Georgia, serif" }}
                   />
-                  <button
-                    onClick={() => logCardio(key)}
-                    disabled={!!cardioLogging}
-                    style={{ ...S.btn(w.color), width: "100%", padding: 12, fontSize: 14, opacity: cardioLogging ? 0.5 : 1, boxShadow: "0 0 18px " + w.color + "44" }}>
-                    {cardioLogging === key ? "Logging..." : "✅ Log " + w.label}
-                  </button>
-                </div>
+                  <Btn color={w.color} onClick={() => logCardio(key)} disabled={!!cardioLogging} full style={{ padding: 13, fontSize: 14 }}>
+                    {cardioLogging === key ? "Logging…" : "Log " + w.label}
+                  </Btn>
+                </Card>
               ))}
 
-              {/* Recent Sessions */}
-              {last30Days.length > 0 && (
-                <div>
-                  <div style={{ fontWeight: "bold", fontSize: 15, marginBottom: 10, marginTop: 6 }}>Recent Sessions</div>
-                  {last30Days.map((s, i) => {
-                    const w = WORKOUTS[s.workout_type];
-                    const prev = last30Days[i + 1];
-                    const gap = prev ? Math.round((new Date(s.completed_at) - new Date(prev.completed_at)) / 3600000) : null;
+              {last30.length > 0 && (
+                <>
+                  <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 10, marginTop: 4 }}>Recent</div>
+                  {last30.map((s, i) => {
+                    const w = CARDIO_TYPES[s.workout_type];
+                    const prev = last30[i+1];
+                    const gap = prev ? Math.round((new Date(s.completed_at)-new Date(prev.completed_at))/3600000) : null;
                     return (
-                      <div key={s.id} style={{ ...S.card(w.color + "33"), padding: 12 }}>
+                      <Card key={s.id} color={w.color} style={{ padding: 14 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                           <div>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                               <span style={{ fontSize: 18 }}>{w.icon}</span>
-                              <span style={{ fontWeight: "bold", fontSize: 14 }}>{w.label}</span>
+                              <span style={{ fontWeight: 600, fontSize: 14 }}>{w.label}</span>
                             </div>
-                            <div style={{ fontSize: 12, color: COLORS.muted }}>
-                              {daysAgoCardio(s.completed_at)} · {new Date(s.completed_at).toLocaleDateString("en-CA")}
-                              {gap !== null && <span style={{ marginLeft: 8, color: gap >= 48 ? COLORS.green : "#ff6666" }}>{Math.round(gap)}h since last</span>}
+                            <div style={{ fontSize: 12, color: C.muted }}>
+                              {daysAgo(s.completed_at)} · {new Date(s.completed_at).toLocaleDateString("en-CA")}
+                              {gap !== null && <span style={{ marginLeft: 8, color: gap >= 48 ? C.teal : C.red }}>{Math.round(gap)}h gap</span>}
                             </div>
-                            {s.notes && <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 4, fontStyle: "italic" }}>{s.notes}</div>}
+                            {s.notes && <div style={{ fontSize: 12, color: C.muted, marginTop: 4, fontStyle: "italic" }}>{s.notes}</div>}
                           </div>
-                          <button onClick={() => deleteCardio(s.id)} style={{ background: "none", border: "none", color: "#ff4444", cursor: "pointer", fontSize: 16 }}>🗑</button>
+                          <button onClick={() => deleteCardio(s.id)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 18, padding: 4 }}>🗑</button>
                         </div>
-                      </div>
+                      </Card>
                     );
                   })}
-                </div>
+                </>
               )}
-            </>
+            </div>
           );
         })()}
 
-        {tab === "habits" && (
-          <>
-            <div style={{ fontWeight: "bold", fontSize: 18, marginBottom: 4 }}>Atomic Habits for Comeback</div>
-            <div style={{ color: COLORS.muted, fontSize: 13, marginBottom: 16 }}>James Clear's 4 Laws applied to your return.</div>
-            {HABITS.map((h, i) => (
-              <div key={i} style={S.card(h.color + "33")}>
-                <div style={{ color: h.color, fontWeight: "bold", fontSize: 14, marginBottom: 10 }}>{h.law}</div>
-                {h.items.map((item, j) => (
-                  <div key={j} style={{ display: "flex", gap: 10, padding: "5px 0", fontSize: 13, borderBottom: j < h.items.length - 1 ? "1px solid #222" : "none" }}>
-                    <span style={{ color: h.color, fontSize: 10, marginTop: 4 }}>●</span><span>{item}</span>
+        {/* ── HISTORY ── */}
+        {tab === "history" && (
+          <div className="fade-up">
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+              {[
+                { l: "Sessions", v: history.length, c: C.orange },
+                { l: "This Week", v: thisWeek, c: C.yellow },
+                { l: "Total lbs", v: totalLbs > 0 ? (totalLbs/1000).toFixed(1)+"k" : "0", c: C.teal },
+              ].map(s => (
+                <Card key={s.l} color={s.c} style={{ textAlign: "center", padding: 14, marginBottom: 0 }}>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: s.c }}>{s.v}</div>
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{s.l}</div>
+                </Card>
+              ))}
+            </div>
+            {history.length === 0 && <div style={{ textAlign: "center", color: C.muted, padding: 48, fontSize: 15 }}>No sessions yet. Get to work. 🏀</div>}
+            {history.map((h, i) => {
+              const prev = history[i+1];
+              const gap = prev ? Math.floor((new Date(h.logged_at)-new Date(prev.logged_at))/86400000) : null;
+              const expanded = expandedLog[h.id];
+              const color = h.color || C.orange;
+              return (
+                <Card key={h.id} color={color}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                        <Label color={color}>{daysAgo(h.logged_at)}</Label>
+                        {gap !== null && <span style={{ fontSize: 11, color: C.muted }}>{gap}d rest</span>}
+                      </div>
+                      <div style={{ fontSize: 15, fontWeight: 600 }}>{h.session_name}</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{new Date(h.logged_at).toLocaleDateString("en-CA")}</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      {h.total_volume > 0 && <div style={{ color, fontWeight: 700, fontSize: 14 }}>{h.total_volume.toLocaleString()} lbs</div>}
+                      <button onClick={() => setExpandedLog(p => ({...p, [h.id]: !p[h.id]}))} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 16, padding: 2 }}>{expanded ? "▲" : "▼"}</button>
+                      <button onClick={() => deleteLog(h.id)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 16, padding: 2 }}>🗑</button>
+                    </div>
+                  </div>
+                  {expanded && (
+                    <div style={{ marginTop: 12, borderTop: "1px solid "+C.border, paddingTop: 12 }}>
+                      {(h.exercises||[]).map((ex, j) => (
+                        <div key={j} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, borderBottom: j < h.exercises.length-1 ? "1px solid "+C.border : "none" }}>
+                          <span style={{ color: C.muted }}>{ex.name}</span>
+                          <span style={{ color: C.text }}>{ex.sets}×{ex.reps}{ex.weight > 0 ? " @ "+ex.weight+"lbs" : ""}{ex.volume > 0 ? " = "+ex.volume.toLocaleString()+" lbs" : ""}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── STATS ── */}
+        {tab === "stats" && <div className="fade-up"><StatsTab history={history} weightLog={weightLog} cardioSessions={cardioSessions} /></div>}
+
+        {/* ── WEIGHT ── */}
+        {tab === "weight" && (() => {
+          const sorted = [...weightLog].sort((a,b) => new Date(a.logged_at)-new Date(b.logged_at));
+          const cur = weightLog[0]?.weight || 225;
+          const lost = 225-cur, remaining = cur-200;
+          const pct = Math.min(100, Math.max(0, (lost/25)*100));
+          const last8 = sorted.slice(-8);
+          return (
+            <div className="fade-up">
+              <SectionTitle>Weight</SectionTitle>
+              <SectionSub>225 → 200 lbs · Sunday mornings, same conditions.</SectionSub>
+
+              <Card color={C.orange}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 12, color: C.muted }}>
+                  <span>Start: 225 lbs</span><span style={{ color: C.teal }}>Goal: 200 lbs</span>
+                </div>
+                <div style={{ background: C.surface2, borderRadius: 10, height: 10, overflow: "hidden", marginBottom: 14 }}>
+                  <div style={{ width: pct+"%", height: "100%", background: "linear-gradient(90deg, "+C.orange+", "+C.teal+")", borderRadius: 10, transition: "width 0.6s ease" }} />
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-around" }}>
+                  {[["Current", cur+" lbs", C.orange],["Lost", lost > 0 ? "-"+lost.toFixed(1)+" lbs" : "0", C.teal],["To Go", remaining > 0 ? remaining.toFixed(1)+" lbs" : "Done!", C.yellow]].map(([l,v,c]) => (
+                    <div key={l} style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 22, fontWeight: 700, color: c }}>{v}</div>
+                      <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{l}</div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+
+              <Card>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Log Weight</div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <input type="number" min="150" max="350" step="0.1" placeholder="e.g. 223.5" value={weightInput} onChange={e => setWeightInput(e.target.value)} onKeyDown={e => e.key==="Enter" && logWeight()}
+                    style={{ background: C.surface2, border: "1px solid "+C.border, borderRadius: 10, color: C.text, padding: "11px 14px", fontSize: 16, flex: 1, fontFamily: "-apple-system, SF Pro Display, Georgia, serif" }} />
+                  <Btn color={C.orange} onClick={logWeight} style={{ padding: "11px 22px" }}>Log</Btn>
+                </div>
+              </Card>
+
+              {last8.length >= 2 && (
+                <Card>
+                  <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>Trend · last {last8.length} entries</div>
+                  <svg width="100%" height="70" viewBox="0 0 300 70" style={{ overflow: "visible" }}>
+                    {(() => {
+                      const ws = last8.map(e => e.weight);
+                      const mn = Math.min(...ws)-1, mx = Math.max(...ws)+1;
+                      const pts = ws.map((w,i) => ((i/(ws.length-1))*280+10)+","+(60-((w-mn)/(mx-mn))*55)).join(" ");
+                      return <>
+                        <polyline points={pts} fill="none" stroke={C.orange} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+                        {ws.map((w,i) => <circle key={i} cx={(i/(ws.length-1))*280+10} cy={60-((w-mn)/(mx-mn))*55} r="4" fill={C.orange} />)}
+                      </>;
+                    })()}
+                  </svg>
+                </Card>
+              )}
+
+              {weightLog.map((e,i) => {
+                const prev = weightLog[i+1];
+                const delta = prev ? e.weight-prev.weight : null;
+                return (
+                  <Card key={e.id} style={{ padding: 14 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontSize: 17, fontWeight: 700 }}>{e.weight} lbs</div>
+                        <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{new Date(e.logged_at).toLocaleDateString("en-CA",{weekday:"short",month:"short",day:"numeric"})} · {daysAgo(e.logged_at)}</div>
+                      </div>
+                      <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+                        {delta !== null && <div style={{ fontSize: 14, fontWeight: 700, color: delta < 0 ? C.teal : delta > 0 ? C.red : C.muted }}>{delta < 0 ? "▼" : delta > 0 ? "▲" : "—"} {Math.abs(delta).toFixed(1)}</div>}
+                        <button onClick={() => deleteWeight(e.id)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 16 }}>🗑</button>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        {/* ── GOALS ── */}
+        {tab === "goals" && (
+          <div className="fade-up">
+            <SectionTitle>16-Week Roadmap</SectionTitle>
+            <SectionSub>225 → 200 lbs. Dunk again.</SectionSub>
+
+            {[
+              { weeks: "Weeks 1–4", color: C.orange, weight: "225 → 218 lbs", focus: "Build the habit. Nail form. Ease in.", goals: ["2× gym/week", "1× court/week", "Sleep 7+ hrs", "Cut late-night eating"] },
+              { weeks: "Weeks 5–8", color: C.yellow, weight: "218 → 212 lbs", focus: "Add intensity. Increase court time.", goals: ["Progress weights", "Add sprint sets", "Drop 1 processed meal/day", "Vertical jump baseline"] },
+              { weeks: "Weeks 9–12", color: C.teal, weight: "212 → 206 lbs", focus: "Peak conditioning. Power is primary.", goals: ["Max box jump height", "3 sessions/week", "Nutrition locked", "Rim touches every session"] },
+              { weeks: "Weeks 13–16", color: C.purple, weight: "206 → 200 lbs", focus: "Dunk attempt. You earned it.", goals: ["Full vertical test", "Attempt the dunk — film it", "Celebrate the comeback", "Plan next cycle"] },
+            ].map((p,i) => (
+              <Card key={i} color={p.color}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <Label color={p.color}>{p.weeks}</Label>
+                  <div style={{ color: p.color, fontWeight: 700, fontSize: 14 }}>{p.weight}</div>
+                </div>
+                <div style={{ fontSize: 14, color: C.text, marginBottom: 10 }}>{p.focus}</div>
+                {p.goals.map((g,j) => (
+                  <div key={j} style={{ fontSize: 13, color: C.muted, padding: "3px 0", display: "flex", gap: 8 }}>
+                    <span style={{ color: p.color }}>→</span>{g}
                   </div>
                 ))}
-              </div>
+              </Card>
             ))}
-            <div style={{ fontWeight: "bold", fontSize: 16, margin: "20px 0 10px" }}>Habit Stacking</div>
-            {STACKS.map((s, i) => (
-              <div key={i} style={{ ...S.card(), display: "flex", gap: 12, alignItems: "center", padding: 12 }}>
-                <div style={{ background: COLORS.orange + "22", color: COLORS.orange, borderRadius: 8, padding: "6px 10px", fontSize: 11, minWidth: 90, textAlign: "center" }}>{s.trigger}</div>
-                <div style={{ color: COLORS.muted, fontSize: 11 }}>→</div>
-                <div style={{ fontSize: 13 }}>{s.habit}</div>
+
+            <Card style={{ background: C.surface2 }}>
+              <div style={{ color: C.orange, fontWeight: 700, marginBottom: 10, fontSize: 13 }}>NUTRITION</div>
+              <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.7 }}>Target 200g protein/day. Whole foods first. Carbs around training. Cut alcohol to weekends. 3L water minimum on training days.</div>
+            </Card>
+
+            <Card style={{ background: C.surface2 }}>
+              <div style={{ color: C.teal, fontWeight: 700, marginBottom: 10, fontSize: 13 }}>ATOMIC HABITS · 4 LAWS</div>
+              {[
+                ["Make It Obvious", C.orange, "Gym bag packed the night before. Shoes by the door."],
+                ["Make It Attractive", C.yellow, "Hype playlist only during training. Watch dunk compilations."],
+                ["Make It Easy", C.teal, "2-Minute Rule: just lace up. The rest follows."],
+                ["Make It Satisfying", C.purple, "Log every session. The streak is the reward."],
+              ].map(([law, color, tip]) => (
+                <div key={law} style={{ padding: "10px 0", borderBottom: "1px solid "+C.border }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color }}>{law}</div>
+                  <div style={{ fontSize: 13, color: C.muted, marginTop: 3 }}>{tip}</div>
+                </div>
+              ))}
+              <div style={{ padding: "10px 0", fontSize: 12, color: C.muted, fontStyle: "italic" }}>
+                "I am a basketball player who trains." — James Clear
               </div>
-            ))}
-            <div style={{ ...S.card(COLORS.teal + "44"), marginTop: 20, background: COLORS.teal + "11" }}>
-              <div style={{ color: COLORS.teal, fontWeight: "bold", fontSize: 15, marginBottom: 8 }}>The 2-Minute Rule</div>
-              <div style={{ fontSize: 14, lineHeight: 1.7 }}>Any new habit should take less than 2 minutes to start.</div>
-              <div style={{ marginTop: 12, fontSize: 13, color: COLORS.muted, lineHeight: 1.8 }}>
-                I will train hard → Put on workout clothes.<br />
-                I will get to the court → Grab the ball and walk out.<br />
-                I will eat clean → Prep one good meal.<br />
-                I will lose 25 lbs → Step on the scale right now.
-              </div>
-            </div>
-          </>
+            </Card>
+          </div>
         )}
 
       </div>
