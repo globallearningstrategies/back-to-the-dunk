@@ -574,17 +574,22 @@ export default function App() {
   const [weightLog, setWeightLog] = useState([]);
   const [weightInput, setWeightInput] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
+  const [cardioSessions, setCardioSessions] = useState([]);
+  const [cardioNotes, setCardioNotes] = useState("");
+  const [cardioLogging, setCardioLogging] = useState(null);
 
   const showSave = (ok) => { setSaveMsg(ok ? "Saved" : "Save failed"); setTimeout(() => setSaveMsg(""), 2000); };
 
   const loadData = useCallback(async () => {
     try {
-      const [{ data: workouts }, { data: weights }] = await Promise.all([
+      const [{ data: workouts }, { data: weights }, { data: cardio }] = await Promise.all([
         supabase.from("workouts").select("*").order("logged_at", { ascending: false }),
         supabase.from("weight_log").select("*").order("logged_at", { ascending: false }),
+        supabase.from("cardio_sessions").select("*").order("completed_at", { ascending: false }).limit(60),
       ]);
       if (workouts) setHistory(workouts);
       if (weights) setWeightLog(weights);
+      if (cardio) setCardioSessions(cardio);
     } catch (e) {}
     setLoading(false);
   }, []);
@@ -647,6 +652,23 @@ export default function App() {
     else showSave(false);
   };
 
+  const logCardio = async (workoutType) => {
+    setCardioLogging(workoutType);
+    const payload = { workout_type: workoutType, completed_at: new Date().toISOString(), notes: cardioNotes || null };
+    const { data, error } = await supabase.from("cardio_sessions").insert([payload]).select();
+    if (!error && data) {
+      setCardioSessions(p => [data[0], ...p]);
+      setCardioNotes("");
+      showSave(true);
+    } else showSave(false);
+    setCardioLogging(null);
+  };
+
+  const deleteCardio = async (id) => {
+    await supabase.from("cardio_sessions").delete().eq("id", id);
+    setCardioSessions(p => p.filter(s => s.id !== id));
+  };
+
   const deleteLog = async (id) => { await supabase.from("workouts").delete().eq("id", id); setHistory(p => p.filter(h => h.id !== id)); };
 
   const logWeight = async () => {
@@ -689,7 +711,7 @@ export default function App() {
       </div>
 
       <div style={S.tabs}>
-        {["workout", "history", "stats", "weight", "goals", "habits"].map(t => (
+        {["workout", "cardio", "history", "stats", "weight", "goals", "habits"].map(t => (
           <button key={t} style={S.tab(tab === t)} onClick={() => setTab(t)}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>
         ))}
       </div>
@@ -707,6 +729,26 @@ export default function App() {
                 : <div style={{ fontSize: 14 }}>Ready to train. <strong>{session.label}: {session.name}</strong> <span style={{ color: COLORS.muted, fontSize: 12, marginLeft: 6 }}>{session.location}</span></div>
               }
             </div>
+            {/* HIIT Next Up */}
+            {(() => {
+              const lastCardio = cardioSessions[0] || null;
+              const lastType = lastCardio ? lastCardio.workout_type : null;
+              const hoursSince = lastCardio ? (Date.now() - new Date(lastCardio.completed_at)) / 3600000 : null;
+              const inRecovery = hoursSince !== null && hoursSince < 48;
+              const nextHIIT = lastType === "tabata" ? "Court Intervals 🏀" : "Tabata Bike/Sprint 🚴";
+              const nextColor = lastType === "tabata" ? COLORS.yellow : COLORS.green;
+              const hoursLeft = inRecovery ? Math.ceil(48 - hoursSince) : 0;
+              return (
+                <div style={{ ...S.card(nextColor + "33"), background: nextColor + "08", marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, color: COLORS.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>HIIT · Next Up</div>
+                  {inRecovery
+                    ? <div style={{ fontSize: 14 }}>Recovering — <strong>{nextHIIT}</strong> ready in {hoursLeft}h</div>
+                    : <div style={{ fontSize: 14 }}>Ready for HIIT → <strong>{nextHIIT}</strong> <span style={{ color: nextColor }}>· Go!</span></div>
+                  }
+                </div>
+              );
+            })()}
+
             <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
               {SESSIONS.map((s, i) => (
                 <button key={s.id} onClick={() => setActiveSession(i)} style={{ ...S.btn(s.color, activeSession !== i), fontSize: 12, padding: "7px 14px" }}>{s.label}</button>
@@ -902,6 +944,162 @@ export default function App() {
             </div>
           </>
         )}
+
+        {tab === "cardio" && (() => {
+          const now = Date.now();
+          const last30Days = cardioSessions.filter(s => (now - new Date(s.completed_at)) / 86400000 <= 30);
+          const lastSession = cardioSessions[0] || null;
+          const lastType = lastSession ? lastSession.workout_type : null;
+          const hoursSinceLast = lastSession ? (now - new Date(lastSession.completed_at)) / 3600000 : null;
+          const daysSinceLast = hoursSinceLast !== null ? hoursSinceLast / 24 : null;
+          const inRecovery = hoursSinceLast !== null && hoursSinceLast < 48;
+          const nextType = lastType === "tabata" ? "court_intervals" : "tabata";
+          const hoursUntilNext = inRecovery ? Math.ceil(48 - hoursSinceLast) : 0;
+          const daysUntilNext = Math.ceil(hoursUntilNext / 24);
+          const isOverdue = !inRecovery && daysSinceLast !== null && daysSinceLast > 3;
+
+          // Weekly view Sun-Sat
+          const startOfWeek = new Date(); startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); startOfWeek.setHours(0,0,0,0);
+          const thisWeekCardio = cardioSessions.filter(s => new Date(s.completed_at) >= startOfWeek);
+          const weekDays = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+          const weekSessions = weekDays.map((d, i) => {
+            const day = new Date(startOfWeek); day.setDate(startOfWeek.getDate() + i);
+            const dayStr = day.toDateString();
+            return cardioSessions.find(s => new Date(s.completed_at).toDateString() === dayStr) || null;
+          });
+
+          const WORKOUTS = {
+            tabata: { label: "Tabata Bike/Sprint", icon: "🚴", color: COLORS.green, duration: "~15 min", description: "8 rounds · 20s on / 10s off · + 10 min warmup/cooldown" },
+            court_intervals: { label: "Court Intervals", icon: "🏀", color: COLORS.yellow, duration: "~20 min", description: "10 rounds · 30s hard / 30s rest · suicides, sprints, layups" },
+          };
+
+          const surpriseMe = () => {
+            const pick = inRecovery ? nextType : (Math.random() > 0.5 ? "tabata" : "court_intervals");
+            alert("Do this: " + WORKOUTS[pick].label + "! " + WORKOUTS[pick].description);
+          };
+
+          const daysAgoCardio = (iso) => {
+            const d = Math.floor((Date.now() - new Date(iso)) / 86400000);
+            return d === 0 ? "Today" : d === 1 ? "Yesterday" : d + "d ago";
+          };
+
+          return (
+            <>
+              <div style={{ fontWeight: "bold", fontSize: 18, marginBottom: 4 }}>Cardio HIIT</div>
+              <div style={{ color: COLORS.muted, fontSize: 13, marginBottom: 16 }}>2 sessions/week · 48hr recovery between sessions</div>
+
+              {/* What's Next Card */}
+              <div style={{ ...S.card(isOverdue ? "#ff444444" : inRecovery ? COLORS.border : COLORS.green + "44"), background: isOverdue ? "#ff444411" : inRecovery ? "#111" : COLORS.green + "11", marginBottom: 14 }}>
+                <div style={{ fontSize: 11, color: COLORS.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>What's Next</div>
+                {lastSession === null ? (
+                  <div style={{ fontSize: 15 }}>No sessions yet — pick one below and get started! 🏁</div>
+                ) : inRecovery ? (
+                  <>
+                    <div style={{ fontSize: 14, color: COLORS.muted, marginBottom: 4 }}>Rest day — body still recovering</div>
+                    <div style={{ fontSize: 16, fontWeight: "bold" }}>Next up: {WORKOUTS[nextType].icon} {WORKOUTS[nextType].label}</div>
+                    <div style={{ fontSize: 13, color: COLORS.teal, marginTop: 4 }}>Ready in {daysUntilNext} day{daysUntilNext !== 1 ? "s" : ""} ({hoursUntilNext}hrs)</div>
+                  </>
+                ) : isOverdue ? (
+                  <>
+                    <div style={{ fontSize: 13, color: "#ff6666", marginBottom: 4 }}>Overdue! Last session was {Math.floor(daysSinceLast)}d ago</div>
+                    <div style={{ fontSize: 16, fontWeight: "bold" }}>{WORKOUTS[nextType].icon} {WORKOUTS[nextType].label}</div>
+                    <div style={{ fontSize: 13, color: "#ff6666", marginTop: 4, fontWeight: "bold" }}>Do today</div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 16, fontWeight: "bold" }}>{WORKOUTS[nextType].icon} {WORKOUTS[nextType].label}</div>
+                    <div style={{ fontSize: 13, color: COLORS.green, marginTop: 4 }}>Ready to go!</div>
+                  </>
+                )}
+              </div>
+
+              {/* Weekly View */}
+              <div style={S.card()}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div style={{ fontSize: 14, fontWeight: "bold" }}>This Week</div>
+                  <div style={{ fontSize: 13, color: thisWeekCardio.length >= 2 ? COLORS.green : COLORS.muted }}>
+                    {thisWeekCardio.length}/2 sessions {thisWeekCardio.length >= 2 ? "✅" : ""}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 4 }}>
+                  {weekDays.map((d, i) => {
+                    const s = weekSessions[i];
+                    const w = s ? WORKOUTS[s.workout_type] : null;
+                    const isToday = new Date().getDay() === i;
+                    return (
+                      <div key={d} style={{ flex: 1, textAlign: "center" }}>
+                        <div style={{ fontSize: 9, color: isToday ? COLORS.orange : COLORS.muted, marginBottom: 4, fontWeight: isToday ? "bold" : "normal" }}>{d}</div>
+                        <div style={{ width: "100%", aspectRatio: "1", borderRadius: 6, background: s ? w.color + "33" : "#1a1a1a", border: "1px solid " + (s ? w.color + "66" : "#333"), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>
+                          {s ? w.icon : isToday ? <span style={{ color: COLORS.orange, fontSize: 10 }}>now</span> : ""}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Surprise Me */}
+              <button onClick={surpriseMe} style={{ ...S.btn(COLORS.purple), width: "100%", marginBottom: 14, fontSize: 14, padding: 12 }}>
+                🎲 Surprise Me
+              </button>
+
+              {/* Log Workout Cards */}
+              {Object.entries(WORKOUTS).map(([key, w]) => (
+                <div key={key} style={{ ...S.card(w.color + "44"), background: w.color + "08", marginBottom: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 22, marginBottom: 4 }}>{w.icon}</div>
+                      <div style={{ fontWeight: "bold", fontSize: 16 }}>{w.label}</div>
+                      <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 2 }}>{w.description}</div>
+                      <div style={{ ...S.badge(w.color), marginTop: 8 }}>{w.duration}</div>
+                    </div>
+                  </div>
+                  <input
+                    style={{ ...S.input, width: "100%", textAlign: "left", padding: "8px 10px", marginBottom: 10, fontSize: 12 }}
+                    type="text" placeholder="Notes (optional)" value={cardioNotes}
+                    onChange={e => setCardioNotes(e.target.value)}
+                  />
+                  <button
+                    onClick={() => logCardio(key)}
+                    disabled={!!cardioLogging}
+                    style={{ ...S.btn(w.color), width: "100%", padding: 12, fontSize: 14, opacity: cardioLogging ? 0.5 : 1, boxShadow: "0 0 18px " + w.color + "44" }}>
+                    {cardioLogging === key ? "Logging..." : "✅ Log " + w.label}
+                  </button>
+                </div>
+              ))}
+
+              {/* Recent Sessions */}
+              {last30Days.length > 0 && (
+                <div>
+                  <div style={{ fontWeight: "bold", fontSize: 15, marginBottom: 10, marginTop: 6 }}>Recent Sessions</div>
+                  {last30Days.map((s, i) => {
+                    const w = WORKOUTS[s.workout_type];
+                    const prev = last30Days[i + 1];
+                    const gap = prev ? Math.round((new Date(s.completed_at) - new Date(prev.completed_at)) / 3600000) : null;
+                    return (
+                      <div key={s.id} style={{ ...S.card(w.color + "33"), padding: 12 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                              <span style={{ fontSize: 18 }}>{w.icon}</span>
+                              <span style={{ fontWeight: "bold", fontSize: 14 }}>{w.label}</span>
+                            </div>
+                            <div style={{ fontSize: 12, color: COLORS.muted }}>
+                              {daysAgoCardio(s.completed_at)} · {new Date(s.completed_at).toLocaleDateString("en-CA")}
+                              {gap !== null && <span style={{ marginLeft: 8, color: gap >= 48 ? COLORS.green : "#ff6666" }}>{Math.round(gap)}h since last</span>}
+                            </div>
+                            {s.notes && <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 4, fontStyle: "italic" }}>{s.notes}</div>}
+                          </div>
+                          <button onClick={() => deleteCardio(s.id)} style={{ background: "none", border: "none", color: "#ff4444", cursor: "pointer", fontSize: 16 }}>🗑</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {tab === "habits" && (
           <>
