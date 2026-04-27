@@ -13,22 +13,22 @@ const supabase = createClient(
    ════════════════════════════════════════════════════════════ */
 
 const C = {
-  ink:      "#0A0908",
-  panel:    "#13110F",
-  raised:   "#1C1A17",
-  line:     "#26231F",
-  faint:    "#2F2C28",
-  bone:     "#F5F1EA",
-  cream:    "#E8E2D5",
-  dim:      "#7A746A",
-  mute:     "#56514A",
-  rust:     "#FF5A1F",
-  rustHi:   "#FF7A4A",
-  amber:    "#F59E0B",
-  moss:     "#84CC16",
-  electric: "#22D3EE",
-  plum:     "#C084FC",
-  red:      "#EF4444",
+  ink:      "#FAFAF7",
+  panel:    "#FFFFFF",
+  raised:   "#F4F2EC",
+  line:     "#E5E1D8",
+  faint:    "#D4CFC2",
+  bone:     "#0A0908",
+  cream:    "#1F1C18",
+  dim:      "#6B655B",
+  mute:     "#9A9389",
+  rust:     "#E0451A",
+  rustHi:   "#FF6B35",
+  amber:    "#D97706",
+  moss:     "#65A30D",
+  electric: "#0891B2",
+  plum:     "#9333EA",
+  red:      "#DC2626",
 };
 
 const FONT_DISPLAY = `"Bricolage Grotesque", -apple-system, system-ui, sans-serif`;
@@ -56,9 +56,9 @@ const injectStyles = () => {
     /* Court-line texture */
     .court-bg {
       background-image:
-        radial-gradient(ellipse 80% 60% at 50% -10%, ${C.rust}1A 0%, transparent 60%),
-        linear-gradient(${C.line}30 1px, transparent 1px),
-        linear-gradient(90deg, ${C.line}30 1px, transparent 1px);
+        radial-gradient(ellipse 80% 60% at 50% -10%, ${C.rust}10 0%, transparent 60%),
+        linear-gradient(${C.line}80 1px, transparent 1px),
+        linear-gradient(90deg, ${C.line}80 1px, transparent 1px);
       background-size: 100% 100%, 80px 80px, 80px 80px;
       background-position: 0 0, 0 0, 0 0;
     }
@@ -322,7 +322,7 @@ const PLATES = [
   { weight: 45, color: "#3B82F6", height: 80, width: 12 },
   { weight: 35, color: "#EAB308", height: 70, width: 11 },
   { weight: 25, color: "#22C55E", height: 60, width: 10 },
-  { weight: 10, color: "#F5F1EA", height: 44, width: 9  },
+  { weight: 10, color: "#FFFFFF", height: 44, width: 9  },
   { weight: 5,  color: "#6B7280", height: 34, width: 8  },
   { weight: 2.5,color: "#374151", height: 26, width: 7  },
 ];
@@ -372,11 +372,11 @@ function BarbellInput({ vals, onVal }) {
 
       {/* Visual barbell */}
       <div style={{
-        background: C.ink, borderRadius: 10, padding: "16px 8px",
+        background: "linear-gradient(180deg, #1A1814 0%, #0F0E0C 100%)", borderRadius: 10, padding: "16px 8px",
         marginBottom: 14, height: 110,
         display: "flex", alignItems: "center", justifyContent: "center",
         position: "relative", overflow: "hidden",
-        border: `1px solid ${C.line}`,
+        border: `1px solid ${C.faint}`,
       }}>
         {/* Bar end caps */}
         <div style={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -390,7 +390,7 @@ function BarbellInput({ vals, onVal }) {
                   width: p.width, height: p.height,
                   background: p.color, borderRadius: 2,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 9, fontWeight: 700, color: p.color === "#F5F1EA" ? "#000" : "#fff",
+                  fontSize: 9, fontWeight: 700, color: "#fff",
                   cursor: "pointer", flexShrink: 0,
                   boxShadow: "inset -1px 0 0 rgba(0,0,0,0.2)",
                 }}>
@@ -399,9 +399,9 @@ function BarbellInput({ vals, onVal }) {
             );
           })}
           {/* Bar */}
-          <div style={{ width: 6, height: 14, background: C.cream, borderRadius: 1 }} />
-          <div style={{ width: 60, height: 5, background: `linear-gradient(180deg, ${C.cream} 0%, ${C.dim} 100%)`, borderRadius: 1 }} />
-          <div style={{ width: 6, height: 14, background: C.cream, borderRadius: 1 }} />
+          <div style={{ width: 6, height: 14, background: "#D1D5DB", borderRadius: 1 }} />
+          <div style={{ width: 60, height: 5, background: "linear-gradient(180deg, #E5E7EB 0%, #6B7280 100%)", borderRadius: 1 }} />
+          <div style={{ width: 6, height: 14, background: "#D1D5DB", borderRadius: 1 }} />
           {/* Right side plates */}
           {plates.map((w, i) => {
             const p = PLATES.find(pl => pl.weight === w);
@@ -412,7 +412,7 @@ function BarbellInput({ vals, onVal }) {
                   width: p.width, height: p.height,
                   background: p.color, borderRadius: 2,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 9, fontWeight: 700, color: p.color === "#F5F1EA" ? "#000" : "#fff",
+                  fontSize: 9, fontWeight: 700, color: "#fff",
                   cursor: "pointer", flexShrink: 0,
                   boxShadow: "inset 1px 0 0 rgba(0,0,0,0.2)",
                 }}>
@@ -441,9 +441,9 @@ function BarbellInput({ vals, onVal }) {
           <button key={p.weight} onClick={() => addPlate(p.weight)} className="btn"
             style={{
               padding: "10px 4px", borderRadius: 10,
-              background: p.color + "22",
-              border: `1.5px solid ${p.color}`,
-              color: p.color === "#F5F1EA" ? C.cream : p.color,
+              background: p.color === "#FFFFFF" ? "#F9FAFB" : p.color + "20",
+              border: `1.5px solid ${p.color === "#FFFFFF" ? "#9CA3AF" : p.color}`,
+              color: p.color === "#FFFFFF" ? "#374151" : p.color,
               fontFamily: FONT_DISPLAY,
               fontSize: 13, fontWeight: 700, cursor: "pointer",
               letterSpacing: "-0.01em",
@@ -470,9 +470,24 @@ function BarbellInput({ vals, onVal }) {
 }
 
 function ExRow({ ex, checked, onCheck, vals, onVal, color }) {
+  const setsDone = parseInt(vals?.setsDone) || 0;
+  const targetSets = parseInt(ex.sets) || 0;
+  const allSetsDone = setsDone >= targetSets && targetSets > 0;
+
+  // Auto-check the exercise when all sets done
+  useEffect(() => {
+    if (allSetsDone && !checked) onCheck();
+    if (!allSetsDone && checked && setsDone > 0) onCheck(); // uncheck if user removes a set
+  }, [allSetsDone]);
+
+  const tapSet = (i) => {
+    const newCount = setsDone === i + 1 ? i : i + 1;
+    onVal("setsDone", String(newCount));
+  };
+
   return (
     <div style={{ padding: "14px 0", borderBottom: `1px solid ${C.line}` }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: ex.timed || ex.noWeight ? 0 : 12 }}>
         <button
           onClick={onCheck} className="btn"
           style={{
@@ -483,7 +498,7 @@ function ExRow({ ex, checked, onCheck, vals, onVal, color }) {
             cursor: "pointer",
           }}
         >
-          {checked && <svg width="13" height="10" viewBox="0 0 13 10" fill="none"><path d="M1 5L4.5 8.5L12 1.5" stroke={C.ink} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+          {checked && <svg width="13" height="10" viewBox="0 0 13 10" fill="none"><path d="M1 5L4.5 8.5L12 1.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
@@ -503,14 +518,40 @@ function ExRow({ ex, checked, onCheck, vals, onVal, color }) {
             <NumIn value={vals?.weight} onChange={v => onVal("weight", v)} placeholder="0" />
           </div>
         )}
-        {!ex.noWeight && !ex.timed && (
-          <div style={{ width: 50, flexShrink: 0 }}>
-            <Eyebrow>sets</Eyebrow>
-            <div style={{ height: 4 }} />
-            <NumIn value={vals?.setsDone} onChange={v => onVal("setsDone", v)} placeholder={String(ex.sets)} />
-          </div>
-        )}
       </div>
+
+      {/* Set dots — tap to track each completed set */}
+      {!ex.noWeight && !ex.timed && (
+        <div style={{ display: "flex", gap: 8, paddingLeft: 40, alignItems: "center" }}>
+          {Array.from({ length: targetSets }).map((_, i) => {
+            const done = i < setsDone;
+            return (
+              <button
+                key={i}
+                onClick={() => tapSet(i)}
+                className="btn"
+                style={{
+                  width: 36, height: 36, borderRadius: "50%", padding: 0,
+                  background: done ? color : "transparent",
+                  border: `2px solid ${done ? color : C.faint}`,
+                  color: done ? "#fff" : C.dim,
+                  fontSize: 13, fontWeight: 700,
+                  fontFamily: FONT_DISPLAY,
+                  cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                {ex.reps}
+              </button>
+            );
+          })}
+          <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, marginLeft: 4 }}>
+            {setsDone}/{targetSets}
+          </span>
+        </div>
+      )}
+
       {ex.barbell && <BarbellInput vals={vals} onVal={onVal} />}
     </div>
   );
@@ -945,7 +986,7 @@ export default function App() {
       {/* HEADER */}
       <header style={{
         position: "sticky", top: 0, zIndex: 100,
-        background: `${C.ink}E6`, backdropFilter: "blur(20px)",
+        background: `${C.ink}EE`, backdropFilter: "blur(20px)",
         WebkitBackdropFilter: "blur(20px)",
         borderBottom: `1px solid ${C.line}`,
       }}>
