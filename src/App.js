@@ -1302,12 +1302,11 @@ export default function App() {
   const cardioOverdue = !cardioInRecovery && hoursSinceCardio !== null && hoursSinceCardio/24 > 3;
 
   const TABS = [
-    { id: "workout", label: "Train" },
-    { id: "cardio",  label: "Cardio" },
-    { id: "history", label: "Log" },
-    { id: "stats",   label: "Stats" },
-    { id: "weight",  label: "Weight" },
-    { id: "goals",   label: "Plan" },
+    { id: "workout", label: "Train",  icon: "🏋️" },
+    { id: "history", label: "Log",    icon: "📓" },
+    { id: "stats",   label: "Stats",  icon: "📊" },
+    { id: "weight",  label: "Weight", icon: "⚖️" },
+    { id: "goals",   label: "Plan",   icon: "🎯" },
   ];
 
   if (loading) return (
