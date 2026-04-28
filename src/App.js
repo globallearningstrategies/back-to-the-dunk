@@ -685,184 +685,82 @@ function TabataTimer({ onLog }) {
   );
 }
 
-/* ── Court Intervals Timer ── */
-function CourtIntervalTimer({ onLog, onClose }) {
-  const [phase, setPhase] = useState("idle");
-  const [round, setRound] = useState(1);
-  const [count, setCount] = useState(COURT_CONFIG.workSec);
-  const [countdown, setCountdown] = useState(null);
-  const [currentPrompt, setCurrentPrompt] = useState(COURT_PROMPTS[0]);
-  const wakeLockRef = useRef(null);
+/* ── Suicide Counter ── */
+function SuicideCounter({ onLog, onClose }) {
+  const [reps, setReps] = useState(0);
+  const target = 10;
 
-  const requestWakeLock = async () => {
-    try { if ("wakeLock" in navigator) wakeLockRef.current = await navigator.wakeLock.request("screen"); } catch(e) {}
-  };
-  const releaseWakeLock = () => {
-    try { if (wakeLockRef.current) { wakeLockRef.current.release(); wakeLockRef.current = null; } } catch(e) {}
-  };
-
-  const start = () => { getAudioCtx(); requestWakeLock(); setCountdown(5); };
-  const reset = () => {
-    releaseWakeLock();
-    setPhase("idle"); setRound(1); setCount(COURT_CONFIG.workSec); setCountdown(null);
-  };
-
-  // 5-second countdown
-  useEffect(() => {
-    if (countdown === null) return;
-    if (countdown === 0) {
-      setCountdown(null);
-      const firstPrompt = COURT_PROMPTS[0];
-      setCurrentPrompt(firstPrompt);
-      beep(1046, 0.3, 0.5);
-      speak("Go! " + firstPrompt);
-      setPhase("work"); setRound(1); setCount(COURT_CONFIG.workSec);
-      return;
+  const tap = () => {
+    const next = reps + 1;
+    setReps(next);
+    if (next === target) {
+      beep(880, 0.5, 0.6);
+      speak("Done! Ten suicides complete!");
+    } else {
+      beep(660, 0.12, 0.4);
+      speak(String(next));
     }
-    beep(660, 0.08, 0.3);
-    if (countdown === 3) speak("Get ready");
-    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [countdown]);
+  };
 
-  // Main interval loop
-  useEffect(() => {
-    if (phase === "idle" || phase === "done") return;
-    const interval = setInterval(() => {
-      setCount(c => {
-        // Soft tick on most seconds, louder on last 3
-        if (c > 1) {
-          if (c <= 3) { beep(800, 0.1, 0.45); speak(String(c - 1)); }
-          else { beep(440, 0.06, 0.18); }
-          return c - 1;
-        }
-        // Phase transition
-        if (phase === "work") {
-          beep(523, 0.2, 0.5); speak("Rest");
-          setPhase("rest");
-          return COURT_CONFIG.restSec;
-        } else {
-          // Rest just ended
-          setRound(r => {
-            if (r >= COURT_CONFIG.rounds) {
-              beep(880, 0.6, 0.6);
-              speak("Workout complete! Great job!");
-              releaseWakeLock();
-              setPhase("done");
-              return r;
-            }
-            // Pick next prompt
-            const nextPrompt = COURT_PROMPTS[r % COURT_PROMPTS.length];
-            setCurrentPrompt(nextPrompt);
-            beep(880, 0.25, 0.55);
-            speak("Go! " + nextPrompt);
-            setPhase("work");
-            return r + 1;
-          });
-          return COURT_CONFIG.workSec;
-        }
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [phase]);
+  const undo = () => {
+    if (reps > 0) setReps(reps - 1);
+  };
 
-  const isWork = phase === "work";
-  const isRest = phase === "rest";
-  const activeColor = isWork ? C.amber : C.electric;
-  const max = isWork ? COURT_CONFIG.workSec : COURT_CONFIG.restSec;
-  const pct = ((max - count) / max) * 100;
+  const reset = () => setReps(0);
+
+  const done = reps >= target;
 
   return (
     <Surface accent={C.amber} style={{ background: C.panel }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
         <div>
-          <Pill color={C.amber}>Court Intervals · 20 min</Pill>
-          <h2 className="h-display" style={{ fontSize: 26, margin: "10px 0 4px", color: C.bone }}>HIIT Timer</h2>
-          <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>{COURT_CONFIG.rounds} rounds · {COURT_CONFIG.workSec}s WORK / {COURT_CONFIG.restSec}s REST</div>
+          <Pill color={C.amber}>Court · Suicide Counter</Pill>
+          <h2 className="h-display" style={{ fontSize: 26, margin: "10px 0 4px", color: C.bone }}>Tap each suicide</h2>
+          <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>10 full suicides · rest as needed between</div>
         </div>
-        {phase === "idle" && countdown === null && (
-          <div style={{ display: "flex", gap: 6 }}>
-            <Btn ghost color={C.dim} onClick={onClose} size="sm">Close</Btn>
-            <Btn color={C.amber} onClick={start}>Start</Btn>
-          </div>
-        )}
+        <Btn ghost color={C.dim} onClick={onClose} size="sm">Close</Btn>
       </div>
 
-      {countdown !== null && (
-        <div className="ease-up" style={{ textAlign: "center", padding: "32px 0 12px" }}>
-          <Eyebrow color={C.electric}>Get Ready</Eyebrow>
-          <div className="num-tab h-display" style={{ fontSize: 140, fontWeight: 800, color: C.electric, lineHeight: 0.85, marginTop: 12 }}>{countdown}</div>
-          <Btn ghost color={C.dim} onClick={reset} size="sm" style={{ marginTop: 24 }}>Cancel</Btn>
+      {/* Big tap area */}
+      <button
+        onClick={tap}
+        disabled={done}
+        className="btn"
+        style={{
+          width: "100%", padding: "32px 0",
+          background: done ? C.moss : C.amber,
+          border: "none", borderRadius: 18,
+          color: "#fff", cursor: done ? "default" : "pointer",
+          marginBottom: 16,
+          boxShadow: `0 8px 30px ${done ? C.moss : C.amber}33`,
+        }}>
+        <div className="h-display num-tab" style={{ fontSize: 80, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.04em" }}>
+          {reps}<span style={{ fontSize: 32, opacity: 0.5 }}>/{target}</span>
         </div>
-      )}
-
-      {countdown === null && phase !== "idle" && (
-        <div className="ease-in" style={{ marginTop: 20 }}>
-          {(isWork || isRest) && (
-            <>
-              {/* Current prompt */}
-              {isWork && (
-                <div style={{ textAlign: "center", marginBottom: 16 }}>
-                  <Eyebrow color={C.amber}>Do This</Eyebrow>
-                  <div className="h-display" style={{ fontSize: 28, fontWeight: 700, color: C.amber, letterSpacing: "-0.03em", marginTop: 6 }}>
-                    {currentPrompt}
-                  </div>
-                </div>
-              )}
-              {isRest && (
-                <div style={{ textAlign: "center", marginBottom: 16 }}>
-                  <Eyebrow color={C.electric}>Recover</Eyebrow>
-                  <div className="h-display" style={{ fontSize: 22, color: C.electric, marginTop: 4, letterSpacing: "-0.02em" }}>
-                    Next: {COURT_PROMPTS[round % COURT_PROMPTS.length]}
-                  </div>
-                </div>
-              )}
-
-              <div style={{ position: "relative", width: 220, height: 220, margin: "0 auto" }}>
-                <svg width="220" height="220" viewBox="0 0 100 100" style={{ position: "absolute" }}>
-                  <circle cx="50" cy="50" r="45" stroke={C.line} strokeWidth="4" fill="none" />
-                  <circle
-                    className="ring-progress"
-                    cx="50" cy="50" r="45" stroke={activeColor} strokeWidth="4" fill="none"
-                    strokeLinecap="round"
-                    strokeDasharray="282.7"
-                    strokeDashoffset={282.7 - (pct / 100) * 282.7}
-                    style={{ transition: "stroke-dashoffset 1s linear" }}
-                  />
-                </svg>
-                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                  <Eyebrow color={C.dim}>Round {round} / {COURT_CONFIG.rounds}</Eyebrow>
-                  <div className="num-tab h-display" style={{ fontSize: 90, fontWeight: 800, color: activeColor, lineHeight: 0.9, marginTop: 4 }}>{count}</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: activeColor, letterSpacing: "0.2em", marginTop: 2 }}>{isWork ? "WORK" : "REST"}</div>
-                </div>
-              </div>
-
-              {/* Progress dots */}
-              <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 24, flexWrap: "wrap" }}>
-                {Array.from({ length: COURT_CONFIG.rounds }).map((_, i) => (
-                  <div key={i} style={{
-                    width: 8, height: 8, borderRadius: 999,
-                    background: i < round - 1 ? C.amber : i === round - 1 ? C.amber + "AA" : C.faint,
-                    transition: "all 0.3s",
-                  }} />
-                ))}
-              </div>
-              <Btn ghost color={C.dim} onClick={reset} full style={{ marginTop: 20, fontSize: 12 }}>Reset</Btn>
-            </>
-          )}
-          {phase === "done" && (
-            <div className="ease-up" style={{ textAlign: "center", padding: "12px 0" }}>
-              <div style={{ fontSize: 56, marginBottom: 12 }}>🏀</div>
-              <h3 className="h-display" style={{ fontSize: 28, color: C.amber, margin: "0 0 6px" }}>Done.</h3>
-              <p className="h-serif" style={{ fontSize: 18, color: C.cream, margin: "0 0 20px" }}>10 rounds of court intervals — that's 10 minutes of work.</p>
-              <div style={{ display: "flex", gap: 10 }}>
-                <Btn ghost color={C.dim} onClick={reset} style={{ flex: 1 }}>Reset</Btn>
-                <Btn color={C.amber} onClick={() => { onLog(); reset(); onClose && onClose(); }} style={{ flex: 1 }}>Log It</Btn>
-              </div>
-            </div>
-          )}
+        <div style={{ fontSize: 14, fontWeight: 600, marginTop: 8, letterSpacing: "0.1em" }}>
+          {done ? "✓ DONE — TAP LOG IT" : "TAP AFTER EACH SUICIDE"}
         </div>
-      )}
+      </button>
+
+      {/* Visual dots */}
+      <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+        {Array.from({ length: target }).map((_, i) => (
+          <div key={i} style={{
+            width: 14, height: 14, borderRadius: 999,
+            background: i < reps ? C.amber : "transparent",
+            border: `2px solid ${i < reps ? C.amber : C.faint}`,
+            transition: "all 0.2s",
+          }} />
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <Btn ghost color={C.dim} onClick={undo} disabled={reps === 0} style={{ flex: 1 }}>Undo</Btn>
+        <Btn ghost color={C.dim} onClick={reset} disabled={reps === 0} style={{ flex: 1 }}>Reset</Btn>
+        {done && (
+          <Btn color={C.moss} onClick={() => { onLog(); reset(); onClose && onClose(); }} style={{ flex: 1 }}>Log It</Btn>
+        )}
+      </div>
     </Surface>
   );
 }
@@ -1318,11 +1216,6 @@ export default function App() {
             const day = new Date(startOfWeek); day.setDate(startOfWeek.getDate()+i);
             return cardioSessions.find(s => new Date(s.completed_at).toDateString() === day.toDateString()) || null;
           });
-          const surpriseMe = () => {
-            const pick = cardioInRecovery ? nextCardioType : (Math.random() > 0.5 ? "tabata" : "court_intervals");
-            const w = CARDIO_TYPES[pick];
-            alert(w.icon + " " + w.label + "\n\n" + w.detail);
-          };
           return (
             <>
               <div className="ease-up"><PageTitle kicker="Conditioning · HIIT">Cardio</PageTitle></div>
@@ -1390,13 +1283,9 @@ export default function App() {
                 </Surface>
               </div>
 
-              <div className="ease-up-3">
-                <Btn color={C.plum} onClick={surpriseMe} full size="lg" style={{ marginBottom: 18 }}>🎲 Surprise Me</Btn>
-              </div>
-
-              {/* Court Interval Timer (when open) */}
+              {/* Court Interval Counter (when open) */}
               {courtTimerOpen && (
-                <CourtIntervalTimer
+                <SuicideCounter
                   onLog={() => logCardio("court_intervals")}
                   onClose={() => setCourtTimerOpen(false)}
                 />
@@ -1420,11 +1309,11 @@ export default function App() {
                     />
                     {key === "court_intervals" && !courtTimerOpen && (
                       <Btn color={w.color} onClick={() => setCourtTimerOpen(true)} full style={{ marginBottom: 8 }}>
-                        ▶ Start Guided Timer
+                        Open Suicide Counter
                       </Btn>
                     )}
                     <Btn ghost={key === "court_intervals"} color={w.color} onClick={() => logCardio(key)} disabled={!!cardioLogging} full>
-                      {cardioLogging === key ? "Logging…" : `Log ${w.label} ${key === "court_intervals" ? "manually" : ""}`}
+                      {cardioLogging === key ? "Logging…" : `Log ${w.label}${key === "court_intervals" ? " manually" : ""}`}
                     </Btn>
                   </Surface>
                 </div>
