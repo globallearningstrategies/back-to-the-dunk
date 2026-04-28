@@ -69,6 +69,20 @@ const injectStyles = () => {
     @keyframes pulse-dot { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.85); } }
     @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
     @keyframes draw-circle { from { stroke-dashoffset: 251; } to { stroke-dashoffset: var(--target, 0); } }
+    @keyframes confetti-fall {
+      0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+    }
+    @keyframes pop {
+      0% { transform: scale(0.8); opacity: 0; }
+      50% { transform: scale(1.05); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .pop { animation: pop 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+    @keyframes glow-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 currentColor; }
+      50% { box-shadow: 0 0 0 8px transparent; }
+    }
 
     .ease-up { animation: ease-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
     .ease-up-1 { animation: ease-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both; }
@@ -216,6 +230,59 @@ function calcVolume(exercises, checked, vals) {
 }
 const fmtNum = (n) => n >= 10000 ? Math.round(n/1000) + "k" : n >= 1000 ? (n/1000).toFixed(1) + "k" : n.toLocaleString();
 
+function calcStreak(history) {
+  if (!history.length) return 0;
+  const dayStrings = [...new Set(history.map(h => new Date(h.logged_at).toDateString()))];
+  const today = new Date(); today.setHours(0,0,0,0);
+  let streak = 0;
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(today); d.setDate(today.getDate() - i);
+    if (dayStrings.includes(d.toDateString())) {
+      streak++;
+    } else if (i === 0) {
+      // Allow yesterday to count if today has nothing yet
+      continue;
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
+
+function getLastWeight(history, exerciseName) {
+  for (const h of history) {
+    const ex = (h.exercises || []).find(e => e.name === exerciseName);
+    if (ex && ex.weight > 0) return ex.weight;
+  }
+  return null;
+}
+
+function isPR(history, exerciseName, weight) {
+  if (!weight || weight <= 0) return false;
+  let max = 0;
+  for (const h of history) {
+    for (const ex of (h.exercises || [])) {
+      if (ex.name === exerciseName && ex.weight > max) max = ex.weight;
+    }
+  }
+  return weight > max;
+}
+
+function thisWeekRange() {
+  const start = new Date(); start.setDate(start.getDate() - start.getDay()); start.setHours(0,0,0,0);
+  const end = new Date(start); end.setDate(start.getDate() + 7);
+  return { start, end };
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 5) return "Late night";
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  if (h < 21) return "Good evening";
+  return "Late session";
+}
+
 /* ════════════════════════════════════════════════════════════
    PRIMITIVES
    ════════════════════════════════════════════════════════════ */
@@ -320,6 +387,90 @@ function PageTitle({ kicker, children }) {
 /* ════════════════════════════════════════════════════════════
    COMPONENTS
    ════════════════════════════════════════════════════════════ */
+
+/* ── Confetti — celebrate PRs and completions ── */
+function Confetti({ show, onDone }) {
+  useEffect(() => {
+    if (show) {
+      const t = setTimeout(() => onDone && onDone(), 2400);
+      return () => clearTimeout(t);
+    }
+  }, [show, onDone]);
+  if (!show) return null;
+  const pieces = Array.from({ length: 40 });
+  return (
+    <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 9999, overflow: "hidden" }}>
+      {pieces.map((_, i) => {
+        const colors = [C.rust, C.amber, C.moss, C.electric, C.plum];
+        const color = colors[i % colors.length];
+        const left = Math.random() * 100;
+        const delay = Math.random() * 0.4;
+        const dur = 1.6 + Math.random() * 0.8;
+        const rot = Math.random() * 360;
+        return (
+          <div key={i} style={{
+            position: "absolute", left: left + "%", top: "-12px",
+            width: 8, height: 12, background: color,
+            borderRadius: 2,
+            transform: `rotate(${rot}deg)`,
+            animation: `confetti-fall ${dur}s ${delay}s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`,
+          }} />
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Rest Timer between sets ── */
+function RestTimer({ seconds, onClose, onSkip }) {
+  const [remaining, setRemaining] = useState(seconds);
+
+  useEffect(() => {
+    if (remaining <= 0) {
+      beep(880, 0.4, 0.55);
+      speak("Time to lift");
+      onClose && onClose();
+      return;
+    }
+    if (remaining === 10) { beep(660, 0.1, 0.4); speak("Ten seconds"); }
+    if (remaining <= 3 && remaining > 0) beep(660, 0.1, 0.4);
+    const t = setTimeout(() => setRemaining(r => r - 1), 1000);
+    return () => clearTimeout(t);
+  }, [remaining]);
+
+  const pct = ((seconds - remaining) / seconds) * 100;
+  const mins = Math.floor(remaining / 60);
+  const secs = remaining % 60;
+  const display = mins > 0 ? `${mins}:${String(secs).padStart(2,"0")}` : String(secs);
+
+  return (
+    <div style={{
+      position: "fixed", bottom: 76, left: 0, right: 0,
+      background: C.panel, borderTop: `1px solid ${C.line}`,
+      padding: "16px 20px 20px", zIndex: 95,
+      animation: "ease-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both",
+      boxShadow: "0 -8px 30px rgba(0,0,0,0.08)",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div>
+          <Eyebrow color={C.electric}>Rest Timer</Eyebrow>
+          <div className="num-tab h-display" style={{ fontSize: 36, fontWeight: 700, color: C.electric, letterSpacing: "-0.04em", lineHeight: 1, marginTop: 4 }}>{display}</div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn ghost color={C.dim} onClick={() => setRemaining(r => Math.min(seconds, r + 30))} size="sm">+30s</Btn>
+          <Btn color={C.electric} onClick={onSkip} size="sm">Skip</Btn>
+        </div>
+      </div>
+      <div style={{ background: C.raised, borderRadius: 999, height: 6, overflow: "hidden" }}>
+        <div style={{
+          height: "100%", width: pct + "%",
+          background: `linear-gradient(90deg, ${C.electric}, ${C.moss})`,
+          borderRadius: 999, transition: "width 1s linear",
+        }} />
+      </div>
+    </div>
+  );
+}
 
 const PLATES = [
   { weight: 45, color: "#3B82F6", height: 80, width: 12 },
@@ -472,7 +623,7 @@ function BarbellInput({ vals, onVal }) {
   );
 }
 
-function ExRow({ ex, checked, onCheck, vals, onVal, color }) {
+function ExRow({ ex, checked, onCheck, vals, onVal, color, onRest, lastWeight }) {
   const setsDone = parseInt(vals?.setsDone) || 0;
   const targetSets = parseInt(ex.sets) || 0;
   const allSetsDone = setsDone >= targetSets && targetSets > 0;
@@ -486,6 +637,25 @@ function ExRow({ ex, checked, onCheck, vals, onVal, color }) {
   const tapSet = (i) => {
     const newCount = setsDone === i + 1 ? i : i + 1;
     onVal("setsDone", String(newCount));
+    // Trigger rest timer when ADDING a set (not when un-tapping)
+    if (newCount > setsDone && newCount < targetSets && onRest) {
+      onRest();
+    }
+    // Subtle haptic-like beep + vibration
+    beep(880, 0.04, 0.15);
+    if (navigator.vibrate) navigator.vibrate(10);
+  };
+
+  const longPressTimer = useRef(null);
+  const handlePressStart = () => {
+    longPressTimer.current = setTimeout(() => {
+      onVal("setsDone", "0");
+      beep(440, 0.2, 0.4);
+      if (navigator.vibrate) navigator.vibrate([20, 30, 20]);
+    }, 600);
+  };
+  const handlePressEnd = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
   };
 
   return (
@@ -515,10 +685,27 @@ function ExRow({ ex, checked, onCheck, vals, onVal, color }) {
           </div>
         </div>
         {!ex.noWeight && !ex.timed && !ex.bodyweight && !ex.barbell && (
-          <div style={{ width: 60, flexShrink: 0 }}>
-            <Eyebrow>lbs</Eyebrow>
-            <div style={{ height: 4 }} />
-            <NumIn value={vals?.weight} onChange={v => onVal("weight", v)} placeholder="0" />
+          <div style={{ width: 64, flexShrink: 0 }}>
+            {lastWeight && !vals?.weight ? (
+              <button onClick={() => onVal("weight", String(lastWeight))} className="btn"
+                style={{
+                  background: "transparent", border: "none", padding: 0,
+                  fontSize: 10, fontFamily: FONT_MONO, color: C.electric,
+                  letterSpacing: "0.08em", textTransform: "uppercase",
+                  fontWeight: 600, cursor: "pointer", textAlign: "center", width: "100%",
+                  marginBottom: 2,
+                }}>
+                ↻ LAST {lastWeight}
+              </button>
+            ) : (
+              <div style={{ textAlign: "center" }}><Eyebrow>lbs</Eyebrow></div>
+            )}
+            <div style={{ height: 2 }} />
+            <NumIn
+              value={vals?.weight}
+              onChange={v => onVal("weight", v)}
+              placeholder={lastWeight ? String(lastWeight) : "0"}
+            />
           </div>
         )}
       </div>
@@ -532,6 +719,11 @@ function ExRow({ ex, checked, onCheck, vals, onVal, color }) {
               <button
                 key={i}
                 onClick={() => tapSet(i)}
+                onMouseDown={handlePressStart}
+                onMouseUp={handlePressEnd}
+                onMouseLeave={handlePressEnd}
+                onTouchStart={handlePressStart}
+                onTouchEnd={handlePressEnd}
                 className="btn"
                 style={{
                   width: 36, height: 36, borderRadius: "50%", padding: 0,
@@ -551,6 +743,7 @@ function ExRow({ ex, checked, onCheck, vals, onVal, color }) {
           })}
           <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, marginLeft: 4 }}>
             {setsDone}/{targetSets}
+            {setsDone > 0 && <span style={{ marginLeft: 6, color: C.mute, fontSize: 9 }}>· hold to reset</span>}
           </span>
         </div>
       )}
@@ -688,27 +881,33 @@ function TabataTimer({ onLog }) {
 /* ── Suicide Counter ── */
 function SuicideCounter({ onLog, onClose }) {
   const [reps, setReps] = useState(0);
-  const target = 10;
+  const goal = 10; // long-term goal, not a hard limit
 
   const tap = () => {
     const next = reps + 1;
     setReps(next);
-    if (next === target) {
+    if (next === goal) {
       beep(880, 0.5, 0.6);
-      speak("Done! Ten suicides complete!");
+      speak("Goal! Ten suicides!");
+    } else if (next > goal) {
+      beep(1046, 0.3, 0.6);
+      speak("Beast mode! " + next);
     } else {
       beep(660, 0.12, 0.4);
       speak(String(next));
     }
   };
 
-  const undo = () => {
-    if (reps > 0) setReps(reps - 1);
-  };
-
+  const undo = () => { if (reps > 0) setReps(reps - 1); };
   const reset = () => setReps(0);
 
-  const done = reps >= target;
+  const reachedGoal = reps >= goal;
+  const motivational = reps === 0 ? "TAP AFTER EACH SUICIDE"
+    : reps < 3 ? "GREAT START — KEEP GOING"
+    : reps < 5 ? "HALFWAY · YOU\'RE BUILDING"
+    : reps < goal ? "SO CLOSE TO 10"
+    : reps === goal ? "✓ GOAL REACHED — BEAST"
+    : "🔥 BEYOND THE GOAL";
 
   return (
     <Surface accent={C.amber} style={{ background: C.panel }}>
@@ -716,51 +915,57 @@ function SuicideCounter({ onLog, onClose }) {
         <div>
           <Pill color={C.amber}>Court · Suicide Counter</Pill>
           <h2 className="h-display" style={{ fontSize: 26, margin: "10px 0 4px", color: C.bone }}>Tap each suicide</h2>
-          <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>10 full suicides · rest as needed between</div>
+          <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>Goal: 10 · Log whenever you\'re done</div>
         </div>
         <Btn ghost color={C.dim} onClick={onClose} size="sm">Close</Btn>
       </div>
 
-      {/* Big tap area */}
+      {/* Big tap area — ALWAYS tappable */}
       <button
         onClick={tap}
-        disabled={done}
         className="btn"
         style={{
           width: "100%", padding: "32px 0",
-          background: done ? C.moss : C.amber,
+          background: reachedGoal ? C.moss : C.amber,
           border: "none", borderRadius: 18,
-          color: "#fff", cursor: done ? "default" : "pointer",
+          color: "#fff", cursor: "pointer",
           marginBottom: 16,
-          boxShadow: `0 8px 30px ${done ? C.moss : C.amber}33`,
+          boxShadow: `0 8px 30px ${reachedGoal ? C.moss : C.amber}33`,
         }}>
         <div className="h-display num-tab" style={{ fontSize: 80, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.04em" }}>
-          {reps}<span style={{ fontSize: 32, opacity: 0.5 }}>/{target}</span>
+          {reps}<span style={{ fontSize: 32, opacity: 0.5 }}>/{goal}</span>
         </div>
-        <div style={{ fontSize: 14, fontWeight: 600, marginTop: 8, letterSpacing: "0.1em" }}>
-          {done ? "✓ DONE — TAP LOG IT" : "TAP AFTER EACH SUICIDE"}
+        <div style={{ fontSize: 13, fontWeight: 600, marginTop: 8, letterSpacing: "0.1em" }}>
+          {motivational}
         </div>
       </button>
 
-      {/* Visual dots */}
+      {/* Visual dots — dynamic, expand if user goes past goal */}
       <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
-        {Array.from({ length: target }).map((_, i) => (
+        {Array.from({ length: Math.max(goal, reps) }).map((_, i) => (
           <div key={i} style={{
             width: 14, height: 14, borderRadius: 999,
-            background: i < reps ? C.amber : "transparent",
-            border: `2px solid ${i < reps ? C.amber : C.faint}`,
+            background: i < reps ? (i >= goal ? C.moss : C.amber) : "transparent",
+            border: `2px solid ${i < reps ? (i >= goal ? C.moss : C.amber) : C.faint}`,
             transition: "all 0.2s",
           }} />
         ))}
       </div>
 
+      {/* Action buttons — Log It is ALWAYS available once you have ≥1 rep */}
       <div style={{ display: "flex", gap: 8 }}>
         <Btn ghost color={C.dim} onClick={undo} disabled={reps === 0} style={{ flex: 1 }}>Undo</Btn>
         <Btn ghost color={C.dim} onClick={reset} disabled={reps === 0} style={{ flex: 1 }}>Reset</Btn>
-        {done && (
-          <Btn color={C.moss} onClick={() => { onLog(); reset(); onClose && onClose(); }} style={{ flex: 1 }}>Log It</Btn>
-        )}
+        <Btn color={reachedGoal ? C.moss : C.amber} onClick={() => { onLog(reps); reset(); onClose && onClose(); }} disabled={reps === 0} style={{ flex: 1.4 }}>
+          Log {reps > 0 ? reps : ""}
+        </Btn>
       </div>
+
+      {reps > 0 && reps < goal && (
+        <p className="h-serif" style={{ fontSize: 13, color: C.dim, textAlign: "center", margin: "12px 0 0", fontStyle: "italic" }}>
+          Done for today? {reps} {reps === 1 ? "suicide" : "suicides"} is a real workout. Tap Log.
+        </p>
+      )}
     </Surface>
   );
 }
@@ -854,7 +1059,15 @@ function StatsTab({ history, weightLog, cardioSessions }) {
 
   return (
     <>
-      <PageTitle kicker="Numbers · don't lie">Stats</PageTitle>
+      <PageTitle kicker="Numbers · don\'t lie">Stats</PageTitle>
+
+      {gymSessions.length === 0 && cardioSessions.length === 0 && treadmillSessions.length === 0 && (
+        <Surface style={{ textAlign: "center", padding: 40 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
+          <p className="h-serif" style={{ fontSize: 18, color: C.cream, margin: 0 }}>The numbers will come.</p>
+          <div style={{ fontSize: 12, color: C.dim, marginTop: 8, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>LOG A SESSION TO SEE YOUR STATS</div>
+        </Surface>
+      )}
 
       <div className="ease-up-1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
         <StatCard kicker="GYM" value={gymSessions.length} color={C.rust} sub="sessions" />
@@ -874,6 +1087,21 @@ function StatsTab({ history, weightLog, cardioSessions }) {
             <div>
               <div className="num-tab h-display" style={{ fontSize: 38, fontWeight: 700, color: C.amber, letterSpacing: "-0.04em", lineHeight: 1 }}>{fmtNum(thisWeekVol)}</div>
               <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO, marginTop: 6 }}>THIS WEEK</div>
+              {(() => {
+                const lastWeekVol = gymSessions.filter(h => {
+                  const d = Date.now() - new Date(h.logged_at);
+                  return d >= 7*86400000 && d < 14*86400000;
+                }).reduce((a,h) => a+(h.total_volume||0), 0);
+                if (lastWeekVol === 0) return null;
+                const diff = thisWeekVol - lastWeekVol;
+                const pct = Math.round((diff / lastWeekVol) * 100);
+                const up = diff > 0;
+                return (
+                  <div style={{ fontSize: 11, color: up ? C.moss : C.red, fontFamily: FONT_MONO, marginTop: 4, fontWeight: 600 }}>
+                    {up ? "▲" : "▼"} {Math.abs(pct)}% vs last week
+                  </div>
+                );
+              })()}
             </div>
           </div>
           {wks.length >= 2 && (
@@ -946,6 +1174,7 @@ export default function App() {
   const [tab, setTab] = useState("workout");
   const [loading, setLoading] = useState(true);
   const [activeSession, setActiveSession] = useState(0);
+  const [activeSessionInit, setActiveSessionInit] = useState(false);
   const [checked, setChecked] = useState({});
   const [vals, setVals] = useState({});
   const [history, setHistory] = useState([]);
@@ -957,6 +1186,9 @@ export default function App() {
   const [cardioNotes, setCardioNotes] = useState("");
   const [cardioLogging, setCardioLogging] = useState(null);
   const [courtTimerOpen, setCourtTimerOpen] = useState(false);
+  const [restTimer, setRestTimer] = useState(null); // null or { seconds }
+  const [confetti, setConfetti] = useState(false);
+  const [restEnabled, setRestEnabled] = useState(true);
 
   const showSave = (ok) => { setSaveMsg(ok ? "Saved" : "Failed"); setTimeout(() => setSaveMsg(""), 2400); };
 
@@ -975,6 +1207,21 @@ export default function App() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Smart day suggestion: rotate A→B→C based on last gym session
+  useEffect(() => {
+    if (activeSessionInit || history.length === 0) return;
+    const lastGym = history.find(h => h.session_name && /^[ABC]:/.test(h.session_name));
+    if (lastGym) {
+      const lastCode = lastGym.session_name[0];
+      const idx = SESSIONS.findIndex(s => s.code === lastCode);
+      if (idx !== -1) {
+        const nextIdx = (idx + 1) % SESSIONS.length;
+        setActiveSession(nextIdx);
+      }
+    }
+    setActiveSessionInit(true);
+  }, [history, activeSessionInit]);
 
   const session = SESSIONS[activeSession];
   const sk = session.id;
@@ -1000,6 +1247,9 @@ export default function App() {
     if (!error && data) {
       setHistory(p => [data[0],...p]);
       const nc = {...checked}; session.exercises.forEach(ex => delete nc[sk+"_"+ex.id]); setChecked(nc);
+      const newVals = {...vals}; session.exercises.forEach(ex => delete newVals[sk+"_"+ex.id]); setVals(newVals);
+      setConfetti(true);
+      setRestTimer(null);
       showSave(true);
     } else showSave(false);
   };
@@ -1015,9 +1265,14 @@ export default function App() {
     if (!error && data) { setHistory(p => [data[0],...p]); showSave(true); } else showSave(false);
   };
 
-  const logCardio = async (workoutType) => {
+  const logCardio = async (workoutType, reps) => {
     setCardioLogging(workoutType);
-    const { data, error } = await supabase.from("cardio_sessions").insert([{ workout_type: workoutType, completed_at: new Date().toISOString(), notes: cardioNotes || null }]).select();
+    let noteText = cardioNotes || null;
+    if (workoutType === "court_intervals" && reps) {
+      const repNote = `${reps} ${reps === 1 ? "suicide" : "suicides"}`;
+      noteText = noteText ? `${repNote} · ${noteText}` : repNote;
+    }
+    const { data, error } = await supabase.from("cardio_sessions").insert([{ workout_type: workoutType, completed_at: new Date().toISOString(), notes: noteText }]).select();
     if (!error && data) { setCardioSessions(p => [data[0],...p]); setCardioNotes(""); showSave(true); } else showSave(false);
     setCardioLogging(null);
   };
@@ -1096,33 +1351,70 @@ export default function App() {
           )}
         </div>
 
-        {/* Tab rail */}
-        <div className="tab-rail" style={{ padding: "0 16px 0", borderTop: `1px solid ${C.line}` }}>
-          {TABS.map(t => {
-            const active = tab === t.id;
-            return (
-              <button key={t.id} onClick={() => setTab(t.id)} className="btn"
-                style={{
-                  flexShrink: 0, padding: "13px 14px", border: "none", background: "transparent",
-                  fontSize: 13, fontWeight: active ? 700 : 500, letterSpacing: "-0.01em",
-                  cursor: "pointer", color: active ? C.bone : C.dim,
-                  borderBottom: active ? `2px solid ${C.rust}` : "2px solid transparent",
-                  marginBottom: -1, position: "relative",
-                }}>
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
       </header>
 
-      <main style={{ padding: "20px 16px 16px", maxWidth: 480, margin: "0 auto" }}>
+      <main style={{ padding: "20px 16px 100px", maxWidth: 480, margin: "0 auto" }}>
 
         {/* ── TRAIN ── */}
-        {tab === "workout" && (
+        {tab === "workout" && (() => {
+          const streak = calcStreak(history);
+          const todaySessions = history.filter(h => new Date(h.logged_at).toDateString() === new Date().toDateString()).length;
+          const todayCardio = cardioSessions.filter(s => new Date(s.completed_at).toDateString() === new Date().toDateString()).length;
+          const todayTotal = todaySessions + todayCardio;
+          const dateStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+          return (
           <>
-            <div className="ease-up">
-              <PageTitle kicker="Today · Train">{restDay ? "Rest day." : session.name}</PageTitle>
+            {/* ── Today Hero ── */}
+            <div className="ease-up" style={{ marginBottom: 20 }}>
+              <Eyebrow>{dateStr}</Eyebrow>
+              <h1 className="h-display" style={{ fontSize: 36, margin: "8px 0 4px", color: C.bone, letterSpacing: "-0.04em", lineHeight: 1 }}>
+                {greeting()}.
+              </h1>
+              <p className="h-serif" style={{ fontSize: 17, color: C.dim, margin: "6px 0 0", lineHeight: 1.4 }}>
+                {todayTotal === 0 ? (restDay ? "Recovery is part of the work." : "Let's build the dunk.") : todayTotal === 1 ? "One down. Strong start." : `${todayTotal} sessions in today. Beast.`}
+              </p>
+
+              {/* Weight reminder if 7+ days since last weigh-in */}
+              {(() => {
+                const lastW = weightLog[0];
+                const daysSinceWeight = lastW ? Math.floor((Date.now() - new Date(lastW.logged_at)) / 86400000) : null;
+                if (daysSinceWeight !== null && daysSinceWeight >= 7) {
+                  return (
+                    <div onClick={() => setTab("weight")} className="card-tap" style={{
+                      marginTop: 14, padding: "10px 14px", borderRadius: 12,
+                      background: C.amber + "15", border: `1px solid ${C.amber}40`,
+                      display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
+                    }}>
+                      <span style={{ fontSize: 18 }}>⚖️</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: C.bone }}>Time to weigh in</div>
+                        <div style={{ fontSize: 11, color: C.dim, marginTop: 1 }}>{daysSinceWeight} days since last check</div>
+                      </div>
+                      <span style={{ fontSize: 12, color: C.amber, fontFamily: FONT_MONO }}>→</span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              {/* Streak + today stats row */}
+              <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+                <div style={{ flex: 1, background: C.panel, border: `1px solid ${streak > 0 ? C.rust + "40" : C.line}`, borderRadius: 14, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                    {streak > 0 && <span style={{ fontSize: 18 }}>🔥</span>}
+                    <span className="num-tab h-display" style={{ fontSize: 26, fontWeight: 700, color: streak > 0 ? C.rust : C.dim, letterSpacing: "-0.03em", lineHeight: 1 }}>{streak}</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4, letterSpacing: "0.08em" }}>DAY STREAK</div>
+                </div>
+                <div style={{ flex: 1, background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, padding: "12px 14px" }}>
+                  <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 700, color: todayTotal > 0 ? C.moss : C.dim, letterSpacing: "-0.03em", lineHeight: 1 }}>{todayTotal}</div>
+                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4, letterSpacing: "0.08em" }}>TODAY</div>
+                </div>
+                <div style={{ flex: 1, background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, padding: "12px 14px" }}>
+                  <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 700, color: thisWeek > 0 ? C.amber : C.dim, letterSpacing: "-0.03em", lineHeight: 1 }}>{thisWeek}</div>
+                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4, letterSpacing: "0.08em" }}>THIS WEEK</div>
+                </div>
+              </div>
             </div>
 
             <div className="ease-up-1"><TabataTimer onLog={logTabata} /></div>
@@ -1190,6 +1482,8 @@ export default function App() {
                     vals={vals[sk+"_"+ex.id] || {}}
                     onVal={(f,v) => setVal(sk+"_"+ex.id, f, v)}
                     color={session.color}
+                    onRest={restEnabled && !ex.timed && !ex.noWeight ? () => setRestTimer({ seconds: 90 }) : null}
+                    lastWeight={getLastWeight(history, ex.name)}
                   />
                 ))}
                 <Btn color={session.color} onClick={logSession} disabled={!anyChecked} full size="lg" style={{ marginTop: 18 }}>
@@ -1198,156 +1492,157 @@ export default function App() {
               </Surface>
             </div>
 
+
+            {/* ─── CARDIO HIIT ─── */}
+            {(() => {
+              const last30 = cardioSessions.filter(s => (Date.now()-new Date(s.completed_at))/86400000 <= 30);
+              const startOfWeek = new Date(); startOfWeek.setDate(startOfWeek.getDate()-startOfWeek.getDay()); startOfWeek.setHours(0,0,0,0);
+              const thisWeekCardio = cardioSessions.filter(s => new Date(s.completed_at) >= startOfWeek);
+              const weekDays = ["S","M","T","W","T","F","S"];
+              const weekFull = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+              const weekSessions = weekDays.map((_,i) => {
+                const day = new Date(startOfWeek); day.setDate(startOfWeek.getDate()+i);
+                return cardioSessions.find(s => new Date(s.completed_at).toDateString() === day.toDateString()) || null;
+              });
+
+              return (
+                <>
+                  <div style={{ marginTop: 32, marginBottom: 16 }}>
+                    <Eyebrow color={C.amber}>Cardio · HIIT</Eyebrow>
+                    <h2 className="h-display" style={{ fontSize: 28, margin: "8px 0 4px", color: C.bone, letterSpacing: "-0.03em" }}>Conditioning</h2>
+                    <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>2 sessions/week · 48h recovery between</div>
+                  </div>
+
+                  {/* Whats Next */}
+                  <Surface accent={cardioOverdue ? C.red : cardioInRecovery ? C.faint : CARDIO_TYPES[nextCardioType].color} padding={20}>
+                    <Eyebrow color={cardioOverdue ? C.red : C.dim}>What's Next</Eyebrow>
+                    {!lastCardio ? (
+                      <div className="h-display" style={{ fontSize: 22, marginTop: 10, color: C.bone, letterSpacing: "-0.02em" }}>No sessions yet — pick one below 🏁</div>
+                    ) : cardioInRecovery ? (
+                      <>
+                        <div className="h-display" style={{ fontSize: 26, marginTop: 10, color: C.bone, letterSpacing: "-0.03em" }}>{CARDIO_TYPES[nextCardioType].icon} {CARDIO_TYPES[nextCardioType].label}</div>
+                        <div style={{ fontSize: 13, color: C.electric, marginTop: 6, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>READY IN {hoursUntilCardio}h</div>
+                      </>
+                    ) : cardioOverdue ? (
+                      <>
+                        <div className="h-display" style={{ fontSize: 26, marginTop: 10, color: C.red, letterSpacing: "-0.03em" }}>{CARDIO_TYPES[nextCardioType].icon} Do today</div>
+                        <div style={{ fontSize: 13, color: C.red, marginTop: 6, fontFamily: FONT_MONO }}>{Math.floor(hoursSinceCardio/24)}d since last</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="h-display" style={{ fontSize: 26, marginTop: 10, color: C.bone, letterSpacing: "-0.03em" }}>{CARDIO_TYPES[nextCardioType].icon} {CARDIO_TYPES[nextCardioType].label}</div>
+                        <div style={{ fontSize: 13, color: C.moss, marginTop: 6, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>READY · LET'S GO</div>
+                      </>
+                    )}
+                  </Surface>
+
+                  {/* Weekly Grid */}
+                  <Surface>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+                      <Eyebrow>This Week · 2× Target</Eyebrow>
+                      <span style={{ fontSize: 13, fontFamily: FONT_MONO, color: thisWeekCardio.length >= 2 ? C.moss : C.dim, fontWeight: 600 }}>
+                        {thisWeekCardio.length}/2 {thisWeekCardio.length >= 2 && "✓"}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {weekDays.map((d, i) => {
+                        const s = weekSessions[i];
+                        const w = s ? CARDIO_TYPES[s.workout_type] : null;
+                        const isToday = new Date().getDay() === i;
+                        return (
+                          <div key={i} style={{ flex: 1 }}>
+                            <div style={{ fontSize: 10, color: isToday ? C.rust : C.dim, marginBottom: 6, fontWeight: 700, fontFamily: FONT_MONO, letterSpacing: "0.1em", textAlign: "center" }}>
+                              {d}
+                            </div>
+                            <div style={{
+                              aspectRatio: "1", borderRadius: 12,
+                              background: s ? w.color+"22" : C.raised,
+                              border: `1px solid ${s ? w.color+"55" : isToday ? C.rust+"55" : C.line}`,
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: 18,
+                            }}>
+                              {s ? w.icon : isToday ? <div className="pulse-dot" style={{ width: 6, height: 6, borderRadius: 999, background: C.rust }} /> : ""}
+                            </div>
+                            <div style={{ fontSize: 9, color: C.mute, fontFamily: FONT_MONO, textAlign: "center", marginTop: 5 }}>
+                              {weekFull[i].slice(0,3).toUpperCase()}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Surface>
+
+                  {/* Court Counter */}
+                  {courtTimerOpen && (
+                    <SuicideCounter
+                      onLog={(reps) => logCardio("court_intervals", reps)}
+                      onClose={() => setCourtTimerOpen(false)}
+                    />
+                  )}
+
+                  {/* Workout Cards */}
+                  {Object.entries(CARDIO_TYPES).map(([key, w]) => (
+                    <Surface key={key} accent={w.color}>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14 }}>
+                        <div>
+                          <div style={{ fontSize: 32 }}>{w.icon}</div>
+                          <h3 className="h-display" style={{ fontSize: 22, margin: "10px 0 4px", color: C.bone, letterSpacing: "-0.02em" }}>{w.label}</h3>
+                          <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.5, fontFamily: FONT_MONO, marginTop: 4 }}>{w.detail}</div>
+                        </div>
+                        <Pill color={w.color}>{w.duration}</Pill>
+                      </div>
+                      <input
+                        type="text" placeholder="Notes (optional)" value={cardioNotes} onChange={e => setCardioNotes(e.target.value)}
+                        style={{ background: C.raised, border: `1px solid ${C.line}`, borderRadius: 10, color: C.bone, padding: "10px 14px", fontSize: 13, width: "100%", marginBottom: 12, outline: "none" }}
+                      />
+                      {key === "court_intervals" && !courtTimerOpen && (
+                        <Btn color={w.color} onClick={() => setCourtTimerOpen(true)} full style={{ marginBottom: 8 }}>
+                          Open Suicide Counter
+                        </Btn>
+                      )}
+                      <Btn ghost={key === "court_intervals"} color={w.color} onClick={() => logCardio(key)} disabled={!!cardioLogging} full>
+                        {cardioLogging === key ? "Logging…" : `Log ${w.label}${key === "court_intervals" ? " manually" : ""}`}
+                      </Btn>
+                    </Surface>
+                  ))}
+
+                  {last30.length > 0 && (
+                    <>
+                      <div style={{ marginTop: 16, marginBottom: 12 }}>
+                        <Eyebrow>Recent Cardio</Eyebrow>
+                      </div>
+                      {last30.map((s, i) => {
+                        const w = CARDIO_TYPES[s.workout_type];
+                        const prev = last30[i+1];
+                        const gap = prev ? Math.round((new Date(s.completed_at)-new Date(prev.completed_at))/3600000) : null;
+                        return (
+                          <Surface key={s.id} accent={w.color} padding={14}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                              <div style={{ width: 40, height: 40, borderRadius: 10, background: w.color+"22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>{w.icon}</div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: C.bone, letterSpacing: "-0.01em" }}>{w.label}</div>
+                                <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>
+                                  {daysAgo(s.completed_at)} · {new Date(s.completed_at).toLocaleDateString("en-CA")}
+                                  {gap !== null && <span style={{ marginLeft: 6, color: gap >= 48 ? C.moss : C.red }}>{gap}h gap</span>}
+                                </div>
+                                {s.notes && <div className="h-serif" style={{ fontSize: 13, color: C.cream, marginTop: 4 }}>"{s.notes}"</div>}
+                              </div>
+                              <button onClick={() => deleteCardio(s.id)} className="btn" style={{ background: "transparent", border: "none", color: C.mute, cursor: "pointer", fontSize: 14, padding: 8 }}>✕</button>
+                            </div>
+                          </Surface>
+                        );
+                      })}
+                    </>
+                  )}
+                </>
+              );
+            })()}
+
             <p className="h-serif" style={{ textAlign: "center", color: C.dim, fontSize: 16, margin: "24px 0 0" }}>
               "I am a basketball player who trains."
               <span style={{ display: "block", fontFamily: FONT_MONO, fontStyle: "normal", fontSize: 10, letterSpacing: "0.15em", marginTop: 6 }}>— JAMES CLEAR</span>
             </p>
           </>
-        )}
-
-        {/* ── CARDIO ── */}
-        {tab === "cardio" && (() => {
-          const last30 = cardioSessions.filter(s => (Date.now()-new Date(s.completed_at))/86400000 <= 30);
-          const startOfWeek = new Date(); startOfWeek.setDate(startOfWeek.getDate()-startOfWeek.getDay()); startOfWeek.setHours(0,0,0,0);
-          const thisWeekCardio = cardioSessions.filter(s => new Date(s.completed_at) >= startOfWeek);
-          const weekDays = ["S","M","T","W","T","F","S"];
-          const weekFull = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-          const weekSessions = weekDays.map((_,i) => {
-            const day = new Date(startOfWeek); day.setDate(startOfWeek.getDate()+i);
-            return cardioSessions.find(s => new Date(s.completed_at).toDateString() === day.toDateString()) || null;
-          });
-          return (
-            <>
-              <div className="ease-up"><PageTitle kicker="Conditioning · HIIT">Cardio</PageTitle></div>
-
-              {/* Whats Next */}
-              <div className="ease-up-1">
-                <Surface accent={cardioOverdue ? C.red : cardioInRecovery ? C.faint : CARDIO_TYPES[nextCardioType].color} padding={22}>
-                  <Eyebrow color={cardioOverdue ? C.red : C.dim}>What's Next</Eyebrow>
-                  {!lastCardio ? (
-                    <div className="h-display" style={{ fontSize: 24, marginTop: 10, color: C.bone, letterSpacing: "-0.02em" }}>No sessions yet — pick one below 🏁</div>
-                  ) : cardioInRecovery ? (
-                    <>
-                      <div className="h-display" style={{ fontSize: 30, marginTop: 10, color: C.bone, letterSpacing: "-0.03em" }}>{CARDIO_TYPES[nextCardioType].icon} {CARDIO_TYPES[nextCardioType].label}</div>
-                      <div style={{ fontSize: 13, color: C.electric, marginTop: 6, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>READY IN {hoursUntilCardio}h</div>
-                    </>
-                  ) : cardioOverdue ? (
-                    <>
-                      <div className="h-display" style={{ fontSize: 30, marginTop: 10, color: C.red, letterSpacing: "-0.03em" }}>{CARDIO_TYPES[nextCardioType].icon} Do today</div>
-                      <div style={{ fontSize: 13, color: C.red, marginTop: 6, fontFamily: FONT_MONO }}>{Math.floor(hoursSinceCardio/24)}d since last</div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="h-display" style={{ fontSize: 30, marginTop: 10, color: C.bone, letterSpacing: "-0.03em" }}>{CARDIO_TYPES[nextCardioType].icon} {CARDIO_TYPES[nextCardioType].label}</div>
-                      <div style={{ fontSize: 13, color: C.moss, marginTop: 6, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>READY · LET'S GO</div>
-                    </>
-                  )}
-                </Surface>
-              </div>
-
-              {/* Weekly Grid */}
-              <div className="ease-up-2">
-                <Surface>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
-                    <Eyebrow>This Week · 2× Target</Eyebrow>
-                    <span style={{ fontSize: 13, fontFamily: FONT_MONO, color: thisWeekCardio.length >= 2 ? C.moss : C.dim, fontWeight: 600 }}>
-                      {thisWeekCardio.length}/2 {thisWeekCardio.length >= 2 && "✓"}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {weekDays.map((d,i) => {
-                      const s = weekSessions[i];
-                      const w = s ? CARDIO_TYPES[s.workout_type] : null;
-                      const isToday = new Date().getDay() === i;
-                      return (
-                        <div key={i} style={{ flex: 1 }}>
-                          <div style={{ fontSize: 10, color: isToday ? C.rust : C.dim, marginBottom: 6, fontWeight: 700, fontFamily: FONT_MONO, letterSpacing: "0.1em", textAlign: "center" }}>
-                            {d}
-                          </div>
-                          <div style={{
-                            aspectRatio: "1", borderRadius: 12,
-                            background: s ? w.color+"22" : C.raised,
-                            border: `1px solid ${s ? w.color+"55" : isToday ? C.rust+"55" : C.line}`,
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            fontSize: 18,
-                          }}>
-                            {s ? w.icon : isToday ? <div className="pulse-dot" style={{ width: 6, height: 6, borderRadius: 999, background: C.rust }} /> : ""}
-                          </div>
-                          <div style={{ fontSize: 9, color: C.mute, fontFamily: FONT_MONO, textAlign: "center", marginTop: 5 }}>
-                            {weekFull[i].slice(0,3).toUpperCase()}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </Surface>
-              </div>
-
-              {/* Court Interval Counter (when open) */}
-              {courtTimerOpen && (
-                <SuicideCounter
-                  onLog={() => logCardio("court_intervals")}
-                  onClose={() => setCourtTimerOpen(false)}
-                />
-              )}
-
-              {/* Workout Cards */}
-              {Object.entries(CARDIO_TYPES).map(([key, w], idx) => (
-                <div key={key} className={`ease-up-${4}`} style={{ animationDelay: `${0.2 + idx * 0.05}s` }}>
-                  <Surface accent={w.color}>
-                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14 }}>
-                      <div>
-                        <div style={{ fontSize: 32 }}>{w.icon}</div>
-                        <h3 className="h-display" style={{ fontSize: 24, margin: "10px 0 4px", color: C.bone, letterSpacing: "-0.02em" }}>{w.label}</h3>
-                        <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.5, fontFamily: FONT_MONO, marginTop: 4 }}>{w.detail}</div>
-                      </div>
-                      <Pill color={w.color}>{w.duration}</Pill>
-                    </div>
-                    <input
-                      type="text" placeholder="Notes (optional)" value={cardioNotes} onChange={e => setCardioNotes(e.target.value)}
-                      style={{ background: C.raised, border: `1px solid ${C.line}`, borderRadius: 10, color: C.bone, padding: "10px 14px", fontSize: 13, width: "100%", marginBottom: 12, outline: "none" }}
-                    />
-                    {key === "court_intervals" && !courtTimerOpen && (
-                      <Btn color={w.color} onClick={() => setCourtTimerOpen(true)} full style={{ marginBottom: 8 }}>
-                        Open Suicide Counter
-                      </Btn>
-                    )}
-                    <Btn ghost={key === "court_intervals"} color={w.color} onClick={() => logCardio(key)} disabled={!!cardioLogging} full>
-                      {cardioLogging === key ? "Logging…" : `Log ${w.label}${key === "court_intervals" ? " manually" : ""}`}
-                    </Btn>
-                  </Surface>
-                </div>
-              ))}
-
-              {last30.length > 0 && (
-                <>
-                  <div style={{ marginTop: 16, marginBottom: 12 }}>
-                    <Eyebrow>Recent</Eyebrow>
-                  </div>
-                  {last30.map((s, i) => {
-                    const w = CARDIO_TYPES[s.workout_type];
-                    const prev = last30[i+1];
-                    const gap = prev ? Math.round((new Date(s.completed_at)-new Date(prev.completed_at))/3600000) : null;
-                    return (
-                      <Surface key={s.id} accent={w.color} padding={14}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          <div style={{ width: 40, height: 40, borderRadius: 10, background: w.color+"22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>{w.icon}</div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 14, fontWeight: 600, color: C.bone, letterSpacing: "-0.01em" }}>{w.label}</div>
-                            <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>
-                              {daysAgo(s.completed_at)} · {new Date(s.completed_at).toLocaleDateString("en-CA")}
-                              {gap !== null && <span style={{ marginLeft: 6, color: gap >= 48 ? C.moss : C.red }}>{gap}h gap</span>}
-                            </div>
-                            {s.notes && <div className="h-serif" style={{ fontSize: 13, color: C.cream, marginTop: 4 }}>"{s.notes}"</div>}
-                          </div>
-                          <button onClick={() => deleteCardio(s.id)} className="btn" style={{ background: "transparent", border: "none", color: C.mute, cursor: "pointer", fontSize: 14, padding: 8 }}>✕</button>
-                        </div>
-                      </Surface>
-                    );
-                  })}
-                </>
-              )}
-            </>
           );
         })()}
 
@@ -1530,6 +1825,42 @@ export default function App() {
           <>
             <div className="ease-up"><PageTitle kicker="16 weeks · 1 dunk">The Plan</PageTitle></div>
 
+            {/* Quick Settings */}
+            <div className="ease-up-1">
+              <Surface>
+                <Eyebrow color={C.electric}>Settings</Eyebrow>
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.line}` }}>
+                    <div>
+                      <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>Rest timer</div>
+                      <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Auto-start after each set</div>
+                    </div>
+                    <button onClick={() => setRestEnabled(!restEnabled)} className="btn"
+                      style={{
+                        width: 50, height: 28, borderRadius: 14, border: "none",
+                        background: restEnabled ? C.moss : C.faint,
+                        position: "relative", cursor: "pointer", padding: 0,
+                        transition: "background 0.2s",
+                      }}>
+                      <div style={{
+                        width: 22, height: 22, borderRadius: 999, background: "#fff",
+                        position: "absolute", top: 3, left: restEnabled ? 25 : 3,
+                        transition: "left 0.2s cubic-bezier(0.22, 1, 0.36, 1)",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                      }} />
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
+                    <div>
+                      <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>Smart day suggest</div>
+                      <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Auto-rotate A → B → C</div>
+                    </div>
+                    <span style={{ fontSize: 11, color: C.moss, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>● ON</span>
+                  </div>
+                </div>
+              </Surface>
+            </div>
+
             {PHASES.map((p, i) => (
               <div key={i} className={`ease-up-${Math.min(i+1, 4)}`}>
                 <Surface accent={p.color}>
@@ -1591,6 +1922,50 @@ export default function App() {
         )}
 
       </main>
+
+      {/* ── Floating overlays ── */}
+      <Confetti show={confetti} onDone={() => setConfetti(false)} />
+      {restTimer && (
+        <RestTimer
+          seconds={restTimer.seconds}
+          onClose={() => setRestTimer(null)}
+          onSkip={() => setRestTimer(null)}
+        />
+      )}
+
+      {/* ── Bottom Navigation ── */}
+      <nav style={{
+        position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 90,
+        background: `${C.ink}F2`, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+        borderTop: `1px solid ${C.line}`,
+        padding: "8px 4px calc(8px + env(safe-area-inset-bottom)) 4px",
+        display: "flex", justifyContent: "space-around",
+      }}>
+        {TABS.map(t => {
+          const active = tab === t.id;
+          return (
+            <button key={t.id} onClick={() => { setTab(t.id); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="btn"
+              style={{
+                flex: 1, padding: "8px 4px", border: "none", background: "transparent",
+                cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                position: "relative",
+              }}>
+              <span style={{ fontSize: 20, opacity: active ? 1 : 0.55, transition: "opacity 0.2s, transform 0.2s", transform: active ? "scale(1.05)" : "scale(1)" }}>
+                {t.icon}
+              </span>
+              <span style={{
+                fontSize: 10, fontWeight: active ? 700 : 500,
+                color: active ? C.rust : C.dim,
+                letterSpacing: "0.02em", fontFamily: FONT_DISPLAY,
+                transition: "color 0.2s",
+              }}>
+                {t.label}
+              </span>
+              {active && <div style={{ position: "absolute", top: 0, left: "30%", right: "30%", height: 2, background: C.rust, borderRadius: 999 }} />}
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }
