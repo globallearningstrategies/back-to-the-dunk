@@ -240,6 +240,198 @@ const ANYTIME_PROTEIN = [
   { name: "Beef jerky (Jack Link's Original)", protein: 12, note: "OU. Note: not all flavors certified." },
 ];
 
+/* ── MEAL COMBINATIONS — complete plates, not ingredients ── */
+/* Each has total protein & calories, plus a breakdown showing each component */
+
+const PRE_WORKOUT_MEALS = [
+  {
+    name: "The Pre-Lift Power Bowl",
+    timing: "60–90 min before",
+    totalProtein: 42, calories: 520,
+    components: [
+      "1 cup oatmeal (cooked w/ water)",
+      "1 scoop whey isolate (vanilla)",
+      "1 banana sliced on top",
+      "1 tbsp almond butter, cinnamon, drizzle of honey",
+    ],
+    why: "Slow carbs (oats) + complete protein (whey) + quick fuel (banana). Sustains heavy compound lifts for 60–90 min.",
+    bestFor: "Strength + Power day · Full Body Circuit",
+  },
+  {
+    name: "Bagel & Lox Stack",
+    timing: "90 min before",
+    totalProtein: 38, calories: 580,
+    components: [
+      "1 whole wheat bagel, toasted",
+      "3 oz smoked salmon (lox)",
+      "2 tbsp whipped cream cheese",
+      "Sliced tomato, red onion, capers",
+      "8 oz orange juice",
+    ],
+    why: "Heavy day fuel — carbs from bagel + OJ, complete protein + omegas from lox. Sodium helps the pump.",
+    bestFor: "Heavy squat or deadlift day",
+  },
+  {
+    name: "Greek Yogurt Parfait + Eggs",
+    timing: "60 min before",
+    totalProtein: 35, calories: 420,
+    components: [
+      "1 cup Fage 2% Greek yogurt",
+      "2 hard-boiled eggs",
+      "½ cup granola (Bear Naked or KIND, OU)",
+      "Handful of berries + honey",
+    ],
+    why: "Pareve-flexible. Combines fast (whey in yogurt) and slower (eggs, granola) protein for steady energy.",
+    bestFor: "Basketball + Conditioning day",
+  },
+  {
+    name: "Tuna Pita + Banana",
+    timing: "45–60 min before",
+    totalProtein: 32, calories: 410,
+    components: [
+      "1 whole wheat pita",
+      "1 pouch tuna (StarKist OU)",
+      "1 tbsp olive oil mayo, lettuce, tomato",
+      "1 banana on the side",
+    ],
+    why: "Lean protein + complex carbs. Sits light, no dairy bloat for court work.",
+    bestFor: "Basketball + Conditioning · pickup runs",
+  },
+  {
+    name: "Quick Coffee + Quest Stack",
+    timing: "20–30 min before",
+    totalProtein: 25, calories: 280,
+    components: [
+      "1 Quest bar (chocolate chip cookie dough)",
+      "Black coffee or espresso",
+      "2 Medjool dates",
+    ],
+    why: "Minimal prep, gym-bag friendly. Caffeine + dates = fast energy. Quest bar handles protein.",
+    bestFor: "Early-morning lift · short notice",
+  },
+  {
+    name: "PB&J + Protein Shake (Old Reliable)",
+    timing: "45–60 min before",
+    totalProtein: 35, calories: 510,
+    components: [
+      "2 slices whole grain bread",
+      "2 tbsp natural peanut butter",
+      "1 tbsp jelly",
+      "1 Fairlife Core Power 26g shake",
+    ],
+    why: "The classic. Quick to throw together at 6am. Carbs, fats, complete protein in 5 minutes.",
+    bestFor: "Any session · busy mornings",
+  },
+];
+
+const POST_WORKOUT_MEALS = [
+  {
+    name: "The Recovery Plate (chicken & rice)",
+    timing: "Within 60–90 min",
+    totalProtein: 55, calories: 680,
+    components: [
+      "8 oz grilled chicken breast",
+      "1 cup white or jasmine rice",
+      "Roasted broccoli + olive oil",
+      "Lemon, garlic, herbs",
+    ],
+    why: "The legendary post-lift meal. High leucine for muscle protein synthesis + carbs to replenish glycogen.",
+    bestFor: "Strength + Power day · max recovery",
+  },
+  {
+    name: "Salmon + Sweet Potato Fix",
+    timing: "Within 90 min",
+    totalProtein: 42, calories: 590,
+    components: [
+      "6 oz baked salmon",
+      "1 large baked sweet potato",
+      "Sautéed spinach with garlic",
+      "Drizzle of olive oil + sea salt",
+    ],
+    why: "Omega-3s reduce inflammation from heavy lifting. Sweet potato refills glycogen without spiking insulin hard.",
+    bestFor: "Heavy leg day · joint recovery",
+  },
+  {
+    name: "Fairlife Shake + Real Food Combo",
+    timing: "Shake within 30 min, meal within 90",
+    totalProtein: 60, calories: 620,
+    components: [
+      "1 Fairlife Core Power 42g (right after lift)",
+      "Then 90 min later: 2 cups pasta with marinara",
+      "+ 4 oz ground turkey or beef",
+      "+ side salad with vinaigrette",
+    ],
+    why: "Two-stage recovery. Fast-acting whey shuts down catabolism immediately, real meal does the rebuild work.",
+    bestFor: "Hardest sessions · double protein hit",
+  },
+  {
+    name: "Steak Tacos (Carne Asada Style)",
+    timing: "Within 90 min",
+    totalProtein: 48, calories: 720,
+    components: [
+      "5 oz flank or skirt steak (kosher cut)",
+      "3 corn tortillas",
+      "Black beans (½ cup)",
+      "Pico de gallo, avocado, cilantro, lime",
+    ],
+    why: "Complete protein + iron from red meat. Carbs from tortillas + beans. Fights post-lift fatigue.",
+    bestFor: "Heavy pull day · weekend lift",
+  },
+  {
+    name: "Big Breakfast for Dinner",
+    timing: "Within 60 min",
+    totalProtein: 45, calories: 640,
+    components: [
+      "4 large eggs + 2 egg whites scrambled",
+      "2 slices sourdough toast",
+      "½ avocado",
+      "1 cup berries + Greek yogurt on side",
+    ],
+    why: "Cheap, fast, dense. All complete proteins. Works as legit dinner if you trained in the evening.",
+    bestFor: "Late-night lifts · simple meal prep",
+  },
+  {
+    name: "Cottage Cheese Power Bowl",
+    timing: "Within 60 min · also pre-bed",
+    totalProtein: 38, calories: 460,
+    components: [
+      "1.5 cups cottage cheese (Friendship OU-D)",
+      "½ cup pineapple chunks",
+      "Handful of granola",
+      "1 tbsp honey + cinnamon",
+    ],
+    why: "Casein in cottage cheese digests slow — feeds muscles for 6+ hours. Doubles as a perfect pre-bed meal.",
+    bestFor: "Evening workouts · before sleep",
+  },
+  {
+    name: "Lox & Bagel Recovery (Sunday Morning)",
+    timing: "Within 90 min",
+    totalProtein: 35, calories: 540,
+    components: [
+      "1 everything bagel",
+      "4 oz Nova lox",
+      "2 tbsp cream cheese",
+      "Capers, red onion, tomato, cucumber",
+    ],
+    why: "Carbs + protein + omega-3s in one nostalgic plate. Perfect after a Sunday morning lift.",
+    bestFor: "Weekend basketball + lift session",
+  },
+  {
+    name: "Turkey & Avocado Power Wrap",
+    timing: "Within 60 min",
+    totalProtein: 40, calories: 520,
+    components: [
+      "Large whole-wheat tortilla",
+      "5 oz Empire turkey breast slices",
+      "½ avocado, lettuce, tomato",
+      "1 tbsp hummus, mustard",
+      "Side: apple + handful of almonds",
+    ],
+    why: "Portable, no microwave needed. Lean protein + healthy fats. Easy to prep night before.",
+    bestFor: "Lunch break workouts · meal-prep day",
+  },
+];
+
 /* Protein target: 1g per pound of bodyweight (high-end for muscle gain + cut) */
 const calcProteinTarget = (weightLbs) => Math.round(weightLbs * 1.0);
 const calcCalorieTarget = (weightLbs, heightInches, age = 35, activityFactor = 1.55) => {
@@ -385,6 +577,46 @@ function getLastWeight(history, exerciseName) {
     if (ex && ex.weight > 0) return ex.weight;
   }
   return null;
+}
+
+// Richer lookup: returns { weight, reps, sets, daysAgo } for the most recent session
+// containing this exercise, or null if never logged.
+function getLastPerformance(history, exerciseName) {
+  for (const h of history) {
+    const ex = (h.exercises || []).find(e => e.name === exerciseName);
+    if (ex && ex.weight > 0) {
+      const logged = h.logged_at ? new Date(h.logged_at) : null;
+      const daysAgo = logged ? Math.max(0, Math.floor((Date.now() - logged.getTime()) / 86400000)) : null;
+      return {
+        weight: ex.weight,
+        reps: ex.reps,        // can be a number or "10,8,6" string
+        sets: ex.sets,
+        daysAgo,
+      };
+    }
+  }
+  return null;
+}
+
+// Greedy: given a target TOTAL barbell weight, compute the plates to load PER SIDE.
+// Bar = 45 lb. Returns an array of plate weights (heaviest first) or null if impossible.
+function platesToReach(totalLbs) {
+  const target = (parseFloat(totalLbs) || 0) - 45;
+  if (target <= 0) return [];
+  const perSide = target / 2;
+  // Allow ~0.05 lb tolerance for floating point
+  if (Math.abs(perSide - Math.round(perSide * 2) / 2) > 0.05 && perSide < 2.5) return null;
+  const sizes = [45, 35, 25, 10, 5, 2.5];
+  const result = [];
+  let remaining = perSide;
+  for (const w of sizes) {
+    while (remaining >= w - 0.01) {
+      result.push(w);
+      remaining -= w;
+    }
+  }
+  if (remaining > 0.05) return null; // can't make exact total with standard plates
+  return result;
 }
 
 function isPR(history, exerciseName, weight) {
@@ -768,11 +1000,13 @@ function parsePlates(str) {
   try { return JSON.parse(str); } catch(e) { return []; }
 }
 
-function BarbellInput({ vals, onVal }) {
+function BarbellInput({ vals, onVal, lastPerf }) {
   const platesStr = vals?.plates || "[]";
   const plates = parsePlates(platesStr);
   const perSide = plates.reduce((sum, w) => sum + w, 0);
   const total = 45 + perSide * 2;
+  const isEmpty = plates.length === 0;
+  const lastPlates = lastPerf ? platesToReach(lastPerf.weight) : null;
 
   const addPlate = (weight) => {
     const next = [...plates, weight].sort((a,b) => b-a);
@@ -792,6 +1026,12 @@ function BarbellInput({ vals, onVal }) {
     onVal("perSide", "0");
   };
 
+  const loadLast = () => {
+    if (!lastPlates) return;
+    onVal("plates", JSON.stringify([...lastPlates].sort((a,b) => b-a)));
+    onVal("perSide", String(lastPlates.reduce((a,b) => a+b, 0)));
+  };
+
   // Visualize: render plates from heaviest (innermost) to lightest (outermost)
   return (
     <div style={{
@@ -805,6 +1045,36 @@ function BarbellInput({ vals, onVal }) {
           {total}<span style={{ fontSize: 12, color: C.dim, fontWeight: 500, marginLeft: 4 }}>lbs</span>
         </span>
       </div>
+
+      {/* "Load last" prompt — only shows when bar is empty AND we have history */}
+      {isEmpty && lastPerf && lastPlates && (
+        <button onClick={loadLast} className="btn"
+          style={{
+            width: "100%", padding: "10px 12px", marginBottom: 12,
+            background: "transparent",
+            border: `1px dashed ${C.electric}`,
+            borderRadius: 10,
+            color: C.electric,
+            fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.05em",
+            cursor: "pointer", textTransform: "uppercase", fontWeight: 600,
+          }}>
+          ↻ Load last: {lastPerf.weight} lb × {String(lastPerf.reps).split(",")[0]} reps
+          {lastPerf.daysAgo !== null && (
+            <span style={{ color: C.mute, marginLeft: 6, fontSize: 9 }}>
+              ({lastPerf.daysAgo === 0 ? "today" : lastPerf.daysAgo === 1 ? "1d ago" : `${lastPerf.daysAgo}d ago`})
+            </span>
+          )}
+        </button>
+      )}
+      {isEmpty && lastPerf && !lastPlates && (
+        <div style={{
+          marginBottom: 12, padding: "8px 12px",
+          fontFamily: FONT_MONO, fontSize: 10, color: C.mute,
+          letterSpacing: "0.05em", textAlign: "center",
+        }}>
+          LAST: {lastPerf.weight} LB × {String(lastPerf.reps).split(",")[0]} (can't auto-load — odd plate combo)
+        </div>
+      )}
 
       {/* Visual barbell */}
       <div style={{
@@ -905,7 +1175,7 @@ function BarbellInput({ vals, onVal }) {
   );
 }
 
-function ExRow({ ex, checked, onCheck, vals, onVal, color, onRest, lastWeight, onEditReps }) {
+function ExRow({ ex, checked, onCheck, vals, onVal, color, onRest, lastPerf, onEditReps }) {
   const setsDone = parseInt(vals?.setsDone) || 0;
   const targetSets = parseInt(ex.sets) || 0;
   const allSetsDone = setsDone >= targetSets && targetSets > 0;
@@ -988,17 +1258,23 @@ function ExRow({ ex, checked, onCheck, vals, onVal, color, onRest, lastWeight, o
           </div>
         </div>
         {!ex.noWeight && !ex.timed && !ex.bodyweight && !ex.barbell && (
-          <div style={{ width: 64, flexShrink: 0 }}>
-            {lastWeight && !vals?.weight ? (
-              <button onClick={() => onVal("weight", String(lastWeight))} className="btn"
+          <div style={{ width: 72, flexShrink: 0 }}>
+            {lastPerf && !vals?.weight ? (
+              <button onClick={() => onVal("weight", String(lastPerf.weight))} className="btn"
+                title={lastPerf.daysAgo === 0 ? "Today" : lastPerf.daysAgo === 1 ? "Yesterday" : `${lastPerf.daysAgo} days ago`}
                 style={{
                   background: "transparent", border: "none", padding: 0,
                   fontSize: 10, fontFamily: FONT_MONO, color: C.electric,
-                  letterSpacing: "0.08em", textTransform: "uppercase",
+                  letterSpacing: "0.06em", textTransform: "uppercase",
                   fontWeight: 600, cursor: "pointer", textAlign: "center", width: "100%",
-                  marginBottom: 2,
+                  marginBottom: 2, lineHeight: 1.25,
                 }}>
-                ↻ LAST {lastWeight}
+                ↻ {lastPerf.weight}<span style={{ color: C.dim }}> × {String(lastPerf.reps).split(",")[0]}</span>
+                {lastPerf.daysAgo !== null && (
+                  <div style={{ fontSize: 8, color: C.mute, marginTop: 1, fontWeight: 500 }}>
+                    {lastPerf.daysAgo === 0 ? "TODAY" : lastPerf.daysAgo === 1 ? "1D AGO" : `${lastPerf.daysAgo}D AGO`}
+                  </div>
+                )}
               </button>
             ) : (
               <div style={{ textAlign: "center" }}><Eyebrow>lbs</Eyebrow></div>
@@ -1007,7 +1283,7 @@ function ExRow({ ex, checked, onCheck, vals, onVal, color, onRest, lastWeight, o
             <NumIn
               value={vals?.weight}
               onChange={v => onVal("weight", v)}
-              placeholder={lastWeight ? String(lastWeight) : "0"}
+              placeholder={lastPerf ? String(lastPerf.weight) : "0"}
               decimal={true}
               step="0.5"
             />
@@ -1077,7 +1353,7 @@ function ExRow({ ex, checked, onCheck, vals, onVal, color, onRest, lastWeight, o
         </div>
       )}
 
-      {ex.barbell && <BarbellInput vals={vals} onVal={onVal} />}
+      {ex.barbell && <BarbellInput vals={vals} onVal={onVal} lastPerf={lastPerf} />}
     </div>
   );
 }
@@ -1512,7 +1788,7 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
   const [tmpHeight, setTmpHeight] = useState(bodyStats.heightInches);
   const [tmpWeight, setTmpWeight] = useState(bodyStats.weightLbs);
   const [tmpAge, setTmpAge] = useState(bodyStats.age);
-  const [foodFilter, setFoodFilter] = useState("pre"); // pre | post | snacks
+  const [foodFilter, setFoodFilter] = useState("preMeals"); // preMeals | postMeals | pre | post | snacks
   const [customAmount, setCustomAmount] = useState("");
 
   const today = todayKey();
@@ -1547,9 +1823,11 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
   };
 
   const FOOD_LISTS = {
-    pre: { items: PRE_WORKOUT_FOODS, label: "Pre-Workout", icon: "🔋", color: C.amber, blurb: "30–90 min before lifting. Fuel the work." },
-    post: { items: POST_WORKOUT_FOODS, label: "Post-Workout", icon: "💪", color: C.moss, blurb: "Within 30–90 min after. Lock in recovery." },
-    snacks: { items: ANYTIME_PROTEIN, label: "Anytime Protein", icon: "🥤", color: C.electric, blurb: "Hit your number. Fairlife is your friend." },
+    preMeals:  { items: PRE_WORKOUT_MEALS,  type: "meal", label: "Pre Meals",   icon: "🍽️", color: C.amber,    blurb: "Complete plates to eat 30–90 min before training. Tap to log." },
+    postMeals: { items: POST_WORKOUT_MEALS, type: "meal", label: "Post Meals",  icon: "🍴", color: C.moss,     blurb: "Real meals for after the work. Within 60–90 min." },
+    pre:       { items: PRE_WORKOUT_FOODS,  type: "quick", label: "Pre Quick",  icon: "🔋", color: C.amber,    blurb: "Quick singles when you don't have time for a full meal." },
+    post:      { items: POST_WORKOUT_FOODS, type: "quick", label: "Post Quick", icon: "💪", color: C.moss,     blurb: "Fast options within 30–90 min after lifting." },
+    snacks:    { items: ANYTIME_PROTEIN,    type: "quick", label: "Anytime",    icon: "🥤", color: C.electric, blurb: "Hit your number. Fairlife is your friend." },
   };
 
   const activeList = FOOD_LISTS[foodFilter];
@@ -1718,18 +1996,24 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
         </Surface>
       </div>
 
-      {/* ── FOOD GUIDE FILTER ── */}
-      <div className="ease-up-3" style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+      {/* ── FOOD GUIDE FILTER — horizontal scroll for 5 categories ── */}
+      <div className="ease-up-3" style={{
+        display: "flex", gap: 6, marginBottom: 12,
+        overflowX: "auto", paddingBottom: 4,
+        WebkitOverflowScrolling: "touch",
+        scrollbarWidth: "none",
+      }}>
         {Object.entries(FOOD_LISTS).map(([key, info]) => (
           <button key={key} onClick={() => setFoodFilter(key)} className="btn" style={{
-            flex: 1, padding: "12px 0",
+            flexShrink: 0, padding: "10px 14px",
             background: foodFilter === key ? info.color : "transparent",
             border: `1px solid ${foodFilter === key ? info.color : C.line}`,
             color: foodFilter === key ? C.ink : C.cream,
             borderRadius: 12, cursor: "pointer",
             fontSize: 12, fontWeight: 700, letterSpacing: "-0.01em",
+            whiteSpace: "nowrap",
           }}>
-            <span style={{ fontSize: 16, marginRight: 4 }}>{info.icon}</span>
+            <span style={{ fontSize: 14, marginRight: 4 }}>{info.icon}</span>
             {info.label}
           </button>
         ))}
@@ -1744,40 +2028,120 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
             </p>
           </div>
 
-          {activeList.items.map((food, i) => (
-            <div key={i} style={{
-              padding: "14px 0",
-              borderBottom: i < activeList.items.length - 1 ? `1px solid ${C.line}` : "none",
-              display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12,
-            }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: C.bone, letterSpacing: "-0.01em" }}>{food.name}</span>
-                  <span className="num-tab" style={{
-                    fontSize: 12, color: activeList.color, fontWeight: 700, fontFamily: FONT_MONO,
-                  }}>{food.protein}g</span>
+          {activeList.type === "meal" ? (
+            /* ── MEAL CARDS — full plate view ── */
+            activeList.items.map((meal, i) => (
+              <div key={i} style={{
+                padding: "18px 0",
+                borderBottom: i < activeList.items.length - 1 ? `1px solid ${C.line}` : "none",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: C.bone, letterSpacing: "-0.015em", marginBottom: 4 }}>
+                      {meal.name}
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                      <span className="num-tab" style={{
+                        fontSize: 13, color: activeList.color, fontWeight: 700, fontFamily: FONT_MONO,
+                      }}>{meal.totalProtein}g protein</span>
+                      <span style={{ fontSize: 11, color: C.mute, fontFamily: FONT_MONO }}>·</span>
+                      <span className="num-tab" style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>
+                        ~{meal.calories} cal
+                      </span>
+                    </div>
+                    {meal.timing && (
+                      <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 6, letterSpacing: "0.05em" }}>
+                        {meal.timing.toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={() => addProtein(meal.totalProtein)} className="btn" style={{
+                    background: activeList.color + "15",
+                    border: `1px solid ${activeList.color}40`,
+                    color: activeList.color,
+                    padding: "10px 14px", borderRadius: 10,
+                    fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    fontFamily: FONT_DISPLAY, flexShrink: 0,
+                  }}>
+                    LOG MEAL<br/><span style={{ fontSize: 14 }}>+{meal.totalProtein}g</span>
+                  </button>
                 </div>
-                {food.timing && (
-                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4, letterSpacing: "0.05em" }}>
-                    {food.timing.toUpperCase()}
+
+                {/* Components — what's actually on the plate */}
+                <div style={{
+                  background: C.raised, borderRadius: 10, padding: "12px 14px",
+                  border: `1px solid ${C.line}`, marginTop: 8,
+                }}>
+                  <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 8 }}>
+                    ON THE PLATE
+                  </div>
+                  {meal.components.map((c, ci) => (
+                    <div key={ci} style={{
+                      fontSize: 13, color: C.cream, lineHeight: 1.5,
+                      paddingLeft: 14, position: "relative", marginBottom: 3,
+                    }}>
+                      <span style={{ position: "absolute", left: 0, color: activeList.color }}>›</span>
+                      {c}
+                    </div>
+                  ))}
+                </div>
+
+                {meal.why && (
+                  <p className="h-serif" style={{ fontSize: 13, color: C.dim, margin: "10px 0 0", lineHeight: 1.45, fontStyle: "italic" }}>
+                    {meal.why}
+                  </p>
+                )}
+                {meal.bestFor && (
+                  <div style={{
+                    display: "inline-block",
+                    fontSize: 10, color: activeList.color, fontFamily: FONT_MONO,
+                    letterSpacing: "0.05em", marginTop: 8,
+                    padding: "3px 8px", borderRadius: 6,
+                    background: activeList.color + "10",
+                    border: `1px solid ${activeList.color}30`,
+                  }}>
+                    BEST FOR: {meal.bestFor.toUpperCase()}
                   </div>
                 )}
-                <p className="h-serif" style={{ fontSize: 13, color: C.dim, margin: "4px 0 0", lineHeight: 1.4 }}>
-                  {food.note}
-                </p>
               </div>
-              <button onClick={() => addProtein(food.protein)} className="btn" style={{
-                background: activeList.color + "15",
-                border: `1px solid ${activeList.color}40`,
-                color: activeList.color,
-                padding: "8px 14px", borderRadius: 10,
-                fontSize: 12, fontWeight: 700, cursor: "pointer",
-                fontFamily: FONT_DISPLAY, flexShrink: 0,
+            ))
+          ) : (
+            /* ── QUICK CARDS — single ingredient/product view ── */
+            activeList.items.map((food, i) => (
+              <div key={i} style={{
+                padding: "14px 0",
+                borderBottom: i < activeList.items.length - 1 ? `1px solid ${C.line}` : "none",
+                display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12,
               }}>
-                +{food.protein}g
-              </button>
-            </div>
-          ))}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: C.bone, letterSpacing: "-0.01em" }}>{food.name}</span>
+                    <span className="num-tab" style={{
+                      fontSize: 12, color: activeList.color, fontWeight: 700, fontFamily: FONT_MONO,
+                    }}>{food.protein}g</span>
+                  </div>
+                  {food.timing && (
+                    <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4, letterSpacing: "0.05em" }}>
+                      {food.timing.toUpperCase()}
+                    </div>
+                  )}
+                  <p className="h-serif" style={{ fontSize: 13, color: C.dim, margin: "4px 0 0", lineHeight: 1.4 }}>
+                    {food.note}
+                  </p>
+                </div>
+                <button onClick={() => addProtein(food.protein)} className="btn" style={{
+                  background: activeList.color + "15",
+                  border: `1px solid ${activeList.color}40`,
+                  color: activeList.color,
+                  padding: "8px 14px", borderRadius: 10,
+                  fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  fontFamily: FONT_DISPLAY, flexShrink: 0,
+                }}>
+                  +{food.protein}g
+                </button>
+              </div>
+            ))
+          )}
         </Surface>
       </div>
 
@@ -2237,7 +2601,7 @@ export default function App() {
                     onVal={(f,v) => setVal(sk+"_"+ex.id, f, v)}
                     color={session.color}
                     onRest={restEnabled && !ex.timed && !ex.noWeight ? () => setRestTimer({ seconds: 90 }) : null}
-                    lastWeight={getLastWeight(history, ex.name)}
+                    lastPerf={getLastPerformance(history, ex.name)}
                     onEditReps={(setIndex, currentReps) => openRepsEditor(ex.id, ex, setIndex, currentReps)}
                   />
                 ))}
