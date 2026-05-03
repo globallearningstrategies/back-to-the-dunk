@@ -83,6 +83,22 @@ const injectStyles = () => {
       0%, 100% { box-shadow: 0 0 0 0 currentColor; }
       50% { box-shadow: 0 0 0 8px transparent; }
     }
+    @keyframes alarm-flash {
+      0%, 100% { background: ${C.rust}; }
+      50% { background: ${C.amber}; }
+    }
+    @keyframes alarm-shake {
+      0%, 100% { transform: translateX(0); }
+      10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+      20%, 40%, 60%, 80% { transform: translateX(4px); }
+    }
+    .alarm-flash { animation: alarm-flash 0.5s ease infinite; }
+    .alarm-shake { animation: alarm-shake 0.6s ease infinite; }
+    @keyframes slide-down {
+      from { transform: translateY(-100%); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .slide-down { animation: slide-down 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
     .ease-up { animation: ease-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
     .ease-up-1 { animation: ease-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both; }
@@ -123,6 +139,14 @@ const injectStyles = () => {
 
     /* Custom range / progress */
     .ring-progress { transform: rotate(-90deg); transform-origin: 50% 50%; }
+
+    /* Modal backdrop */
+    .backdrop {
+      position: fixed; inset: 0; background: rgba(10, 9, 8, 0.6);
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      z-index: 200; display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
   `;
   document.head.appendChild(style);
 };
@@ -181,6 +205,51 @@ const PHASES = [
   { weeks: "13—16", color: C.plum,     weight: "206 → 200", focus: "Dunk attempt. You earned it.",                 goals: ["Full vertical test", "Attempt the dunk", "Film it", "Plan next cycle"] },
 ];
 
+/* ── KOSHER NUTRITION DATABASE ── */
+const PRE_WORKOUT_FOODS = [
+  { name: "Banana + 2 tbsp peanut butter",   protein: 8,  timing: "30–60 min before", note: "Quick carbs + sustained energy. Classic." },
+  { name: "Greek yogurt + honey + berries",   protein: 18, timing: "60 min before",    note: "Fage 2% or Chobani. Pareve-friendly w/ coconut yogurt." },
+  { name: "Oatmeal + whey + cinnamon",        protein: 28, timing: "60–90 min before", note: "Slow carbs. Fuels heavy lifts." },
+  { name: "Bagel + cream cheese + lox",       protein: 22, timing: "90 min before",    note: "Carbs, protein, salt. Heavy day fuel." },
+  { name: "Rice cakes + almond butter",       protein: 7,  timing: "30 min before",    note: "Fast carbs, light on stomach." },
+  { name: "Quest bar (any flavor)",           protein: 21, timing: "30–45 min before", note: "OU certified. Toss in gym bag." },
+  { name: "Black coffee + dates",             protein: 1,  timing: "20 min before",    note: "Caffeine + glucose. Fasted lift hack." },
+];
+
+const POST_WORKOUT_FOODS = [
+  { name: "Fairlife Core Power 42g shake",    protein: 42, timing: "Within 30 min", note: "OU-D certified. Best on-the-go option. Drink one." },
+  { name: "Whey isolate shake (Optimum/Now)", protein: 30, timing: "Within 30 min", note: "OU-D. Mix with water or milk." },
+  { name: "Grilled chicken + rice + veg",     protein: 45, timing: "Within 90 min", note: "The classic. Bumps recovery hard." },
+  { name: "Salmon + sweet potato",            protein: 35, timing: "Within 90 min", note: "Omega-3s + carbs. Inflammation fighter." },
+  { name: "Cottage cheese + pineapple",       protein: 25, timing: "Within 60 min", note: "Casein digests slow. Great before bed too." },
+  { name: "3 eggs + toast + avocado",         protein: 21, timing: "Within 60 min", note: "Cheap, fast, complete protein." },
+  { name: "Tuna pouch + crackers",            protein: 25, timing: "Within 60 min", note: "Gym bag staple. StarKist/Bumble Bee OU." },
+  { name: "Turkey roll-ups + hummus",         protein: 22, timing: "Within 60 min", note: "Empire kosher turkey. Pareve hummus." },
+];
+
+const ANYTIME_PROTEIN = [
+  { name: "Fairlife Core Power Elite (42g)",  protein: 42, note: "OU-D. Lactose-free. King of shelf-stable." },
+  { name: "Fairlife Core Power (26g)",        protein: 26, note: "OU-D. Smaller, cheaper." },
+  { name: "Quest Bar",                         protein: 21, note: "OU. Low sugar." },
+  { name: "Built Bar",                         protein: 17, note: "OU. Tastes like candy." },
+  { name: "ONE Bar",                           protein: 20, note: "OU-D." },
+  { name: "Owyn vegan shake (20g)",            protein: 20, note: "OU pareve. Dairy-free option." },
+  { name: "Premier Protein shake (30g)",       protein: 30, note: "OU-D." },
+  { name: "Greek yogurt cup (Fage 0%)",        protein: 18, note: "OU-D." },
+  { name: "Hard-boiled eggs (2)",              protein: 12, note: "Cheapest protein." },
+  { name: "Beef jerky (Jack Link's Original)", protein: 12, note: "OU. Note: not all flavors certified." },
+];
+
+/* Protein target: 1g per pound of bodyweight (high-end for muscle gain + cut) */
+const calcProteinTarget = (weightLbs) => Math.round(weightLbs * 1.0);
+const calcCalorieTarget = (weightLbs, heightInches, age = 35, activityFactor = 1.55) => {
+  // Mifflin-St Jeor for males, then activity multiplier
+  const weightKg = weightLbs * 0.453592;
+  const heightCm = heightInches * 2.54;
+  const bmr = 10 * weightKg + 6.25 * heightCm - 5 * age + 5;
+  return Math.round(bmr * activityFactor);
+};
+
 /* ════════════════════════════════════════════════════════════
    AUDIO
    ════════════════════════════════════════════════════════════ */
@@ -202,12 +271,68 @@ function beep(freq, dur, vol) {
     osc.start(ctx.currentTime); osc.stop(ctx.currentTime + (dur || 0.12));
   } catch(e) {}
 }
+
+/* Loud, sustained alarm ring — for end-of-timer */
+function ringAlarm() {
+  try {
+    const ctx = getAudioCtx();
+    const now = ctx.currentTime;
+    // Three rising chirps + one held tone — like a real alarm
+    const pattern = [
+      { f: 880,  t: 0.00, d: 0.18 },
+      { f: 1175, t: 0.20, d: 0.18 },
+      { f: 1568, t: 0.40, d: 0.18 },
+      { f: 880,  t: 0.65, d: 0.18 },
+      { f: 1175, t: 0.85, d: 0.18 },
+      { f: 1568, t: 1.05, d: 0.18 },
+      { f: 1760, t: 1.30, d: 0.55 },
+    ];
+    pattern.forEach(p => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square";
+      osc.frequency.value = p.f;
+      gain.gain.setValueAtTime(0.0001, now + p.t);
+      gain.gain.exponentialRampToValueAtTime(0.55, now + p.t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + p.t + p.d);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now + p.t);
+      osc.stop(now + p.t + p.d + 0.05);
+    });
+  } catch(e) {}
+}
+
 function speak(text) {
   try {
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.rate = 1.05; u.pitch = 1; u.volume = 1;
     window.speechSynthesis.speak(u);
+  } catch(e) {}
+}
+
+/* ── Notification helper — for when user switches apps ── */
+function requestNotificationPermission() {
+  if (!("Notification" in window)) return Promise.resolve("unsupported");
+  if (Notification.permission === "granted" || Notification.permission === "denied") {
+    return Promise.resolve(Notification.permission);
+  }
+  return Notification.requestPermission();
+}
+
+function fireNotification(title, body) {
+  try {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    if (document.visibilityState === "visible") return; // only when in another app/tab
+    const n = new Notification(title, {
+      body,
+      icon: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🏀</text></svg>",
+      tag: "bttd-timer",
+      requireInteraction: false,
+      silent: false,
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+    setTimeout(() => n.close(), 8000);
   } catch(e) {}
 }
 
@@ -224,8 +349,13 @@ function calcVolume(exercises, checked, vals) {
     if (!checked[ex.id] || ex.noWeight || ex.timed || ex.bodyweight) return v;
     const w = ex.barbell ? 45 + (parseFloat(vals[ex.id]?.perSide) || 0) * 2 : parseFloat(vals[ex.id]?.weight) || 0;
     const s = parseInt(vals[ex.id]?.setsDone || ex.sets);
-    const r = parseInt(ex.reps) || 0;
-    return v + w * s * r;
+    // Use custom reps per set if available, otherwise default
+    const customReps = vals[ex.id]?.customReps || {};
+    let totalReps = 0;
+    for (let i = 0; i < s; i++) {
+      totalReps += parseFloat(customReps[i]) || parseFloat(ex.reps) || 0;
+    }
+    return v + w * totalReps;
   }, 0);
 }
 const fmtNum = (n) => n >= 10000 ? Math.round(n/1000) + "k" : n >= 1000 ? (n/1000).toFixed(1) + "k" : n.toLocaleString();
@@ -281,6 +411,36 @@ function greeting() {
   if (h < 17) return "Good afternoon";
   if (h < 21) return "Good evening";
   return "Late session";
+}
+
+/* localStorage helpers — for body stats since we don't want to add a new table */
+const LS_BODY = "bttd_body_stats";
+const LS_PROTEIN = "bttd_protein_log_v1";
+
+function loadBodyStats() {
+  try {
+    const raw = localStorage.getItem(LS_BODY);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return { heightInches: 77, weightLbs: 222, age: 35 };
+}
+function saveBodyStats(stats) {
+  try { localStorage.setItem(LS_BODY, JSON.stringify(stats)); } catch(e) {}
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function loadProteinLog() {
+  try {
+    const raw = localStorage.getItem(LS_PROTEIN);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return {};
+}
+function saveProteinLog(log) {
+  try { localStorage.setItem(LS_PROTEIN, JSON.stringify(log)); } catch(e) {}
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -355,11 +515,15 @@ function Btn({ children, color = C.rust, ghost, onClick, disabled, full, size = 
   );
 }
 
-function NumIn({ value, onChange, placeholder, style = {} }) {
+/* DECIMAL-FRIENDLY number input (replaces NumIn for places that need decimals) */
+function NumIn({ value, onChange, placeholder, style = {}, decimal = true, step }) {
   return (
     <input
-      type="number" inputMode="numeric"
-      value={value || ""} onChange={e => onChange(e.target.value)}
+      type="number"
+      inputMode={decimal ? "decimal" : "numeric"}
+      step={step || (decimal ? "0.1" : "1")}
+      value={value === undefined || value === null ? "" : value}
+      onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
       style={{
         background: C.raised, border: `1px solid ${C.line}`,
@@ -421,16 +585,113 @@ function Confetti({ show, onDone }) {
   );
 }
 
-/* ── Rest Timer between sets ── */
+/* ── Reps Editor Modal — tap a set dot to change its reps ── */
+function RepsEditor({ open, currentReps, defaultReps, onSave, onClose, exerciseName, setIndex }) {
+  const [val, setVal] = useState("");
+
+  useEffect(() => {
+    if (open) setVal(String(currentReps ?? defaultReps ?? ""));
+  }, [open, currentReps, defaultReps]);
+
+  if (!open) return null;
+
+  const save = (n) => {
+    const num = parseFloat(n);
+    if (!isNaN(num) && num >= 0) {
+      onSave(num);
+      onClose();
+    }
+  };
+
+  // Quick decrement options based on default
+  const def = parseFloat(defaultReps) || 8;
+  const quickOpts = [
+    Math.max(1, def - 4),
+    Math.max(1, def - 2),
+    def,
+    def + 2,
+  ].filter((v, i, a) => a.indexOf(v) === i);
+
+  return (
+    <div className="backdrop" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} className="ease-up" style={{
+        background: C.panel, borderRadius: 22, padding: 24,
+        maxWidth: 360, width: "100%",
+        border: `1px solid ${C.line}`,
+        boxShadow: "0 30px 80px rgba(0,0,0,0.3)",
+      }}>
+        <Eyebrow color={C.rust}>Set {setIndex + 1} · {exerciseName}</Eyebrow>
+        <h3 className="h-display" style={{ fontSize: 22, margin: "10px 0 4px", color: C.bone }}>How many reps?</h3>
+        <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO, marginBottom: 16 }}>
+          Target was {defaultReps}. Hit what you hit.
+        </div>
+
+        <input
+          type="number" inputMode="decimal" step="0.5"
+          value={val} onChange={e => setVal(e.target.value)}
+          autoFocus
+          style={{
+            width: "100%", padding: "16px",
+            background: C.raised, border: `2px solid ${C.rust}55`,
+            borderRadius: 14, color: C.bone,
+            fontSize: 32, fontWeight: 700, fontFamily: FONT_DISPLAY,
+            textAlign: "center", outline: "none",
+            letterSpacing: "-0.03em", marginBottom: 14,
+          }}
+          onKeyDown={e => e.key === "Enter" && save(val)}
+        />
+
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${quickOpts.length}, 1fr)`, gap: 6, marginBottom: 16 }}>
+          {quickOpts.map(opt => (
+            <button key={opt} onClick={() => save(opt)} className="btn" style={{
+              padding: "10px 0", borderRadius: 10,
+              background: opt === def ? C.rust + "20" : C.raised,
+              border: `1px solid ${opt === def ? C.rust + "55" : C.line}`,
+              color: opt === def ? C.rust : C.cream,
+              fontSize: 14, fontWeight: 700, cursor: "pointer",
+              fontFamily: FONT_DISPLAY,
+            }}>{opt}</button>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <Btn ghost color={C.dim} onClick={onClose} style={{ flex: 1 }}>Cancel</Btn>
+          <Btn color={C.rust} onClick={() => save(val)} style={{ flex: 1.5 }}>Save Reps</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Rest Timer between sets — with audible alarm ring at zero ── */
 function RestTimer({ seconds, onClose, onSkip }) {
   const [remaining, setRemaining] = useState(seconds);
+  const [ringing, setRinging] = useState(false);
+  const ringIntervalRef = useRef(null);
 
   useEffect(() => {
     if (remaining <= 0) {
-      beep(880, 0.4, 0.55);
+      // ALARM: ring the alarm + repeat it twice for ~3 seconds total
+      ringAlarm();
+      setRinging(true);
       speak("Time to lift");
-      onClose && onClose();
-      return;
+      fireNotification("⏰ Rest done", "Get back under the bar.");
+      if (navigator.vibrate) navigator.vibrate([200, 80, 200, 80, 400]);
+
+      // Repeat alarm
+      let count = 0;
+      ringIntervalRef.current = setInterval(() => {
+        count++;
+        if (count >= 2) {
+          clearInterval(ringIntervalRef.current);
+          setRinging(false);
+          onClose && onClose();
+        } else {
+          ringAlarm();
+          if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
+        }
+      }, 1700);
+      return () => { if (ringIntervalRef.current) clearInterval(ringIntervalRef.current); };
     }
     if (remaining === 10) { beep(660, 0.1, 0.4); speak("Ten seconds"); }
     if (remaining <= 3 && remaining > 0) beep(660, 0.1, 0.4);
@@ -438,36 +699,57 @@ function RestTimer({ seconds, onClose, onSkip }) {
     return () => clearTimeout(t);
   }, [remaining]);
 
+  const dismiss = () => {
+    if (ringIntervalRef.current) clearInterval(ringIntervalRef.current);
+    setRinging(false);
+    onClose && onClose();
+  };
+
   const pct = ((seconds - remaining) / seconds) * 100;
   const mins = Math.floor(remaining / 60);
-  const secs = remaining % 60;
-  const display = mins > 0 ? `${mins}:${String(secs).padStart(2,"0")}` : String(secs);
+  const secs = Math.max(0, remaining % 60);
+  const display = mins > 0 ? `${mins}:${String(secs).padStart(2,"0")}` : String(Math.max(0, remaining));
 
   return (
-    <div style={{
-      position: "fixed", bottom: 76, left: 0, right: 0,
-      background: C.panel, borderTop: `1px solid ${C.line}`,
-      padding: "16px 20px 20px", zIndex: 95,
-      animation: "ease-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both",
-      boxShadow: "0 -8px 30px rgba(0,0,0,0.08)",
-    }}>
+    <div
+      className={ringing ? "alarm-shake" : ""}
+      style={{
+        position: "fixed", bottom: 76, left: 0, right: 0,
+        background: ringing ? C.rust : C.panel,
+        borderTop: `1px solid ${ringing ? C.rust : C.line}`,
+        padding: "16px 20px 20px", zIndex: 95,
+        animation: ringing ? undefined : "ease-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both",
+        boxShadow: ringing ? `0 -8px 30px ${C.rust}55` : "0 -8px 30px rgba(0,0,0,0.08)",
+        transition: "background 0.3s",
+      }}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <div>
-          <Eyebrow color={C.electric}>Rest Timer</Eyebrow>
-          <div className="num-tab h-display" style={{ fontSize: 36, fontWeight: 700, color: C.electric, letterSpacing: "-0.04em", lineHeight: 1, marginTop: 4 }}>{display}</div>
+          <Eyebrow color={ringing ? C.ink : C.electric}>{ringing ? "TIME!" : "Rest Timer"}</Eyebrow>
+          <div className="num-tab h-display" style={{
+            fontSize: 36, fontWeight: 700,
+            color: ringing ? C.ink : C.electric,
+            letterSpacing: "-0.04em", lineHeight: 1, marginTop: 4,
+          }}>
+            {ringing ? "🔔 GO!" : display}
+          </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Btn ghost color={C.dim} onClick={() => setRemaining(r => Math.min(seconds, r + 30))} size="sm">+30s</Btn>
-          <Btn color={C.electric} onClick={onSkip} size="sm">Skip</Btn>
+          {!ringing && <Btn ghost color={C.dim} onClick={() => setRemaining(r => Math.min(seconds, r + 30))} size="sm">+30s</Btn>}
+          <Btn color={ringing ? C.ink : C.electric} ghost={ringing} onClick={dismiss} size="sm" style={ringing ? { color: C.ink, borderColor: C.ink } : {}}>
+            {ringing ? "Stop" : "Skip"}
+          </Btn>
         </div>
       </div>
-      <div style={{ background: C.raised, borderRadius: 999, height: 6, overflow: "hidden" }}>
-        <div style={{
-          height: "100%", width: pct + "%",
-          background: `linear-gradient(90deg, ${C.electric}, ${C.moss})`,
-          borderRadius: 999, transition: "width 1s linear",
-        }} />
-      </div>
+      {!ringing && (
+        <div style={{ background: C.raised, borderRadius: 999, height: 6, overflow: "hidden" }}>
+          <div style={{
+            height: "100%", width: pct + "%",
+            background: `linear-gradient(90deg, ${C.electric}, ${C.moss})`,
+            borderRadius: 999, transition: "width 1s linear",
+          }} />
+        </div>
+      )}
     </div>
   );
 }
@@ -623,10 +905,11 @@ function BarbellInput({ vals, onVal }) {
   );
 }
 
-function ExRow({ ex, checked, onCheck, vals, onVal, color, onRest, lastWeight }) {
+function ExRow({ ex, checked, onCheck, vals, onVal, color, onRest, lastWeight, onEditReps }) {
   const setsDone = parseInt(vals?.setsDone) || 0;
   const targetSets = parseInt(ex.sets) || 0;
   const allSetsDone = setsDone >= targetSets && targetSets > 0;
+  const customReps = vals?.customReps || {};
 
   // Auto-check the exercise when all sets done
   useEffect(() => {
@@ -647,15 +930,35 @@ function ExRow({ ex, checked, onCheck, vals, onVal, color, onRest, lastWeight })
   };
 
   const longPressTimer = useRef(null);
-  const handlePressStart = () => {
+  const longPressFiredRef = useRef(false);
+
+  const handlePressStart = (i) => {
+    longPressFiredRef.current = false;
     longPressTimer.current = setTimeout(() => {
-      onVal("setsDone", "0");
-      beep(440, 0.2, 0.4);
+      longPressFiredRef.current = true;
+      // Open reps editor for this specific set
+      if (onEditReps) {
+        onEditReps(i, customReps[i] !== undefined ? customReps[i] : ex.reps);
+      }
+      beep(660, 0.15, 0.4);
       if (navigator.vibrate) navigator.vibrate([20, 30, 20]);
-    }, 600);
+    }, 500);
   };
-  const handlePressEnd = () => {
+  const handlePressEnd = (e, i) => {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    if (longPressFiredRef.current) {
+      // Long press handled it — prevent the click
+      e.preventDefault?.();
+      e.stopPropagation?.();
+    }
+  };
+
+  // Reset all reps (separate gesture: tap reset button)
+  const resetAllSets = () => {
+    onVal("setsDone", "0");
+    onVal("customReps", {});
+    beep(440, 0.2, 0.4);
+    if (navigator.vibrate) navigator.vibrate([20, 30, 20]);
   };
 
   return (
@@ -705,46 +1008,72 @@ function ExRow({ ex, checked, onCheck, vals, onVal, color, onRest, lastWeight })
               value={vals?.weight}
               onChange={v => onVal("weight", v)}
               placeholder={lastWeight ? String(lastWeight) : "0"}
+              decimal={true}
+              step="0.5"
             />
           </div>
         )}
       </div>
 
-      {/* Set dots — tap to track each completed set */}
+      {/* Set dots — tap to track each completed set, hold to edit reps */}
       {!ex.noWeight && !ex.timed && (
-        <div style={{ display: "flex", gap: 8, paddingLeft: 40, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, paddingLeft: 40, alignItems: "center", flexWrap: "wrap" }}>
           {Array.from({ length: targetSets }).map((_, i) => {
             const done = i < setsDone;
+            const repsForSet = customReps[i] !== undefined ? customReps[i] : ex.reps;
+            const isCustom = customReps[i] !== undefined && String(customReps[i]) !== String(ex.reps);
             return (
               <button
                 key={i}
-                onClick={() => tapSet(i)}
-                onMouseDown={handlePressStart}
-                onMouseUp={handlePressEnd}
-                onMouseLeave={handlePressEnd}
-                onTouchStart={handlePressStart}
-                onTouchEnd={handlePressEnd}
+                onClick={(e) => {
+                  if (longPressFiredRef.current) {
+                    longPressFiredRef.current = false;
+                    return;
+                  }
+                  tapSet(i);
+                }}
+                onMouseDown={() => handlePressStart(i)}
+                onMouseUp={(e) => handlePressEnd(e, i)}
+                onMouseLeave={(e) => handlePressEnd(e, i)}
+                onTouchStart={() => handlePressStart(i)}
+                onTouchEnd={(e) => handlePressEnd(e, i)}
+                onContextMenu={(e) => e.preventDefault()}
                 className="btn"
                 style={{
-                  width: 36, height: 36, borderRadius: "50%", padding: 0,
+                  width: 38, height: 38, borderRadius: "50%", padding: 0,
                   background: done ? color : "transparent",
                   border: `2px solid ${done ? color : C.faint}`,
                   color: done ? "#fff" : C.dim,
-                  fontSize: 13, fontWeight: 700,
+                  fontSize: 12, fontWeight: 700,
                   fontFamily: FONT_DISPLAY,
                   cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   flexShrink: 0,
+                  position: "relative",
+                  outline: isCustom ? `1px solid ${C.amber}` : "none",
+                  outlineOffset: isCustom ? 2 : 0,
                 }}
               >
-                {ex.reps}
+                {repsForSet}
               </button>
             );
           })}
           <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, marginLeft: 4 }}>
             {setsDone}/{targetSets}
-            {setsDone > 0 && <span style={{ marginLeft: 6, color: C.mute, fontSize: 9 }}>· hold to reset</span>}
           </span>
+          {setsDone > 0 && (
+            <button onClick={resetAllSets} className="btn" style={{
+              background: "transparent", border: "none",
+              color: C.mute, fontSize: 10, cursor: "pointer",
+              fontFamily: FONT_MONO, letterSpacing: "0.05em",
+              marginLeft: "auto", padding: "4px 8px",
+            }}>RESET</button>
+          )}
+        </div>
+      )}
+      {!ex.noWeight && !ex.timed && targetSets > 0 && (
+        <div style={{ paddingLeft: 40, marginTop: 6, fontSize: 9, color: C.mute, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>
+          TAP TO MARK SET · HOLD TO CHANGE REPS
         </div>
       )}
 
@@ -768,7 +1097,7 @@ function TabataTimer({ onLog }) {
     try { if (wakeLockRef.current) { wakeLockRef.current.release(); wakeLockRef.current = null; } } catch(e) {}
   };
 
-  const start = () => { getAudioCtx(); requestWakeLock(); setCountdown(5); };
+  const start = () => { getAudioCtx(); requestNotificationPermission(); requestWakeLock(); setCountdown(5); };
   const reset = () => { releaseWakeLock(); setPhase("idle"); setRound(1); setCount(TABATA_CONFIG.sprintSec); setCountdown(null); };
 
   useEffect(() => {
@@ -788,11 +1117,21 @@ function TabataTimer({ onLog }) {
     const interval = setInterval(() => {
       setCount(c => {
         if (c > 1) { beep(440, 0.06, 0.2); return c - 1; }
-        if (phase === "sprint") { beep(523, 0.15, 0.4); speak("Rest"); setPhase("rest"); return TABATA_CONFIG.restSec; }
+        if (phase === "sprint") {
+          beep(523, 0.15, 0.4); speak("Rest");
+          fireNotification("😮‍💨 Rest", `Round ${round}/${TABATA_CONFIG.rounds} done. Catch your breath.`);
+          setPhase("rest"); return TABATA_CONFIG.restSec;
+        }
         else {
           setRound(r => {
-            if (r >= TABATA_CONFIG.rounds) { beep(880, 0.5, 0.6); speak("Done! Great work!"); releaseWakeLock(); setPhase("done"); return r; }
-            beep(880, 0.18, 0.5); speak("Sprint!"); setPhase("sprint"); return r + 1;
+            if (r >= TABATA_CONFIG.rounds) {
+              ringAlarm(); speak("Done! Great work!");
+              fireNotification("🏁 Tabata complete", "5 rounds. 25 seconds of work. Done.");
+              releaseWakeLock(); setPhase("done"); return r;
+            }
+            beep(880, 0.18, 0.5); speak("Sprint!");
+            fireNotification("💥 Sprint!", `Round ${r + 1}/${TABATA_CONFIG.rounds} — go.`);
+            setPhase("sprint"); return r + 1;
           });
           return TABATA_CONFIG.sprintSec;
         }
@@ -887,7 +1226,7 @@ function SuicideCounter({ onLog, onClose }) {
     const next = reps + 1;
     setReps(next);
     if (next === goal) {
-      beep(880, 0.5, 0.6);
+      ringAlarm();
       speak("Goal! Ten suicides!");
     } else if (next > goal) {
       beep(1046, 0.3, 0.6);
@@ -904,7 +1243,7 @@ function SuicideCounter({ onLog, onClose }) {
   const reachedGoal = reps >= goal;
   const motivational = reps === 0 ? "TAP AFTER EACH SUICIDE"
     : reps < 3 ? "GREAT START — KEEP GOING"
-    : reps < 5 ? "HALFWAY · YOU\'RE BUILDING"
+    : reps < 5 ? "HALFWAY · YOU'RE BUILDING"
     : reps < goal ? "SO CLOSE TO 10"
     : reps === goal ? "✓ GOAL REACHED — BEAST"
     : "🔥 BEYOND THE GOAL";
@@ -915,7 +1254,7 @@ function SuicideCounter({ onLog, onClose }) {
         <div>
           <Pill color={C.amber}>Court · Suicide Counter</Pill>
           <h2 className="h-display" style={{ fontSize: 26, margin: "10px 0 4px", color: C.bone }}>Tap each suicide</h2>
-          <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>Goal: 10 · Log whenever you\'re done</div>
+          <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>Goal: 10 · Log whenever you're done</div>
         </div>
         <Btn ghost color={C.dim} onClick={onClose} size="sm">Close</Btn>
       </div>
@@ -996,7 +1335,7 @@ function TreadmillLogger({ onLog }) {
           <div key={label}>
             <div style={{ textAlign: "center" }}><Eyebrow>{label} ({unit})</Eyebrow></div>
             <div style={{ height: 5 }} />
-            <NumIn value={val} onChange={set} placeholder={ph} />
+            <NumIn value={val} onChange={set} placeholder={ph} decimal={true} step="0.1" />
           </div>
         ))}
       </div>
@@ -1059,7 +1398,7 @@ function StatsTab({ history, weightLog, cardioSessions }) {
 
   return (
     <>
-      <PageTitle kicker="Numbers · don\'t lie">Stats</PageTitle>
+      <PageTitle kicker="Numbers · don't lie">Stats</PageTitle>
 
       {gymSessions.length === 0 && cardioSessions.length === 0 && treadmillSessions.length === 0 && (
         <Surface style={{ textAlign: "center", padding: 40 }}>
@@ -1165,6 +1504,306 @@ function StatsTab({ history, weightLog, cardioSessions }) {
 }
 
 /* ════════════════════════════════════════════════════════════
+   NUTRITION TAB — Kosher pre/post workout + protein tracker
+   ════════════════════════════════════════════════════════════ */
+
+function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) {
+  const [editingBody, setEditingBody] = useState(false);
+  const [tmpHeight, setTmpHeight] = useState(bodyStats.heightInches);
+  const [tmpWeight, setTmpWeight] = useState(bodyStats.weightLbs);
+  const [tmpAge, setTmpAge] = useState(bodyStats.age);
+  const [foodFilter, setFoodFilter] = useState("pre"); // pre | post | snacks
+  const [customAmount, setCustomAmount] = useState("");
+
+  const today = todayKey();
+  const todayProtein = proteinLog[today] || 0;
+  const proteinTarget = calcProteinTarget(bodyStats.weightLbs);
+  const calorieTarget = calcCalorieTarget(bodyStats.weightLbs, bodyStats.heightInches, bodyStats.age);
+  const pct = Math.min(100, (todayProtein / proteinTarget) * 100);
+  const remaining = Math.max(0, proteinTarget - todayProtein);
+
+  const heightFt = Math.floor(bodyStats.heightInches / 12);
+  const heightIn = bodyStats.heightInches % 12;
+
+  const saveBody = () => {
+    const h = parseFloat(tmpHeight) || 77;
+    const w = parseFloat(tmpWeight) || 222;
+    const a = parseInt(tmpAge) || 35;
+    onUpdateBody({ heightInches: h, weightLbs: w, age: a });
+    setEditingBody(false);
+  };
+
+  const addProtein = (grams) => {
+    const newTotal = Math.max(0, todayProtein + grams);
+    onProteinChange(today, newTotal);
+    if (grams > 0) {
+      beep(880, 0.08, 0.3);
+      if (navigator.vibrate) navigator.vibrate(8);
+    }
+  };
+
+  const setProteinAbsolute = (grams) => {
+    onProteinChange(today, Math.max(0, grams));
+  };
+
+  const FOOD_LISTS = {
+    pre: { items: PRE_WORKOUT_FOODS, label: "Pre-Workout", icon: "🔋", color: C.amber, blurb: "30–90 min before lifting. Fuel the work." },
+    post: { items: POST_WORKOUT_FOODS, label: "Post-Workout", icon: "💪", color: C.moss, blurb: "Within 30–90 min after. Lock in recovery." },
+    snacks: { items: ANYTIME_PROTEIN, label: "Anytime Protein", icon: "🥤", color: C.electric, blurb: "Hit your number. Fairlife is your friend." },
+  };
+
+  const activeList = FOOD_LISTS[foodFilter];
+  const ringColor = pct >= 100 ? C.moss : pct >= 70 ? C.amber : C.rust;
+
+  return (
+    <>
+      <PageTitle kicker="Fuel · the work">Nutrition</PageTitle>
+
+      {/* ── PROTEIN RING — hero ── */}
+      <div className="ease-up-1">
+        <Surface accent={ringColor} padding={22}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+            <div>
+              <Eyebrow color={ringColor}>Today · Protein</Eyebrow>
+              <div className="h-serif" style={{ fontSize: 14, color: C.dim, marginTop: 4 }}>
+                {new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+              </div>
+            </div>
+            <Pill color={ringColor}>{Math.round(pct)}%</Pill>
+          </div>
+
+          {/* Ring */}
+          <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 16 }}>
+            <div style={{ position: "relative", width: 130, height: 130, flexShrink: 0 }}>
+              <svg width="130" height="130" viewBox="0 0 100 100" style={{ position: "absolute" }}>
+                <circle cx="50" cy="50" r="44" stroke={C.line} strokeWidth="6" fill="none" />
+                <circle
+                  className="ring-progress"
+                  cx="50" cy="50" r="44" stroke={ringColor} strokeWidth="6" fill="none"
+                  strokeLinecap="round"
+                  strokeDasharray={2 * Math.PI * 44}
+                  strokeDashoffset={2 * Math.PI * 44 * (1 - pct / 100)}
+                  style={{ transition: "stroke-dashoffset 0.6s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.3s" }}
+                />
+              </svg>
+              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                <div className="num-tab h-display" style={{ fontSize: 32, fontWeight: 800, color: ringColor, lineHeight: 0.9, letterSpacing: "-0.03em" }}>
+                  {Math.round(todayProtein)}
+                </div>
+                <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 2, letterSpacing: "0.08em" }}>
+                  / {proteinTarget}g
+                </div>
+              </div>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 6 }}>REMAINING</div>
+              <div className="num-tab h-display" style={{ fontSize: 36, fontWeight: 700, color: C.bone, letterSpacing: "-0.04em", lineHeight: 0.95 }}>
+                {Math.round(remaining)}<span style={{ fontSize: 14, color: C.dim, fontWeight: 500, marginLeft: 4 }}>g</span>
+              </div>
+              <p className="h-serif" style={{ fontSize: 14, color: C.cream, margin: "10px 0 0", lineHeight: 1.4 }}>
+                {pct >= 100 ? "Crushed it. Recovery on lock." : remaining <= 30 ? "One Fairlife away. Easy." : remaining <= 60 ? "Two solid meals to go." : "Big day ahead. Get after it."}
+              </p>
+            </div>
+          </div>
+
+          {/* Quick add buttons */}
+          <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.line}` }}>
+            <Eyebrow>Quick Add</Eyebrow>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 10 }}>
+              {[10, 20, 30, 42].map(g => (
+                <button key={g} onClick={() => addProtein(g)} className="btn" style={{
+                  padding: "12px 0", borderRadius: 12,
+                  background: ringColor + "15", border: `1px solid ${ringColor}40`,
+                  color: ringColor, fontSize: 14, fontWeight: 700, cursor: "pointer",
+                  fontFamily: FONT_DISPLAY, letterSpacing: "-0.01em",
+                }}>+{g}g</button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+              <NumIn
+                value={customAmount}
+                onChange={setCustomAmount}
+                placeholder="Custom (e.g. 24.5)"
+                decimal={true}
+                step="0.5"
+                style={{ flex: 1 }}
+              />
+              <Btn color={ringColor} size="sm" onClick={() => {
+                const v = parseFloat(customAmount);
+                if (!isNaN(v) && v > 0) { addProtein(v); setCustomAmount(""); }
+              }} disabled={!customAmount || parseFloat(customAmount) <= 0}>Add</Btn>
+              {todayProtein > 0 && (
+                <Btn ghost color={C.dim} size="sm" onClick={() => {
+                  if (window.confirm("Reset today's protein to 0?")) setProteinAbsolute(0);
+                }}>↺</Btn>
+              )}
+            </div>
+          </div>
+        </Surface>
+      </div>
+
+      {/* ── BODY STATS ── */}
+      <div className="ease-up-2">
+        <Surface accent={C.electric}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <Eyebrow color={C.electric}>Your Stats</Eyebrow>
+              <div style={{ display: "flex", gap: 18, marginTop: 12 }}>
+                <div>
+                  <div className="num-tab h-display" style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", color: C.bone }}>
+                    {heightFt}'{heightIn}"
+                  </div>
+                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 3, letterSpacing: "0.08em" }}>HEIGHT</div>
+                </div>
+                <div>
+                  <div className="num-tab h-display" style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", color: C.bone }}>
+                    {bodyStats.weightLbs}<span style={{ fontSize: 11, color: C.dim, fontWeight: 500 }}>lb</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 3, letterSpacing: "0.08em" }}>WEIGHT</div>
+                </div>
+                <div>
+                  <div className="num-tab h-display" style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", color: C.bone }}>
+                    {bodyStats.age}
+                  </div>
+                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 3, letterSpacing: "0.08em" }}>AGE</div>
+                </div>
+              </div>
+            </div>
+            {!editingBody && <Btn ghost color={C.electric} size="sm" onClick={() => setEditingBody(true)}>Edit</Btn>}
+          </div>
+
+          {editingBody && (
+            <div className="ease-up" style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.line}` }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
+                <div>
+                  <div style={{ textAlign: "center" }}><Eyebrow>Height (in)</Eyebrow></div>
+                  <div style={{ height: 5 }} />
+                  <NumIn value={tmpHeight} onChange={setTmpHeight} decimal={true} step="0.5" placeholder="77" />
+                </div>
+                <div>
+                  <div style={{ textAlign: "center" }}><Eyebrow>Weight (lb)</Eyebrow></div>
+                  <div style={{ height: 5 }} />
+                  <NumIn value={tmpWeight} onChange={setTmpWeight} decimal={true} step="0.1" placeholder="222" />
+                </div>
+                <div>
+                  <div style={{ textAlign: "center" }}><Eyebrow>Age</Eyebrow></div>
+                  <div style={{ height: 5 }} />
+                  <NumIn value={tmpAge} onChange={setTmpAge} decimal={false} step="1" placeholder="35" />
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Btn ghost color={C.dim} onClick={() => { setEditingBody(false); setTmpHeight(bodyStats.heightInches); setTmpWeight(bodyStats.weightLbs); setTmpAge(bodyStats.age); }} style={{ flex: 1 }}>Cancel</Btn>
+                <Btn color={C.electric} onClick={saveBody} style={{ flex: 1.5 }}>Save Stats</Btn>
+              </div>
+            </div>
+          )}
+
+          {/* Calculated targets */}
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.line}`, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <Eyebrow color={C.rust}>Daily Protein</Eyebrow>
+              <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 700, color: C.rust, letterSpacing: "-0.03em", marginTop: 6 }}>
+                {proteinTarget}<span style={{ fontSize: 12, color: C.dim, fontWeight: 500, marginLeft: 3 }}>g</span>
+              </div>
+              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4 }}>1g per lb · cut + lift</div>
+            </div>
+            <div>
+              <Eyebrow color={C.moss}>Daily Calories</Eyebrow>
+              <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 700, color: C.moss, letterSpacing: "-0.03em", marginTop: 6 }}>
+                {calorieTarget.toLocaleString()}
+              </div>
+              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4 }}>Maintenance · subtract 300–500 to cut</div>
+            </div>
+          </div>
+        </Surface>
+      </div>
+
+      {/* ── FOOD GUIDE FILTER ── */}
+      <div className="ease-up-3" style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+        {Object.entries(FOOD_LISTS).map(([key, info]) => (
+          <button key={key} onClick={() => setFoodFilter(key)} className="btn" style={{
+            flex: 1, padding: "12px 0",
+            background: foodFilter === key ? info.color : "transparent",
+            border: `1px solid ${foodFilter === key ? info.color : C.line}`,
+            color: foodFilter === key ? C.ink : C.cream,
+            borderRadius: 12, cursor: "pointer",
+            fontSize: 12, fontWeight: 700, letterSpacing: "-0.01em",
+          }}>
+            <span style={{ fontSize: 16, marginRight: 4 }}>{info.icon}</span>
+            {info.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="ease-up-4">
+        <Surface accent={activeList.color}>
+          <div style={{ marginBottom: 14 }}>
+            <Eyebrow color={activeList.color}>{activeList.label} · Kosher</Eyebrow>
+            <p className="h-serif" style={{ fontSize: 16, color: C.cream, margin: "8px 0 0", lineHeight: 1.4 }}>
+              {activeList.blurb}
+            </p>
+          </div>
+
+          {activeList.items.map((food, i) => (
+            <div key={i} style={{
+              padding: "14px 0",
+              borderBottom: i < activeList.items.length - 1 ? `1px solid ${C.line}` : "none",
+              display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12,
+            }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: C.bone, letterSpacing: "-0.01em" }}>{food.name}</span>
+                  <span className="num-tab" style={{
+                    fontSize: 12, color: activeList.color, fontWeight: 700, fontFamily: FONT_MONO,
+                  }}>{food.protein}g</span>
+                </div>
+                {food.timing && (
+                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4, letterSpacing: "0.05em" }}>
+                    {food.timing.toUpperCase()}
+                  </div>
+                )}
+                <p className="h-serif" style={{ fontSize: 13, color: C.dim, margin: "4px 0 0", lineHeight: 1.4 }}>
+                  {food.note}
+                </p>
+              </div>
+              <button onClick={() => addProtein(food.protein)} className="btn" style={{
+                background: activeList.color + "15",
+                border: `1px solid ${activeList.color}40`,
+                color: activeList.color,
+                padding: "8px 14px", borderRadius: 10,
+                fontSize: 12, fontWeight: 700, cursor: "pointer",
+                fontFamily: FONT_DISPLAY, flexShrink: 0,
+              }}>
+                +{food.protein}g
+              </button>
+            </div>
+          ))}
+        </Surface>
+      </div>
+
+      {/* ── KOSHER NOTES ── */}
+      <Surface accent={C.plum} padding={20}>
+        <Eyebrow color={C.plum}>Kosher Notes</Eyebrow>
+        <p className="h-serif" style={{ fontSize: 15, color: C.cream, margin: "10px 0 0", lineHeight: 1.5 }}>
+          All items above are commonly available with reliable hechshers (OU, OK, Star-K). Fairlife Core Power and Quest Bars are widely OU certified — easy gym-bag staples. Always double-check the label, since certifications change. For meat/dairy timing, plan post-workout shakes around your meals.
+        </p>
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
+          <Eyebrow color={C.amber}>Hydration</Eyebrow>
+          <p className="h-serif" style={{ fontSize: 14, color: C.cream, margin: "8px 0 0", lineHeight: 1.5 }}>
+            Target ~{Math.round(bodyStats.weightLbs * 0.6)} oz water per day. Add 16–24 oz extra on training days. Electrolytes (LMNT, plain salt + lemon) on heavy sweat sessions.
+          </p>
+        </div>
+      </Surface>
+
+      <p className="h-serif" style={{ textAlign: "center", color: C.dim, fontSize: 16, margin: "24px 0 0" }}>
+        "You are what you eat. Eat to be unstoppable."
+        <span style={{ display: "block", fontFamily: FONT_MONO, fontStyle: "normal", fontSize: 10, letterSpacing: "0.15em", marginTop: 6 }}>— THE WORK</span>
+      </p>
+    </>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
    APP
    ════════════════════════════════════════════════════════════ */
 
@@ -1189,6 +1828,39 @@ export default function App() {
   const [restTimer, setRestTimer] = useState(null); // null or { seconds }
   const [confetti, setConfetti] = useState(false);
   const [restEnabled, setRestEnabled] = useState(true);
+  const [notifEnabled, setNotifEnabled] = useState(false);
+
+  // Body stats + protein log (localStorage-backed)
+  const [bodyStats, setBodyStats] = useState(loadBodyStats());
+  const [proteinLog, setProteinLog] = useState(loadProteinLog());
+
+  // Reps editor state
+  const [repsEditor, setRepsEditor] = useState(null); // { exId, sk, setIndex, currentReps, defaultReps, exerciseName }
+
+  // Track when session is active for visibility-change banner
+  const sessionActiveRef = useRef(false);
+  useEffect(() => {
+    sessionActiveRef.current = restTimer !== null || Object.keys(checked).some(k => checked[k]);
+  }, [restTimer, checked]);
+
+  // Visibility change handler — fire notif when user returns and timer is going
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden" && restTimer) {
+        // App backgrounded during rest timer — make sure notification permission is fresh
+        requestNotificationPermission();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [restTimer]);
+
+  // Check notification permission on mount
+  useEffect(() => {
+    if ("Notification" in window) {
+      setNotifEnabled(Notification.permission === "granted");
+    }
+  }, []);
 
   const showSave = (ok) => { setSaveMsg(ok ? "Saved" : "Failed"); setTimeout(() => setSaveMsg(""), 2400); };
 
@@ -1235,12 +1907,60 @@ export default function App() {
   const toggleCheck = id => setChecked(p => ({...p, [id]: !p[id]}));
   const setVal = (id, f, v) => setVals(p => ({...p, [id]: {...(p[id]||{}), [f]: v}}));
 
+  // Reps editor handlers
+  const openRepsEditor = (exId, ex, setIndex, currentReps) => {
+    setRepsEditor({
+      exId, sk, setIndex, currentReps,
+      defaultReps: ex.reps,
+      exerciseName: ex.name,
+    });
+  };
+
+  const saveCustomReps = (newReps) => {
+    if (!repsEditor) return;
+    const fullId = repsEditor.sk + "_" + repsEditor.exId;
+    const currentVals = vals[fullId] || {};
+    const customReps = { ...(currentVals.customReps || {}) };
+    customReps[repsEditor.setIndex] = newReps;
+    setVals(p => ({...p, [fullId]: {...currentVals, customReps}}));
+  };
+
+  // Save body stats to localStorage when changed
+  const updateBodyStats = (next) => {
+    setBodyStats(next);
+    saveBodyStats(next);
+  };
+
+  const updateProtein = (dateKey, grams) => {
+    const next = { ...proteinLog, [dateKey]: grams };
+    if (grams <= 0) delete next[dateKey];
+    setProteinLog(next);
+    saveProteinLog(next);
+  };
+
   const logSession = async () => {
     const exVols = session.exercises.filter(ex => checked[sk+"_"+ex.id]).map(ex => {
-      const w = ex.barbell ? 45+(parseFloat(vals[sk+"_"+ex.id]?.perSide)||0)*2 : parseFloat(vals[sk+"_"+ex.id]?.weight)||0;
-      const s = parseInt(vals[sk+"_"+ex.id]?.setsDone || ex.sets);
-      const r = parseInt(ex.reps) || 0;
-      return { name: ex.name, sets: s, reps: ex.reps, weight: w, volume: (ex.noWeight||ex.timed||ex.bodyweight) ? 0 : w*s*r };
+      const exVals = vals[sk+"_"+ex.id] || {};
+      const w = ex.barbell ? 45+(parseFloat(exVals.perSide)||0)*2 : parseFloat(exVals.weight)||0;
+      const s = parseInt(exVals.setsDone || ex.sets);
+      const customReps = exVals.customReps || {};
+
+      // Compute total reps & per-set breakdown
+      let totalReps = 0;
+      const repsBreakdown = [];
+      for (let i = 0; i < s; i++) {
+        const r = customReps[i] !== undefined ? parseFloat(customReps[i]) : (parseFloat(ex.reps) || 0);
+        totalReps += r;
+        repsBreakdown.push(r);
+      }
+      const repsDisplay = repsBreakdown.length > 0 && repsBreakdown.some(r => r !== parseFloat(ex.reps))
+        ? repsBreakdown.join(",")
+        : ex.reps;
+
+      return {
+        name: ex.name, sets: s, reps: repsDisplay, weight: w,
+        volume: (ex.noWeight||ex.timed||ex.bodyweight) ? 0 : w*totalReps,
+      };
     });
     const payload = { session_name: session.code+": "+session.name, color: session.color, total_volume: exVols.reduce((a,e)=>a+e.volume,0), exercises: exVols };
     const { data, error } = await supabase.from("workouts").insert([payload]).select();
@@ -1283,9 +2003,27 @@ export default function App() {
     const w = parseFloat(weightInput);
     if (!w || w < 100 || w > 400) return;
     const { data, error } = await supabase.from("weight_log").insert([{ weight: w }]).select();
-    if (!error && data) { setWeightLog(p => [data[0],...p]); setWeightInput(""); showSave(true); } else showSave(false);
+    if (!error && data) {
+      setWeightLog(p => [data[0],...p]);
+      setWeightInput("");
+      showSave(true);
+      // Also update body stats so protein math stays current
+      updateBodyStats({ ...bodyStats, weightLbs: w });
+    } else showSave(false);
   };
   const deleteWeight = async id => { await supabase.from("weight_log").delete().eq("id", id); setWeightLog(p => p.filter(e => e.id !== id)); };
+
+  const enableNotifications = async () => {
+    const result = await requestNotificationPermission();
+    setNotifEnabled(result === "granted");
+    if (result === "granted") {
+      // Test notification
+      try {
+        const n = new Notification("🏀 Notifications on", { body: "You'll get banners when timers finish.", silent: false });
+        setTimeout(() => n.close(), 4000);
+      } catch(e) {}
+    }
+  };
 
   const thisWeek = history.filter(h => (Date.now()-new Date(h.logged_at)) < 7*86400000).length;
   const totalLbs = history.reduce((a,h) => a+(h.total_volume||0), 0);
@@ -1302,11 +2040,12 @@ export default function App() {
   const cardioOverdue = !cardioInRecovery && hoursSinceCardio !== null && hoursSinceCardio/24 > 3;
 
   const TABS = [
-    { id: "workout", label: "Train",  icon: "🏋️" },
-    { id: "history", label: "Log",    icon: "📓" },
-    { id: "stats",   label: "Stats",  icon: "📊" },
-    { id: "weight",  label: "Weight", icon: "⚖️" },
-    { id: "goals",   label: "Plan",   icon: "🎯" },
+    { id: "workout",   label: "Train",  icon: "🏋️" },
+    { id: "nutrition", label: "Fuel",   icon: "🥤" },
+    { id: "history",   label: "Log",    icon: "📓" },
+    { id: "stats",     label: "Stats",  icon: "📊" },
+    { id: "weight",    label: "Weight", icon: "⚖️" },
+    { id: "goals",     label: "Plan",   icon: "🎯" },
   ];
 
   if (loading) return (
@@ -1372,6 +2111,22 @@ export default function App() {
               <p className="h-serif" style={{ fontSize: 17, color: C.dim, margin: "6px 0 0", lineHeight: 1.4 }}>
                 {todayTotal === 0 ? (restDay ? "Recovery is part of the work." : "Let's build the dunk.") : todayTotal === 1 ? "One down. Strong start." : `${todayTotal} sessions in today. Beast.`}
               </p>
+
+              {/* Notification permission prompt — non-intrusive */}
+              {!notifEnabled && "Notification" in window && Notification.permission === "default" && (
+                <div onClick={enableNotifications} className="card-tap" style={{
+                  marginTop: 14, padding: "10px 14px", borderRadius: 12,
+                  background: C.electric + "15", border: `1px solid ${C.electric}40`,
+                  display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
+                }}>
+                  <span style={{ fontSize: 18 }}>🔔</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.bone }}>Get timer alerts</div>
+                    <div style={{ fontSize: 11, color: C.dim, marginTop: 1 }}>Banner notifications when you switch apps mid-rest</div>
+                  </div>
+                  <span style={{ fontSize: 11, color: C.electric, fontFamily: FONT_MONO, fontWeight: 600 }}>ENABLE →</span>
+                </div>
+              )}
 
               {/* Weight reminder if 7+ days since last weigh-in */}
               {(() => {
@@ -1483,6 +2238,7 @@ export default function App() {
                     color={session.color}
                     onRest={restEnabled && !ex.timed && !ex.noWeight ? () => setRestTimer({ seconds: 90 }) : null}
                     lastWeight={getLastWeight(history, ex.name)}
+                    onEditReps={(setIndex, currentReps) => openRepsEditor(ex.id, ex, setIndex, currentReps)}
                   />
                 ))}
                 <Btn color={session.color} onClick={logSession} disabled={!anyChecked} full size="lg" style={{ marginTop: 18 }}>
@@ -1645,6 +2401,16 @@ export default function App() {
           );
         })()}
 
+        {/* ── NUTRITION ── */}
+        {tab === "nutrition" && (
+          <NutritionTab
+            bodyStats={bodyStats}
+            onUpdateBody={updateBodyStats}
+            proteinLog={proteinLog}
+            onProteinChange={updateProtein}
+          />
+        )}
+
         {/* ── HISTORY ── */}
         {tab === "history" && (
           <>
@@ -1756,7 +2522,7 @@ export default function App() {
                 <Surface>
                   <Eyebrow>Log Weight</Eyebrow>
                   <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-                    <input type="number" min="150" max="350" step="0.1" placeholder="223.5" value={weightInput} onChange={e => setWeightInput(e.target.value)} onKeyDown={e => e.key==="Enter" && logWeight()}
+                    <input type="number" inputMode="decimal" min="100" max="400" step="0.1" placeholder="223.5" value={weightInput} onChange={e => setWeightInput(e.target.value)} onKeyDown={e => e.key==="Enter" && logWeight()}
                       style={{ background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "13px 16px", fontSize: 18, flex: 1, outline: "none", fontWeight: 600, fontFamily: FONT_DISPLAY }} />
                     <Btn color={C.rust} onClick={logWeight}>Log</Btn>
                   </div>
@@ -1849,6 +2615,17 @@ export default function App() {
                       }} />
                     </button>
                   </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.line}` }}>
+                    <div>
+                      <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>Banner notifications</div>
+                      <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Alerts when timers fire in the background</div>
+                    </div>
+                    {notifEnabled ? (
+                      <span style={{ fontSize: 11, color: C.moss, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>● ON</span>
+                    ) : (
+                      <Btn color={C.electric} size="sm" onClick={enableNotifications}>Enable</Btn>
+                    )}
+                  </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
                     <div>
                       <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>Smart day suggest</div>
@@ -1888,7 +2665,7 @@ export default function App() {
             <Surface accent={C.amber} padding={22}>
               <Eyebrow color={C.amber}>Nutrition</Eyebrow>
               <p className="h-serif" style={{ fontSize: 17, color: C.cream, margin: "12px 0 0", lineHeight: 1.6 }}>
-                Target 200g protein/day. Whole foods first. Carbs around training. Cut alcohol to weekends. 3L water minimum on training days.
+                Target {calcProteinTarget(bodyStats.weightLbs)}g protein/day. Whole foods first. Carbs around training. Cut alcohol to weekends. 3L water minimum on training days. <strong style={{ color: C.amber }}>Detailed kosher food guide + protein tracker on the Fuel tab.</strong>
               </p>
             </Surface>
 
@@ -1929,6 +2706,17 @@ export default function App() {
           seconds={restTimer.seconds}
           onClose={() => setRestTimer(null)}
           onSkip={() => setRestTimer(null)}
+        />
+      )}
+      {repsEditor && (
+        <RepsEditor
+          open={true}
+          currentReps={repsEditor.currentReps}
+          defaultReps={repsEditor.defaultReps}
+          exerciseName={repsEditor.exerciseName}
+          setIndex={repsEditor.setIndex}
+          onSave={saveCustomReps}
+          onClose={() => setRepsEditor(null)}
         />
       )}
 
