@@ -207,37 +207,37 @@ const PHASES = [
 
 /* ── KOSHER NUTRITION DATABASE ── */
 const PRE_WORKOUT_FOODS = [
-  { name: "Banana + 2 tbsp peanut butter",   protein: 8,  timing: "30–60 min before", note: "Quick carbs + sustained energy. Classic." },
-  { name: "Greek yogurt + honey + berries",   protein: 18, timing: "60 min before",    note: "Fage 2% or Chobani. Pareve-friendly w/ coconut yogurt." },
-  { name: "Oatmeal + whey + cinnamon",        protein: 28, timing: "60–90 min before", note: "Slow carbs. Fuels heavy lifts." },
-  { name: "Bagel + cream cheese + lox",       protein: 22, timing: "90 min before",    note: "Carbs, protein, salt. Heavy day fuel." },
-  { name: "Rice cakes + almond butter",       protein: 7,  timing: "30 min before",    note: "Fast carbs, light on stomach." },
-  { name: "Quest bar (any flavor)",           protein: 21, timing: "30–45 min before", note: "OU certified. Toss in gym bag." },
-  { name: "Black coffee + dates",             protein: 1,  timing: "20 min before",    note: "Caffeine + glucose. Fasted lift hack." },
+  { name: "Banana + 2 tbsp peanut butter",   protein: 8,  calories: 295, timing: "30–60 min before", note: "Quick carbs + sustained energy. Classic." },
+  { name: "Greek yogurt + honey + berries",   protein: 18, calories: 220, timing: "60 min before",    note: "Fage 2% or Chobani. Pareve-friendly w/ coconut yogurt." },
+  { name: "Oatmeal + whey + cinnamon",        protein: 28, calories: 380, timing: "60–90 min before", note: "Slow carbs. Fuels heavy lifts." },
+  { name: "Bagel + cream cheese + lox",       protein: 22, calories: 420, timing: "90 min before",    note: "Carbs, protein, salt. Heavy day fuel." },
+  { name: "Rice cakes + almond butter",       protein: 7,  calories: 200, timing: "30 min before",    note: "Fast carbs, light on stomach." },
+  { name: "Quest bar (any flavor)",           protein: 21, calories: 190, timing: "30–45 min before", note: "OU certified. Toss in gym bag." },
+  { name: "Black coffee + dates",             protein: 1,  calories: 140, timing: "20 min before",    note: "Caffeine + glucose. Fasted lift hack." },
 ];
 
 const POST_WORKOUT_FOODS = [
-  { name: "Fairlife Core Power 42g shake",    protein: 42, timing: "Within 30 min", note: "OU-D certified. Best on-the-go option. Drink one." },
-  { name: "Whey isolate shake (Optimum/Now)", protein: 30, timing: "Within 30 min", note: "OU-D. Mix with water or milk." },
-  { name: "Grilled chicken + rice + veg",     protein: 45, timing: "Within 90 min", note: "The classic. Bumps recovery hard." },
-  { name: "Salmon + sweet potato",            protein: 35, timing: "Within 90 min", note: "Omega-3s + carbs. Inflammation fighter." },
-  { name: "Cottage cheese + pineapple",       protein: 25, timing: "Within 60 min", note: "Casein digests slow. Great before bed too." },
-  { name: "3 eggs + toast + avocado",         protein: 21, timing: "Within 60 min", note: "Cheap, fast, complete protein." },
-  { name: "Tuna pouch + crackers",            protein: 25, timing: "Within 60 min", note: "Gym bag staple. StarKist/Bumble Bee OU." },
-  { name: "Turkey roll-ups + hummus",         protein: 22, timing: "Within 60 min", note: "Empire kosher turkey. Pareve hummus." },
+  { name: "Fairlife Core Power 42g shake",    protein: 42, calories: 230, timing: "Within 30 min", note: "OU-D certified. Best on-the-go option. Drink one." },
+  { name: "Whey isolate shake (Optimum/Now)", protein: 30, calories: 140, timing: "Within 30 min", note: "OU-D. Mix with water or milk." },
+  { name: "Grilled chicken + rice + veg",     protein: 45, calories: 520, timing: "Within 90 min", note: "The classic. Bumps recovery hard." },
+  { name: "Salmon + sweet potato",            protein: 35, calories: 480, timing: "Within 90 min", note: "Omega-3s + carbs. Inflammation fighter." },
+  { name: "Cottage cheese + pineapple",       protein: 25, calories: 240, timing: "Within 60 min", note: "Casein digests slow. Great before bed too." },
+  { name: "3 eggs + toast + avocado",         protein: 21, calories: 420, timing: "Within 60 min", note: "Cheap, fast, complete protein." },
+  { name: "Tuna pouch + crackers",            protein: 25, calories: 250, timing: "Within 60 min", note: "Gym bag staple. StarKist/Bumble Bee OU." },
+  { name: "Turkey roll-ups + hummus",         protein: 22, calories: 280, timing: "Within 60 min", note: "Empire kosher turkey. Pareve hummus." },
 ];
 
 const ANYTIME_PROTEIN = [
-  { name: "Fairlife Core Power Elite (42g)",  protein: 42, note: "OU-D. Lactose-free. King of shelf-stable." },
-  { name: "Fairlife Core Power (26g)",        protein: 26, note: "OU-D. Smaller, cheaper." },
-  { name: "Quest Bar",                         protein: 21, note: "OU. Low sugar." },
-  { name: "Built Bar",                         protein: 17, note: "OU. Tastes like candy." },
-  { name: "ONE Bar",                           protein: 20, note: "OU-D." },
-  { name: "Owyn vegan shake (20g)",            protein: 20, note: "OU pareve. Dairy-free option." },
-  { name: "Premier Protein shake (30g)",       protein: 30, note: "OU-D." },
-  { name: "Greek yogurt cup (Fage 0%)",        protein: 18, note: "OU-D." },
-  { name: "Hard-boiled eggs (2)",              protein: 12, note: "Cheapest protein." },
-  { name: "Beef jerky (Jack Link's Original)", protein: 12, note: "OU. Note: not all flavors certified." },
+  { name: "Fairlife Core Power Elite (42g)",  protein: 42, calories: 230, note: "OU-D. Lactose-free. King of shelf-stable." },
+  { name: "Fairlife Core Power (26g)",        protein: 26, calories: 170, note: "OU-D. Smaller, cheaper." },
+  { name: "Quest Bar",                         protein: 21, calories: 190, note: "OU. Low sugar." },
+  { name: "Built Bar",                         protein: 17, calories: 130, note: "OU. Tastes like candy." },
+  { name: "ONE Bar",                           protein: 20, calories: 220, note: "OU-D." },
+  { name: "Owyn vegan shake (20g)",            protein: 20, calories: 180, note: "OU pareve. Dairy-free option." },
+  { name: "Premier Protein shake (30g)",       protein: 30, calories: 160, note: "OU-D." },
+  { name: "Greek yogurt cup (Fage 0%)",        protein: 18, calories: 100, note: "OU-D." },
+  { name: "Hard-boiled eggs (2)",              protein: 12, calories: 140, note: "Cheapest protein." },
+  { name: "Beef jerky (Jack Link's Original)", protein: 12, calories: 80,  note: "OU. Note: not all flavors certified." },
 ];
 
 /* ── MEAL COMBINATIONS — complete plates, not ingredients ── */
@@ -434,12 +434,21 @@ const POST_WORKOUT_MEALS = [
 
 /* Protein target: 1g per pound of bodyweight (high-end for muscle gain + cut) */
 const calcProteinTarget = (weightLbs) => Math.round(weightLbs * 1.0);
-const calcCalorieTarget = (weightLbs, heightInches, age = 35, activityFactor = 1.55) => {
-  // Mifflin-St Jeor for males, then activity multiplier
+/* Goal modes: cut = aggressive deficit, lean = moderate deficit, maintain = TDEE, bulk = surplus */
+const GOAL_MODES = {
+  cut:      { label: "Cut",      delta: -800, blurb: "Aggressive deficit · ~1.5 lb/wk loss",   color: "rust" },
+  lean:     { label: "Lean",     delta: -500, blurb: "Moderate deficit · ~1 lb/wk loss",       color: "amber" },
+  maintain: { label: "Maintain", delta: 0,    blurb: "Eat to fuel · stay where you are",       color: "electric" },
+  bulk:     { label: "Bulk",     delta: 400,  blurb: "Lean surplus · slow muscle gain",        color: "moss" },
+};
+
+const calcCalorieTarget = (weightLbs, heightInches, age = 35, activityFactor = 1.55, goalDelta = 0) => {
+  // Mifflin-St Jeor for males, then activity multiplier, then goal adjustment
   const weightKg = weightLbs * 0.453592;
   const heightCm = heightInches * 2.54;
   const bmr = 10 * weightKg + 6.25 * heightCm - 5 * age + 5;
-  return Math.round(bmr * activityFactor);
+  const tdee = bmr * activityFactor;
+  return Math.max(1200, Math.round(tdee + goalDelta)); // 1200 floor for safety
 };
 
 /* ════════════════════════════════════════════════════════════
@@ -648,20 +657,33 @@ function greeting() {
 /* localStorage helpers — for body stats since we don't want to add a new table */
 const LS_BODY = "bttd_body_stats";
 const LS_PROTEIN = "bttd_protein_log_v1";
+const LS_CALORIES = "bttd_calorie_log_v1";
 
 function loadBodyStats() {
   try {
     const raw = localStorage.getItem(LS_BODY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Backfill defaults for new fields if migrating from older saves
+      if (!parsed.goal) parsed.goal = "lean";
+      if (typeof parsed.activityFactor !== "number") parsed.activityFactor = 1.55;
+      return parsed;
+    }
   } catch(e) {}
-  return { heightInches: 77, weightLbs: 222, age: 35 };
+  return { heightInches: 77, weightLbs: 222, age: 47, goal: "lean", activityFactor: 1.55 };
 }
 function saveBodyStats(stats) {
   try { localStorage.setItem(LS_BODY, JSON.stringify(stats)); } catch(e) {}
 }
 
+/* LOCAL timezone date key — fixes the UTC midnight bug.
+   Uses the device's local time so the day rolls over at YOUR midnight, not UTC's. */
 function todayKey() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function loadProteinLog() {
@@ -673,6 +695,17 @@ function loadProteinLog() {
 }
 function saveProteinLog(log) {
   try { localStorage.setItem(LS_PROTEIN, JSON.stringify(log)); } catch(e) {}
+}
+
+function loadCalorieLog() {
+  try {
+    const raw = localStorage.getItem(LS_CALORIES);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return {};
+}
+function saveCalorieLog(log) {
+  try { localStorage.setItem(LS_CALORIES, JSON.stringify(log)); } catch(e) {}
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1783,20 +1816,33 @@ function StatsTab({ history, weightLog, cardioSessions }) {
    NUTRITION TAB — Kosher pre/post workout + protein tracker
    ════════════════════════════════════════════════════════════ */
 
-function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) {
+function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange, calorieLog, onCalorieChange }) {
   const [editingBody, setEditingBody] = useState(false);
   const [tmpHeight, setTmpHeight] = useState(bodyStats.heightInches);
   const [tmpWeight, setTmpWeight] = useState(bodyStats.weightLbs);
   const [tmpAge, setTmpAge] = useState(bodyStats.age);
+  const [tmpGoal, setTmpGoal] = useState(bodyStats.goal || "lean");
   const [foodFilter, setFoodFilter] = useState("preMeals"); // preMeals | postMeals | pre | post | snacks
   const [customAmount, setCustomAmount] = useState("");
+  const [customCalAmount, setCustomCalAmount] = useState("");
 
   const today = todayKey();
   const todayProtein = proteinLog[today] || 0;
+  const todayCalories = (calorieLog && calorieLog[today]) || 0;
   const proteinTarget = calcProteinTarget(bodyStats.weightLbs);
-  const calorieTarget = calcCalorieTarget(bodyStats.weightLbs, bodyStats.heightInches, bodyStats.age);
+  const goal = bodyStats.goal || "lean";
+  const goalInfo = GOAL_MODES[goal] || GOAL_MODES.lean;
+  const calorieTarget = calcCalorieTarget(
+    bodyStats.weightLbs,
+    bodyStats.heightInches,
+    bodyStats.age,
+    bodyStats.activityFactor || 1.55,
+    goalInfo.delta
+  );
   const pct = Math.min(100, (todayProtein / proteinTarget) * 100);
   const remaining = Math.max(0, proteinTarget - todayProtein);
+  const calPct = Math.min(100, (todayCalories / calorieTarget) * 100);
+  const calRemaining = calorieTarget - todayCalories; // can be negative when over
 
   const heightFt = Math.floor(bodyStats.heightInches / 12);
   const heightIn = bodyStats.heightInches % 12;
@@ -1804,9 +1850,14 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
   const saveBody = () => {
     const h = parseFloat(tmpHeight) || 77;
     const w = parseFloat(tmpWeight) || 222;
-    const a = parseInt(tmpAge) || 35;
-    onUpdateBody({ heightInches: h, weightLbs: w, age: a });
+    const a = parseInt(tmpAge) || 47;
+    onUpdateBody({ ...bodyStats, heightInches: h, weightLbs: w, age: a, goal: tmpGoal });
     setEditingBody(false);
+  };
+
+  const setGoal = (newGoal) => {
+    onUpdateBody({ ...bodyStats, goal: newGoal });
+    setTmpGoal(newGoal);
   };
 
   const addProtein = (grams) => {
@@ -1822,6 +1873,32 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
     onProteinChange(today, Math.max(0, grams));
   };
 
+  const addCalories = (cals) => {
+    const newTotal = Math.max(0, todayCalories + cals);
+    onCalorieChange(today, newTotal);
+    if (cals > 0 && navigator.vibrate) navigator.vibrate(6);
+  };
+
+  const setCaloriesAbsolute = (cals) => {
+    onCalorieChange(today, Math.max(0, cals));
+  };
+
+  /* Log a meal/food: adds BOTH protein and calories in one tap */
+  const logFood = (food) => {
+    const proteinAmt = food.protein || food.totalProtein || 0;
+    const calAmt = food.calories || 0;
+    if (proteinAmt > 0) {
+      onProteinChange(today, todayProtein + proteinAmt);
+    }
+    if (calAmt > 0) {
+      onCalorieChange(today, todayCalories + calAmt);
+    }
+    if (proteinAmt > 0 || calAmt > 0) {
+      beep(880, 0.08, 0.3);
+      if (navigator.vibrate) navigator.vibrate(8);
+    }
+  };
+
   const FOOD_LISTS = {
     preMeals:  { items: PRE_WORKOUT_MEALS,  type: "meal", label: "Pre Meals",   icon: "🍽️", color: C.amber,    blurb: "Complete plates to eat 30–90 min before training. Tap to log." },
     postMeals: { items: POST_WORKOUT_MEALS, type: "meal", label: "Post Meals",  icon: "🍴", color: C.moss,     blurb: "Real meals for after the work. Within 60–90 min." },
@@ -1832,6 +1909,23 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
 
   const activeList = FOOD_LISTS[foodFilter];
   const ringColor = pct >= 100 ? C.moss : pct >= 70 ? C.amber : C.rust;
+
+  // Calorie ring color logic differs based on goal:
+  // - Cutting: under = good (moss), at target = amber, over = rust (you ate too much)
+  // - Maintain: at target = moss, far either way = amber
+  // - Bulking: under = rust (need more), at target = moss
+  let calRingColor;
+  if (goalInfo.delta < 0) {
+    // Cut/Lean: staying under target is the win
+    calRingColor = todayCalories <= calorieTarget ? (calPct >= 70 ? C.moss : C.amber) : C.rust;
+  } else if (goalInfo.delta > 0) {
+    // Bulk: hit target or just above
+    calRingColor = todayCalories >= calorieTarget * 0.95 ? C.moss : calPct >= 70 ? C.amber : C.rust;
+  } else {
+    // Maintain: close to target
+    const variance = Math.abs(todayCalories - calorieTarget) / calorieTarget;
+    calRingColor = variance <= 0.10 ? C.moss : variance <= 0.20 ? C.amber : C.rust;
+  }
 
   return (
     <>
@@ -1886,7 +1980,7 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
 
           {/* Quick add buttons */}
           <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.line}` }}>
-            <Eyebrow>Quick Add</Eyebrow>
+            <Eyebrow>Quick Add Protein</Eyebrow>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 10 }}>
               {[10, 20, 30, 42].map(g => (
                 <button key={g} onClick={() => addProtein(g)} className="btn" style={{
@@ -1901,7 +1995,7 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
               <NumIn
                 value={customAmount}
                 onChange={setCustomAmount}
-                placeholder="Custom (e.g. 24.5)"
+                placeholder="Custom g (e.g. 24.5)"
                 decimal={true}
                 step="0.5"
                 style={{ flex: 1 }}
@@ -1916,6 +2010,142 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
                 }}>↺</Btn>
               )}
             </div>
+          </div>
+        </Surface>
+      </div>
+
+      {/* ── CALORIE RING — second hero ── */}
+      <div className="ease-up-1">
+        <Surface accent={calRingColor} padding={22}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+            <div>
+              <Eyebrow color={calRingColor}>Today · Calories</Eyebrow>
+              <div className="h-serif" style={{ fontSize: 14, color: C.dim, marginTop: 4 }}>
+                Goal: <span style={{ color: calRingColor, fontWeight: 600 }}>{goalInfo.label}</span> · {goalInfo.delta < 0 ? `${goalInfo.delta} cal/day` : goalInfo.delta > 0 ? `+${goalInfo.delta} cal/day` : "TDEE"}
+              </div>
+            </div>
+            <Pill color={calRingColor}>{Math.round(calPct)}%</Pill>
+          </div>
+
+          {/* Ring */}
+          <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 16 }}>
+            <div style={{ position: "relative", width: 130, height: 130, flexShrink: 0 }}>
+              <svg width="130" height="130" viewBox="0 0 100 100" style={{ position: "absolute" }}>
+                <circle cx="50" cy="50" r="44" stroke={C.line} strokeWidth="6" fill="none" />
+                <circle
+                  className="ring-progress"
+                  cx="50" cy="50" r="44" stroke={calRingColor} strokeWidth="6" fill="none"
+                  strokeLinecap="round"
+                  strokeDasharray={2 * Math.PI * 44}
+                  strokeDashoffset={2 * Math.PI * 44 * (1 - Math.min(100, calPct) / 100)}
+                  style={{ transition: "stroke-dashoffset 0.6s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.3s" }}
+                />
+              </svg>
+              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 800, color: calRingColor, lineHeight: 0.9, letterSpacing: "-0.03em" }}>
+                  {Math.round(todayCalories).toLocaleString()}
+                </div>
+                <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, marginTop: 2, letterSpacing: "0.08em" }}>
+                  / {calorieTarget.toLocaleString()}
+                </div>
+              </div>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 6 }}>
+                {calRemaining >= 0 ? "REMAINING" : "OVER BUDGET"}
+              </div>
+              <div className="num-tab h-display" style={{
+                fontSize: 32, fontWeight: 700,
+                color: calRemaining >= 0 ? C.bone : C.rust,
+                letterSpacing: "-0.04em", lineHeight: 0.95,
+              }}>
+                {calRemaining >= 0 ? Math.round(calRemaining).toLocaleString() : `+${Math.round(-calRemaining).toLocaleString()}`}
+                <span style={{ fontSize: 13, color: C.dim, fontWeight: 500, marginLeft: 4 }}>cal</span>
+              </div>
+              <p className="h-serif" style={{ fontSize: 13, color: C.cream, margin: "10px 0 0", lineHeight: 1.4 }}>
+                {goalInfo.delta < 0 ? (
+                  calRemaining >= 0
+                    ? (calRemaining < 200 ? "Tight margin. One snack away from over." : calRemaining < 500 ? "Solid pace. Stay disciplined." : "Plenty of room. Don't skip protein.")
+                    : "Over your cut target. Tomorrow's a new day."
+                ) : goalInfo.delta > 0 ? (
+                  calPct >= 100 ? "Hit your bulk target. Fueled to grow." : `Need ${Math.round(calRemaining)} more to hit bulk target.`
+                ) : (
+                  Math.abs(calRemaining) < 100 ? "Right on maintenance. Locked in." : calRemaining > 0 ? "Room to eat more." : "Slightly over. No big deal."
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* Calorie quick-add buttons */}
+          <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.line}` }}>
+            <Eyebrow>Quick Add Calories</Eyebrow>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 10 }}>
+              {[100, 250, 500, 700].map(c => (
+                <button key={c} onClick={() => addCalories(c)} className="btn" style={{
+                  padding: "12px 0", borderRadius: 12,
+                  background: calRingColor + "15", border: `1px solid ${calRingColor}40`,
+                  color: calRingColor, fontSize: 14, fontWeight: 700, cursor: "pointer",
+                  fontFamily: FONT_DISPLAY, letterSpacing: "-0.01em",
+                }}>+{c}</button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+              <NumIn
+                value={customCalAmount}
+                onChange={setCustomCalAmount}
+                placeholder="Custom cal (e.g. 320)"
+                decimal={false}
+                step="10"
+                style={{ flex: 1 }}
+              />
+              <Btn color={calRingColor} size="sm" onClick={() => {
+                const v = parseFloat(customCalAmount);
+                if (!isNaN(v) && v > 0) { addCalories(v); setCustomCalAmount(""); }
+              }} disabled={!customCalAmount || parseFloat(customCalAmount) <= 0}>Add</Btn>
+              {todayCalories > 0 && (
+                <Btn ghost color={C.dim} size="sm" onClick={() => {
+                  if (window.confirm("Reset today's calories to 0?")) setCaloriesAbsolute(0);
+                }}>↺</Btn>
+              )}
+            </div>
+            <p className="h-serif" style={{ fontSize: 12, color: C.mute, margin: "10px 0 0", lineHeight: 1.4, fontStyle: "italic" }}>
+              Tip: tapping a meal or food card below auto-adds both protein AND calories at once.
+            </p>
+          </div>
+        </Surface>
+      </div>
+
+      {/* ── GOAL MODE SELECTOR ── */}
+      <div className="ease-up-2">
+        <Surface accent={C[goalInfo.color]}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+            <div>
+              <Eyebrow color={C[goalInfo.color]}>Eating Goal</Eyebrow>
+              <p className="h-serif" style={{ fontSize: 14, color: C.cream, margin: "8px 0 0", lineHeight: 1.4 }}>
+                {goalInfo.blurb}
+              </p>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+            {Object.entries(GOAL_MODES).map(([key, info]) => {
+              const active = goal === key;
+              const c = C[info.color];
+              return (
+                <button key={key} onClick={() => setGoal(key)} className="btn" style={{
+                  padding: "12px 4px", borderRadius: 12,
+                  background: active ? c : "transparent",
+                  border: `1px solid ${active ? c : C.line}`,
+                  color: active ? C.ink : C.cream,
+                  fontSize: 12, fontWeight: 700, letterSpacing: "-0.01em",
+                  cursor: "pointer",
+                }}>
+                  <div style={{ fontSize: 14 }}>{info.label}</div>
+                  <div style={{ fontSize: 10, fontFamily: FONT_MONO, marginTop: 3, opacity: 0.85 }}>
+                    {info.delta > 0 ? `+${info.delta}` : info.delta}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </Surface>
       </div>
@@ -1966,7 +2196,7 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
                 <div>
                   <div style={{ textAlign: "center" }}><Eyebrow>Age</Eyebrow></div>
                   <div style={{ height: 5 }} />
-                  <NumIn value={tmpAge} onChange={setTmpAge} decimal={false} step="1" placeholder="35" />
+                  <NumIn value={tmpAge} onChange={setTmpAge} decimal={false} step="1" placeholder="47" />
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
@@ -1986,11 +2216,13 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
               <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4 }}>1g per lb · cut + lift</div>
             </div>
             <div>
-              <Eyebrow color={C.moss}>Daily Calories</Eyebrow>
-              <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 700, color: C.moss, letterSpacing: "-0.03em", marginTop: 6 }}>
+              <Eyebrow color={C[goalInfo.color]}>Daily Calories</Eyebrow>
+              <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 700, color: C[goalInfo.color], letterSpacing: "-0.03em", marginTop: 6 }}>
                 {calorieTarget.toLocaleString()}
               </div>
-              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4 }}>Maintenance · subtract 300–500 to cut</div>
+              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4 }}>
+                {goalInfo.label.toUpperCase()} · {goalInfo.delta > 0 ? `+${goalInfo.delta}` : goalInfo.delta} from TDEE
+              </div>
             </div>
           </div>
         </Surface>
@@ -2055,7 +2287,7 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
                       </div>
                     )}
                   </div>
-                  <button onClick={() => addProtein(meal.totalProtein)} className="btn" style={{
+                  <button onClick={() => logFood(meal)} className="btn" style={{
                     background: activeList.color + "15",
                     border: `1px solid ${activeList.color}40`,
                     color: activeList.color,
@@ -2063,7 +2295,8 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
                     fontSize: 12, fontWeight: 700, cursor: "pointer",
                     fontFamily: FONT_DISPLAY, flexShrink: 0,
                   }}>
-                    LOG MEAL<br/><span style={{ fontSize: 14 }}>+{meal.totalProtein}g</span>
+                    LOG MEAL<br/>
+                    <span style={{ fontSize: 13 }}>+{meal.totalProtein}g · {meal.calories}c</span>
                   </button>
                 </div>
 
@@ -2119,6 +2352,11 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
                     <span className="num-tab" style={{
                       fontSize: 12, color: activeList.color, fontWeight: 700, fontFamily: FONT_MONO,
                     }}>{food.protein}g</span>
+                    {food.calories && (
+                      <span className="num-tab" style={{
+                        fontSize: 11, color: C.dim, fontFamily: FONT_MONO,
+                      }}>· {food.calories} cal</span>
+                    )}
                   </div>
                   {food.timing && (
                     <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4, letterSpacing: "0.05em" }}>
@@ -2129,7 +2367,7 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
                     {food.note}
                   </p>
                 </div>
-                <button onClick={() => addProtein(food.protein)} className="btn" style={{
+                <button onClick={() => logFood(food)} className="btn" style={{
                   background: activeList.color + "15",
                   border: `1px solid ${activeList.color}40`,
                   color: activeList.color,
@@ -2137,7 +2375,7 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange }) 
                   fontSize: 12, fontWeight: 700, cursor: "pointer",
                   fontFamily: FONT_DISPLAY, flexShrink: 0,
                 }}>
-                  +{food.protein}g
+                  +{food.protein}g{food.calories ? <><br/><span style={{ fontSize: 10, opacity: 0.85 }}>{food.calories}c</span></> : null}
                 </button>
               </div>
             ))
@@ -2194,9 +2432,10 @@ export default function App() {
   const [restEnabled, setRestEnabled] = useState(true);
   const [notifEnabled, setNotifEnabled] = useState(false);
 
-  // Body stats + protein log (localStorage-backed)
+  // Body stats + protein log + calorie log (localStorage-backed)
   const [bodyStats, setBodyStats] = useState(loadBodyStats());
   const [proteinLog, setProteinLog] = useState(loadProteinLog());
+  const [calorieLog, setCalorieLog] = useState(loadCalorieLog());
 
   // Reps editor state
   const [repsEditor, setRepsEditor] = useState(null); // { exId, sk, setIndex, currentReps, defaultReps, exerciseName }
@@ -2300,6 +2539,13 @@ export default function App() {
     if (grams <= 0) delete next[dateKey];
     setProteinLog(next);
     saveProteinLog(next);
+  };
+
+  const updateCalories = (dateKey, cals) => {
+    const next = { ...calorieLog, [dateKey]: cals };
+    if (cals <= 0) delete next[dateKey];
+    setCalorieLog(next);
+    saveCalorieLog(next);
   };
 
   const logSession = async () => {
@@ -2772,6 +3018,8 @@ export default function App() {
             onUpdateBody={updateBodyStats}
             proteinLog={proteinLog}
             onProteinChange={updateProtein}
+            calorieLog={calorieLog}
+            onCalorieChange={updateCalories}
           />
         )}
 
