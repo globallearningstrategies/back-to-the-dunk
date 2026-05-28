@@ -12,7 +12,7 @@ const supabase = createClient(
    Deep ink black → bold orange accent → tactical greens
    ════════════════════════════════════════════════════════════ */
 
-const C = {
+const LIGHT = {
   ink:      "#FAFAF7",
   panel:    "#FFFFFF",
   raised:   "#F4F2EC",
@@ -29,25 +29,78 @@ const C = {
   electric: "#0891B2",
   plum:     "#9333EA",
   red:      "#DC2626",
+  backdrop: "rgba(10, 9, 8, 0.6)",
 };
+
+// Dark "court" mode — deep OLED-friendly black, surfaces lift toward charcoal,
+// text flips to bone/cream lights, accents brighten so they pop on black.
+const DARK = {
+  ink:      "#0A0A0C",
+  panel:    "#16161B",
+  raised:   "#1F1F26",
+  line:     "#2B2B33",
+  faint:    "#3B3B45",
+  bone:     "#F6F5F1",
+  cream:    "#E3E0D9",
+  dim:      "#928D84",
+  mute:     "#6C6860",
+  rust:     "#FF5A2C",
+  rustHi:   "#FF7A45",
+  amber:    "#F59E0B",
+  moss:     "#84CC16",
+  electric: "#22D3EE",
+  plum:     "#A855F7",
+  red:      "#EF4444",
+  backdrop: "rgba(0, 0, 0, 0.7)",
+};
+
+// Live palette object — referenced directly in inline styles throughout the app.
+// applyThemePalette() mutates these keys in place so a top-level re-render recomputes
+// every inline style against the new values (no component is memoized).
+const C = { ...LIGHT };
+
+const LS_THEME = "bttd_theme";
+
+function loadThemePref() {
+  try {
+    const saved = localStorage.getItem(LS_THEME);
+    if (saved === "light" || saved === "dark") return saved;
+  } catch (e) {}
+  if (typeof window !== "undefined" && window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
+  return "light";
+}
+
+// Copy palette values onto the live C object. Cheap + pure enough to call
+// during render so inline styles in the subtree read the current theme.
+function applyThemePalette(mode) {
+  const p = mode === "dark" ? DARK : LIGHT;
+  Object.keys(p).forEach(k => { C[k] = p[k]; });
+}
 
 const FONT_DISPLAY = `"Bricolage Grotesque", -apple-system, system-ui, sans-serif`;
 const FONT_SERIF   = `"Instrument Serif", "Times New Roman", serif`;
 const FONT_MONO    = `"JetBrains Mono", ui-monospace, monospace`;
 
-const injectStyles = () => {
-  if (document.getElementById("bttd-fonts")) return;
+const injectStyles = (force) => {
+  if (!document.getElementById("bttd-font-link")) {
+    const link = document.createElement("link");
+    link.id = "bttd-font-link";
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap";
+    document.head.appendChild(link);
+  }
 
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap";
-  document.head.appendChild(link);
-
-  const style = document.createElement("style");
-  style.id = "bttd-fonts";
+  let style = document.getElementById("bttd-theme");
+  if (style && !force) return;
+  if (!style) {
+    style = document.createElement("style");
+    style.id = "bttd-theme";
+    document.head.appendChild(style);
+  }
   style.textContent = `
     *,*::before,*::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    body { margin: 0; background: ${C.ink}; font-family: ${FONT_DISPLAY}; color: ${C.bone}; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    body { margin: 0; background: ${C.ink}; font-family: ${FONT_DISPLAY}; color: ${C.bone}; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; transition: background 0.4s ease, color 0.4s ease; }
     input,button,textarea { font-family: inherit; }
     input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
     input[type=number] { -moz-appearance: textfield; }
@@ -142,7 +195,7 @@ const injectStyles = () => {
 
     /* Modal backdrop */
     .backdrop {
-      position: fixed; inset: 0; background: rgba(10, 9, 8, 0.6);
+      position: fixed; inset: 0; background: ${C.backdrop};
       backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
       z-index: 200; display: flex; align-items: center; justify-content: center;
       padding: 20px;
@@ -669,10 +722,13 @@ function loadBodyStats() {
       // Backfill defaults for new fields if migrating from older saves
       if (!parsed.goal) parsed.goal = "lean";
       if (typeof parsed.activityFactor !== "number") parsed.activityFactor = 1.55;
+      if (typeof parsed.rimHeightInches !== "number") parsed.rimHeightInches = 120;
+      if (typeof parsed.standingReachInches !== "number") parsed.standingReachInches = Math.round((parsed.heightInches || 77) * 1.32);
+      if (typeof parsed.verticalInches !== "number") parsed.verticalInches = 18;
       return parsed;
     }
   } catch(e) {}
-  return { heightInches: 77, weightLbs: 222, age: 47, goal: "lean", activityFactor: 1.55 };
+  return { heightInches: 77, weightLbs: 222, age: 47, goal: "lean", activityFactor: 1.55, rimHeightInches: 120, standingReachInches: Math.round(77 * 1.32), verticalInches: 18 };
 }
 function saveBodyStats(stats) {
   try { localStorage.setItem(LS_BODY, JSON.stringify(stats)); } catch(e) {}
@@ -857,6 +913,85 @@ function PageTitle({ kicker, children }) {
       <h1 className="h-display" style={{ fontSize: 40, margin: "8px 0 0", color: C.bone }}>{children}</h1>
     </div>
   );
+}
+
+/* ── TOAST + UNDO ──
+   Module-level pub/sub so any component can fire a toast without prop drilling.
+   Render <ToastHost/> once at the app root. */
+let _toastListeners = [];
+let _toastSeq = 0;
+function toast(message, opts = {}) {
+  const t = { id: ++_toastSeq, message, actionLabel: opts.actionLabel, onAction: opts.onAction, duration: opts.duration ?? 5000 };
+  _toastListeners.forEach(fn => fn(t));
+  return t.id;
+}
+function ToastHost() {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    const listener = (t) => {
+      setItems(prev => [...prev, t]);
+      if (t.duration > 0) setTimeout(() => setItems(prev => prev.filter(x => x.id !== t.id)), t.duration);
+    };
+    _toastListeners.push(listener);
+    return () => { _toastListeners = _toastListeners.filter(l => l !== listener); };
+  }, []);
+  const dismiss = (id) => setItems(prev => prev.filter(x => x.id !== id));
+  return (
+    <div style={{
+      position: "fixed", left: 0, right: 0, bottom: "calc(82px + env(safe-area-inset-bottom))",
+      zIndex: 9998, display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+      pointerEvents: "none", padding: "0 16px",
+    }}>
+      {items.map(t => (
+        <div key={t.id} className="ease-up" style={{
+          pointerEvents: "auto", maxWidth: 420, width: "100%",
+          background: C.bone, color: C.ink, borderRadius: 14, padding: "12px 8px 12px 16px",
+          display: "flex", alignItems: "center", gap: 10,
+          boxShadow: "0 12px 40px rgba(0,0,0,0.28)",
+        }}>
+          <span style={{ flex: 1, fontSize: 14, fontWeight: 600, fontFamily: FONT_DISPLAY, letterSpacing: "-0.01em" }}>{t.message}</span>
+          {t.onAction && (
+            <button onClick={() => { t.onAction(); dismiss(t.id); }} className="btn" style={{
+              background: "transparent", border: "none", color: C.rustHi, fontSize: 12, fontWeight: 700,
+              fontFamily: FONT_MONO, letterSpacing: "0.08em", cursor: "pointer", padding: "6px 8px",
+            }}>{t.actionLabel || "UNDO"}</button>
+          )}
+          <button onClick={() => dismiss(t.id)} className="btn" style={{
+            background: "transparent", border: "none", color: C.mute, fontSize: 14, cursor: "pointer", padding: "6px 8px",
+          }}>✕</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── ANIMATED COUNT-UP NUMBER ──
+   Smoothly tweens to its target value. Honors prefers-reduced-motion. */
+function useCountUp(value, duration = 650) {
+  const [display, setDisplay] = useState(value);
+  const fromRef = useRef(value);
+  const rafRef = useRef(null);
+  useEffect(() => {
+    const reduce = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const from = fromRef.current;
+    const to = value;
+    if (reduce || from === to) { fromRef.current = to; setDisplay(to); return; }
+    const start = performance.now();
+    const tick = (now) => {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setDisplay(from + (to - from) * eased);
+      if (p < 1) rafRef.current = requestAnimationFrame(tick);
+      else { fromRef.current = to; setDisplay(to); }
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [value, duration]);
+  return display;
+}
+function AnimatedNumber({ value, format = (n) => Math.round(n), duration = 650 }) {
+  const display = useCountUp(value, duration);
+  return <>{format(display)}</>;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -2075,7 +2210,7 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange, ca
               </svg>
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
                 <div className="num-tab h-display" style={{ fontSize: 32, fontWeight: 800, color: ringColor, lineHeight: 0.9, letterSpacing: "-0.03em" }}>
-                  {Math.round(todayProtein)}
+                  <AnimatedNumber value={todayProtein} />
                 </div>
                 <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 2, letterSpacing: "0.08em" }}>
                   / {proteinTarget}g
@@ -2121,7 +2256,10 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange, ca
               }} disabled={!customAmount || parseFloat(customAmount) <= 0}>Add</Btn>
               {todayProtein > 0 && (
                 <Btn ghost color={C.dim} size="sm" onClick={() => {
-                  if (window.confirm("Reset today's protein to 0?")) setProteinAbsolute(0);
+                  const prev = todayProtein;
+                  setProteinAbsolute(0);
+                  if (navigator.vibrate) navigator.vibrate(12);
+                  toast("Protein reset to 0", { actionLabel: "UNDO", onAction: () => setProteinAbsolute(prev) });
                 }}>↺</Btn>
               )}
             </div>
@@ -2158,7 +2296,7 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange, ca
               </svg>
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
                 <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 800, color: calRingColor, lineHeight: 0.9, letterSpacing: "-0.03em" }}>
-                  {Math.round(todayCalories).toLocaleString()}
+                  <AnimatedNumber value={todayCalories} format={n => Math.round(n).toLocaleString()} />
                 </div>
                 <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, marginTop: 2, letterSpacing: "0.08em" }}>
                   / {calorieTarget.toLocaleString()}
@@ -2219,7 +2357,10 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange, ca
               }} disabled={!customCalAmount || parseFloat(customCalAmount) <= 0}>Add</Btn>
               {todayCalories > 0 && (
                 <Btn ghost color={C.dim} size="sm" onClick={() => {
-                  if (window.confirm("Reset today's calories to 0?")) setCaloriesAbsolute(0);
+                  const prev = todayCalories;
+                  setCaloriesAbsolute(0);
+                  if (navigator.vibrate) navigator.vibrate(12);
+                  toast("Calories reset to 0", { actionLabel: "UNDO", onAction: () => setCaloriesAbsolute(prev) });
                 }}>↺</Btn>
               )}
             </div>
@@ -2550,13 +2691,260 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange, ca
 }
 
 /* ════════════════════════════════════════════════════════════
+   DUNK — the North Star home screen
+   ════════════════════════════════════════════════════════════ */
+function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog, vitaminD3Log, creatineLog, onGoTab, theme, onToggleTheme }) {
+  const today = todayKey();
+  const dateStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+
+  const rim = bodyStats.rimHeightInches || 120;
+  const DUNK_CLEAR = 6; // inches your hand must clear the rim to throw one down
+  const standingReach = bodyStats.standingReachInches || Math.round((bodyStats.heightInches || 77) * 1.32);
+  const vertical = bodyStats.verticalInches || 0;
+  const jumpReach = standingReach + vertical;
+  const dunkTarget = rim + DUNK_CLEAR;
+
+  const inchesToDunk = Math.max(0, dunkTarget - jumpReach);
+  const verticalNeeded = dunkTarget - standingReach; // total vertical required to dunk
+  const climbPct = Math.max(0, Math.min(100, (vertical / verticalNeeded) * 100));
+
+  const canTouchRim = jumpReach >= rim;
+  const canGrabRim = jumpReach >= rim + 3;
+  const canDunk = jumpReach >= dunkTarget;
+
+  // Milestone positions along the climb axis (standingReach → dunkTarget)
+  const milestonePct = (target) => Math.max(0, Math.min(100, ((target - standingReach) / verticalNeeded) * 100));
+
+  const heroColor = canDunk ? C.moss : canTouchRim ? C.amber : C.rust;
+
+  const [editing, setEditing] = useState(false);
+  const [tmpReach, setTmpReach] = useState(String(standingReach));
+  const [tmpVert, setTmpVert] = useState(String(vertical));
+
+  const stepVert = (delta) => {
+    const v = Math.max(0, Math.round((vertical + delta) * 2) / 2);
+    onUpdateBody({ ...bodyStats, verticalInches: v });
+    if (delta > 0) { beep(880, 0.08, 0.3); if (navigator.vibrate) navigator.vibrate(8); }
+  };
+  const saveMeasurements = () => {
+    const r = parseFloat(tmpReach);
+    const v = parseFloat(tmpVert);
+    onUpdateBody({
+      ...bodyStats,
+      standingReachInches: !isNaN(r) && r > 0 ? r : standingReach,
+      verticalInches: !isNaN(v) && v >= 0 ? v : vertical,
+    });
+    setEditing(false);
+  };
+
+  // Daily rings
+  const trainedToday = [
+    ...history.map(h => new Date(h.logged_at)),
+    ...cardioSessions.map(s => new Date(s.completed_at)),
+  ].some(d => d.toDateString() === new Date().toDateString());
+  const proteinTarget = calcProteinTarget(bodyStats.weightLbs);
+  const todayProtein = proteinLog[today] || 0;
+  const suppCount = (vitaminD3Log[today] ? 1 : 0) + (creatineLog[today] ? 1 : 0);
+
+  const rings = [
+    { label: "Train", pct: trainedToday ? 100 : 0, color: C.rust, center: trainedToday ? "✓" : "—", sub: trainedToday ? "Logged" : "Not yet", onTap: () => onGoTab("workout") },
+    { label: "Fuel", pct: Math.min(100, (todayProtein / proteinTarget) * 100), color: C.amber, center: `${Math.round(Math.min(100, (todayProtein / proteinTarget) * 100))}`, sub: `${Math.round(todayProtein)}/${proteinTarget}g`, onTap: () => onGoTab("nutrition") },
+    { label: "Stack", pct: (suppCount / 2) * 100, color: C.electric, center: `${suppCount}/2`, sub: suppCount === 2 ? "Dialed" : "Pending", onTap: () => onGoTab("nutrition") },
+  ];
+
+  const R = 40;
+  const CIRC = 2 * Math.PI * R;
+
+  return (
+    <>
+      {/* ── Header ── */}
+      <div className="ease-up" style={{ marginBottom: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <Eyebrow>{dateStr}</Eyebrow>
+          <button
+            className="btn"
+            onClick={onToggleTheme}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            style={{
+              flexShrink: 0, width: 38, height: 38, borderRadius: 999,
+              border: `1px solid ${C.line}`, background: C.panel, color: C.bone,
+              fontSize: 17, lineHeight: 1, cursor: "pointer", display: "flex",
+              alignItems: "center", justifyContent: "center", padding: 0,
+            }}
+          >
+            {theme === "dark" ? "☀" : "☾"}
+          </button>
+        </div>
+        <h1 className="h-display" style={{ fontSize: 34, margin: "8px 0 4px", color: C.bone, letterSpacing: "-0.04em", lineHeight: 1 }}>
+          {greeting()}.
+        </h1>
+        <p className="h-serif" style={{ fontSize: 16, color: C.dim, margin: "6px 0 0", lineHeight: 1.4 }}>
+          {canDunk ? "You're above the rim. Go throw one down." : canTouchRim ? "Rim's in reach. The dunk is close." : "Every rep closes the gap. Let's climb."}
+        </p>
+      </div>
+
+      {/* ── NORTH STAR: inches to the dunk ── */}
+      <div className="ease-up-1">
+        <Surface accent={heroColor} padding={24}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <Eyebrow color={heroColor}>The North Star</Eyebrow>
+            <Pill color={heroColor}>{canDunk ? "Dunking" : canGrabRim ? "Grabbing rim" : canTouchRim ? "Touching rim" : "Climbing"}</Pill>
+          </div>
+
+          <div style={{ textAlign: "center", margin: "18px 0 6px" }}>
+            {canDunk ? (
+              <>
+                <div style={{ fontSize: 52, lineHeight: 1 }}>🏀</div>
+                <div className="h-display" style={{ fontSize: 30, fontWeight: 800, color: heroColor, letterSpacing: "-0.03em", marginTop: 8 }}>
+                  Above the rim
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="num-tab h-display" style={{ fontSize: 76, fontWeight: 800, color: heroColor, letterSpacing: "-0.05em", lineHeight: 0.85 }}>
+                  <AnimatedNumber value={inchesToDunk} format={n => { const r = Math.round(n * 10) / 10; return r % 1 === 0 ? r : r.toFixed(1); }} />
+                  <span style={{ fontSize: 26, color: C.dim, fontWeight: 600, marginLeft: 6 }}>in</span>
+                </div>
+                <div className="h-serif" style={{ fontSize: 16, color: C.cream, marginTop: 6 }}>
+                  to your first dunk
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Climb bar with milestone flags */}
+          <div style={{ position: "relative", height: 12, borderRadius: 999, background: C.line, marginTop: 20, overflow: "hidden" }}>
+            <div className="ring-progress" style={{
+              position: "absolute", left: 0, top: 0, bottom: 0,
+              width: `${climbPct}%`, background: `linear-gradient(90deg, ${C.rust}, ${heroColor})`,
+              borderRadius: 999, transition: "width 0.7s cubic-bezier(0.22,1,0.36,1)",
+            }} />
+          </div>
+          <div style={{ position: "relative", height: 18, marginTop: 4 }}>
+            {[
+              { label: "Touch", pct: milestonePct(rim), hit: canTouchRim },
+              { label: "Grab", pct: milestonePct(rim + 3), hit: canGrabRim },
+              { label: "Dunk", pct: 100, hit: canDunk },
+            ].map(m => (
+              <div key={m.label} style={{ position: "absolute", left: `${m.pct}%`, transform: "translateX(-50%)", textAlign: "center" }}>
+                <div style={{ fontSize: 9, fontFamily: FONT_MONO, letterSpacing: "0.06em", color: m.hit ? heroColor : C.mute, fontWeight: 600 }}>{m.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Reach math */}
+          <div style={{ display: "flex", justifyContent: "space-around", marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.line}` }}>
+            {[
+              { v: `${standingReach}"`, l: "STANDING REACH" },
+              { v: `+${vertical}"`, l: "VERTICAL" },
+              { v: `${jumpReach}"`, l: "JUMP REACH" },
+              { v: `${rim}"`, l: "RIM" },
+            ].map((s, i) => (
+              <div key={i} style={{ textAlign: "center" }}>
+                <div className="num-tab h-display" style={{ fontSize: 18, fontWeight: 700, color: s.l === "RIM" ? C.dim : C.bone, letterSpacing: "-0.02em" }}>{s.v}</div>
+                <div style={{ fontSize: 8, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginTop: 3 }}>{s.l}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Quick vertical logging */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 18 }}>
+            <button onClick={() => stepVert(-0.5)} className="btn" style={{
+              flexShrink: 0, width: 44, height: 44, borderRadius: 12, fontSize: 20, fontWeight: 700,
+              background: "transparent", border: `1px solid ${C.line}`, color: C.dim, cursor: "pointer",
+            }}>−</button>
+            <div style={{ flex: 1, textAlign: "center" }}>
+              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em" }}>LOG VERTICAL</div>
+              <div className="num-tab h-display" style={{ fontSize: 22, fontWeight: 700, color: C.bone }}>{vertical}" <span style={{ fontSize: 11, color: C.dim }}>jump</span></div>
+            </div>
+            <button onClick={() => stepVert(0.5)} className="btn" style={{
+              flexShrink: 0, width: 44, height: 44, borderRadius: 12, fontSize: 20, fontWeight: 700,
+              background: heroColor, border: `1px solid ${heroColor}`, color: C.ink, cursor: "pointer",
+            }}>+</button>
+          </div>
+
+          <button onClick={() => { setTmpReach(String(standingReach)); setTmpVert(String(vertical)); setEditing(!editing); }} className="btn" style={{
+            marginTop: 12, width: "100%", padding: "8px", borderRadius: 10, background: "transparent",
+            border: "none", color: C.dim, fontSize: 12, fontFamily: FONT_MONO, letterSpacing: "0.06em", cursor: "pointer",
+          }}>
+            {editing ? "▲ CLOSE" : "▾ EDIT MEASUREMENTS"}
+          </button>
+
+          {editing && (
+            <div className="ease-in" style={{ marginTop: 8, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
+              <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 6 }}>STANDING REACH (in)</div>
+                  <NumIn value={tmpReach} onChange={setTmpReach} placeholder="102" decimal={true} step="0.5" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 6 }}>VERTICAL (in)</div>
+                  <NumIn value={tmpVert} onChange={setTmpVert} placeholder="18" decimal={true} step="0.5" />
+                </div>
+              </div>
+              <p className="h-serif" style={{ fontSize: 12, color: C.mute, margin: "10px 0 12px", lineHeight: 1.4, fontStyle: "italic" }}>
+                Standing reach = how high you touch flat-footed with one arm up. Vertical = your best max jump.
+              </p>
+              <Btn color={heroColor} full onClick={saveMeasurements}>Save Measurements</Btn>
+            </div>
+          )}
+        </Surface>
+      </div>
+
+      {/* ── DAILY RINGS — close them every day ── */}
+      <div className="ease-up-2">
+        <Surface>
+          <Eyebrow>Today · Close the rings</Eyebrow>
+          <div style={{ display: "flex", justifyContent: "space-around", marginTop: 16 }}>
+            {rings.map(r => {
+              const pct = Math.min(100, r.pct);
+              return (
+                <div key={r.label} onClick={r.onTap} className="card-tap" style={{ textAlign: "center", cursor: "pointer", flex: 1 }}>
+                  <div style={{ position: "relative", width: 90, height: 90, margin: "0 auto" }}>
+                    <svg width="90" height="90" viewBox="0 0 100 100" style={{ position: "absolute" }}>
+                      <circle cx="50" cy="50" r={R} stroke={C.line} strokeWidth="8" fill="none" />
+                      <circle
+                        className="ring-progress"
+                        cx="50" cy="50" r={R} stroke={r.color} strokeWidth="8" fill="none"
+                        strokeLinecap="round"
+                        strokeDasharray={CIRC}
+                        strokeDashoffset={CIRC * (1 - pct / 100)}
+                        transform="rotate(-90 50 50)"
+                        style={{ transition: "stroke-dashoffset 0.7s cubic-bezier(0.22,1,0.36,1)" }}
+                      />
+                    </svg>
+                    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <span className="num-tab h-display" style={{ fontSize: 20, fontWeight: 800, color: r.color, letterSpacing: "-0.02em" }}>{r.center}</span>
+                    </div>
+                  </div>
+                  <div className="h-display" style={{ fontSize: 13, fontWeight: 700, color: C.bone, marginTop: 8 }}>{r.label}</div>
+                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 2 }}>{r.sub}</div>
+                </div>
+              );
+            })}
+          </div>
+        </Surface>
+      </div>
+    </>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
    APP
    ════════════════════════════════════════════════════════════ */
 
 export default function App() {
-  useEffect(() => { injectStyles(); }, []);
+  const [theme, setTheme] = useState(loadThemePref);
+  // Synchronous so this render's inline styles read the current palette.
+  applyThemePalette(theme);
+  // CSS-level baked colors (body bg, .court-bg, .backdrop) + persistence.
+  useEffect(() => {
+    injectStyles(true);
+    try { localStorage.setItem(LS_THEME, theme); } catch (e) {}
+  }, [theme]);
+  const toggleTheme = () => setTheme(t => (t === "dark" ? "light" : "dark"));
 
-  const [tab, setTab] = useState("workout");
+  const [tab, setTab] = useState("dunk");
   const [loading, setLoading] = useState(true);
   const [activeSession, setActiveSession] = useState(0);
   const [activeSessionInit, setActiveSessionInit] = useState(false);
@@ -2769,8 +3157,24 @@ export default function App() {
     setCardioLogging(null);
   };
 
-  const deleteCardio = async id => { await supabase.from("cardio_sessions").delete().eq("id", id); setCardioSessions(p => p.filter(s => s.id !== id)); };
-  const deleteLog = async id => { await supabase.from("workouts").delete().eq("id", id); setHistory(p => p.filter(h => h.id !== id)); };
+  const deleteCardio = async id => {
+    const row = cardioSessions.find(s => s.id === id);
+    setCardioSessions(p => p.filter(s => s.id !== id));
+    await supabase.from("cardio_sessions").delete().eq("id", id);
+    if (row) toast("Cardio session deleted", { actionLabel: "UNDO", onAction: async () => {
+      const { data } = await supabase.from("cardio_sessions").insert([row]).select();
+      if (data) setCardioSessions(p => [...p, data[0]].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+    }});
+  };
+  const deleteLog = async id => {
+    const row = history.find(h => h.id === id);
+    setHistory(p => p.filter(h => h.id !== id));
+    await supabase.from("workouts").delete().eq("id", id);
+    if (row) toast("Workout deleted", { actionLabel: "UNDO", onAction: async () => {
+      const { data } = await supabase.from("workouts").insert([row]).select();
+      if (data) setHistory(p => [...p, data[0]].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+    }});
+  };
   const logWeight = async () => {
     const w = parseFloat(weightInput);
     if (!w || w < 100 || w > 400) return;
@@ -2783,7 +3187,15 @@ export default function App() {
       updateBodyStats({ ...bodyStats, weightLbs: w });
     } else showSave(false);
   };
-  const deleteWeight = async id => { await supabase.from("weight_log").delete().eq("id", id); setWeightLog(p => p.filter(e => e.id !== id)); };
+  const deleteWeight = async id => {
+    const row = weightLog.find(e => e.id === id);
+    setWeightLog(p => p.filter(e => e.id !== id));
+    await supabase.from("weight_log").delete().eq("id", id);
+    if (row) toast("Weight entry deleted", { actionLabel: "UNDO", onAction: async () => {
+      const { data } = await supabase.from("weight_log").insert([row]).select();
+      if (data) setWeightLog(p => [...p, data[0]].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+    }});
+  };
 
   const enableNotifications = async () => {
     const result = await requestNotificationPermission();
@@ -2812,6 +3224,7 @@ export default function App() {
   const cardioOverdue = !cardioInRecovery && hoursSinceCardio !== null && hoursSinceCardio/24 > 3;
 
   const TABS = [
+    { id: "dunk",      label: "Dunk",   icon: "🏀" },
     { id: "workout",   label: "Train",  icon: "🏋️" },
     { id: "nutrition", label: "Fuel",   icon: "🥤" },
     { id: "history",   label: "Log",    icon: "📓" },
@@ -2864,6 +3277,22 @@ export default function App() {
       </header>
 
       <main style={{ padding: "20px 16px 100px", maxWidth: 480, margin: "0 auto" }}>
+
+        {/* ── DUNK (North Star home) ── */}
+        {tab === "dunk" && (
+          <DunkTab
+            bodyStats={bodyStats}
+            onUpdateBody={updateBodyStats}
+            history={history}
+            cardioSessions={cardioSessions}
+            proteinLog={proteinLog}
+            vitaminD3Log={vitaminD3Log}
+            creatineLog={creatineLog}
+            onGoTab={setTab}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+          />
+        )}
 
         {/* ── TRAIN ── */}
         {tab === "workout" && (() => {
@@ -3531,6 +3960,8 @@ export default function App() {
           );
         })}
       </nav>
+
+      <ToastHost />
     </div>
   );
 }
