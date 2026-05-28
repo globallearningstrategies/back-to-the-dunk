@@ -259,6 +259,58 @@ const PHASES = [
   { weeks: "13—16", color: C.plum,     weight: "206 → 200", focus: "Dunk attempt. You earned it.",                 goals: ["Full vertical test", "Attempt the dunk", "Film it", "Plan next cycle"] },
 ];
 
+// Day the 16-week climb began (local midnight). The Program Clock counts forward
+// from here; dunk day lands 16 full weeks (112 days) later.
+const PROGRAM_START = new Date(2026, 2, 30); // Mon Mar 30, 2026
+const PROGRAM_WEEKS = 16;
+
+// Where are we in the 16-week program right now?
+function programProgress(now = new Date()) {
+  const startMid = new Date(PROGRAM_START.getFullYear(), PROGRAM_START.getMonth(), PROGRAM_START.getDate());
+  const nowMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dayMs = 86400000;
+  const daysElapsed = Math.floor((nowMid - startMid) / dayMs);
+  // Week 1 is days 0–6. Clamp into 1..16 so the clock never reads out of range.
+  const rawWeek = Math.floor(daysElapsed / 7) + 1;
+  const week = Math.min(PROGRAM_WEEKS, Math.max(1, rawWeek));
+  const phaseIdx = Math.min(PHASES.length - 1, Math.floor((week - 1) / 4));
+  const dunkDay = new Date(startMid.getTime() + PROGRAM_WEEKS * 7 * dayMs);
+  const daysToDunk = Math.max(0, Math.round((dunkDay - nowMid) / dayMs));
+  const pct = Math.min(100, Math.max(0, (daysElapsed / (PROGRAM_WEEKS * 7)) * 100));
+  return { week, phaseIdx, phase: PHASES[phaseIdx], dunkDay, daysToDunk, pct, started: daysElapsed >= 0 };
+}
+
+// Daily Hype — one line per day, stable for the whole day, rotates by day-of-year.
+const HYPE_LINES = [
+  "The rim hasn't moved. You're the variable.",
+  "Gravity is just resistance you haven't beaten yet.",
+  "Every rep is a deposit. Dunk day is the withdrawal.",
+  "You don't rise to the occasion. You fall to your training.",
+  "Quiet work today. Loud results in week sixteen.",
+  "The dunk is already yours. You're just catching up to it.",
+  "Discipline is choosing what you want most over what you want now.",
+  "Show up before you feel like it. Especially then.",
+  "Small hinges swing big doors. Lace up.",
+  "Your future self is watching this rep.",
+  "Be the person who didn't skip today.",
+  "Strength is earned in the reps nobody sees.",
+  "Hard now, or hard later. Pick your hard.",
+  "The ground is a launchpad. Treat it like one.",
+];
+function dailyHype(now = new Date()) {
+  const start = new Date(now.getFullYear(), 0, 0);
+  const doy = Math.floor((now - start) / 86400000);
+  return HYPE_LINES[doy % HYPE_LINES.length];
+}
+
+// Set of local date-keys on which any training happened (workouts + cardio).
+function buildActiveDaySet(history, cardioSessions) {
+  const set = new Set();
+  history.forEach(h => { if (h.logged_at) set.add(dateKey(new Date(h.logged_at))); });
+  cardioSessions.forEach(s => { if (s.completed_at) set.add(dateKey(new Date(s.completed_at))); });
+  return set;
+}
+
 /* ── KOSHER NUTRITION DATABASE ── */
 const PRE_WORKOUT_FOODS = [
   { name: "Banana + 2 tbsp peanut butter",   protein: 8,  calories: 295, timing: "30–60 min before", note: "Quick carbs + sustained energy. Classic." },
@@ -2702,6 +2754,32 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
   const R = 40;
   const CIRC = 2 * Math.PI * R;
 
+  // ── Program Clock — where we are in the 16-week climb ──
+  const prog = programProgress();
+
+  // ── 14-day Momentum — activity strip + current streak ──
+  const activeDays = buildActiveDaySet(history, cardioSessions);
+  const last14 = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    last14.push({ date: d, key: dateKey(d), active: activeDays.has(dateKey(d)) });
+  }
+  const activeCount = last14.filter(d => d.active).length;
+  // Streak = consecutive active days counting back from today (today not yet
+  // logged doesn't break a streak that ran through yesterday).
+  let streak = 0;
+  for (let i = 0; ; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    if (activeDays.has(dateKey(d))) streak++;
+    else if (i === 0) continue; // today still open — keep counting back
+    else break;
+  }
+
+  // ── Daily Hype ──
+  const hype = dailyHype();
+
   return (
     <>
       {/* ── Header ── */}
@@ -2762,6 +2840,97 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
               );
             })}
           </div>
+        </Surface>
+      </div>
+
+      {/* ── PROGRAM CLOCK — the 16-week climb ── */}
+      <div className="ease-up-2">
+        <Surface accent={prog.phase.color} onClick={() => onGoTab("goals")} className="card-tap" style={{ cursor: "pointer" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <Eyebrow color={prog.phase.color}>Program Clock</Eyebrow>
+            <Pill color={prog.phase.color}>Phase {prog.phaseIdx + 1} of {PHASES.length}</Pill>
+          </div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 12 }}>
+            <span className="num-tab h-display" style={{ fontSize: 46, fontWeight: 800, color: prog.phase.color, letterSpacing: "-0.04em", lineHeight: 0.9 }}>
+              {prog.week}
+            </span>
+            <span className="h-display" style={{ fontSize: 18, fontWeight: 600, color: C.dim }}>
+              / {PROGRAM_WEEKS} weeks
+            </span>
+          </div>
+          <p className="h-serif" style={{ fontSize: 17, color: C.cream, margin: "8px 0 14px", lineHeight: 1.4 }}>
+            {prog.phase.focus}
+          </p>
+          {/* 16-segment climb bar, colored by the phase each week belongs to */}
+          <div style={{ display: "flex", gap: 3 }}>
+            {Array.from({ length: PROGRAM_WEEKS }).map((_, i) => {
+              const wk = i + 1;
+              const done = wk < prog.week;
+              const current = wk === prog.week;
+              const segColor = PHASES[Math.min(PHASES.length - 1, Math.floor(i / 4))].color;
+              return (
+                <div key={i} style={{
+                  flex: 1, height: 8, borderRadius: 3,
+                  background: done || current ? segColor : C.line,
+                  opacity: done ? 0.55 : current ? 1 : 1,
+                  boxShadow: current ? `0 0 8px ${segColor}88` : "none",
+                  transition: `background 0.4s ${SPRING}`,
+                }} />
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontFamily: FONT_MONO, fontSize: 11, color: C.dim }}>
+            <span>{Math.round(prog.pct)}% through the climb</span>
+            <span style={{ color: prog.phase.color }}>
+              {prog.daysToDunk === 0 ? "Dunk day is here 🏀" : `${prog.daysToDunk} days to dunk day`}
+            </span>
+          </div>
+        </Surface>
+      </div>
+
+      {/* ── 14-DAY MOMENTUM — keep the streak alive ── */}
+      <div className="ease-up-3">
+        <Surface>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <Eyebrow>14-Day Momentum</Eyebrow>
+            <Pill color={streak > 0 ? C.rust : C.dim}>{streak > 0 ? `🔥 ${streak}-day streak` : "No streak yet"}</Pill>
+          </div>
+          <div style={{ display: "flex", gap: 4, marginTop: 16 }}>
+            {last14.map((d, i) => {
+              const isToday = i === last14.length - 1;
+              return (
+                <div key={d.key} style={{ flex: 1, textAlign: "center" }}>
+                  <div style={{
+                    height: 34, borderRadius: 8,
+                    background: d.active ? C.rust : C.line,
+                    border: isToday ? `1.5px solid ${C.bone}` : "1.5px solid transparent",
+                    opacity: d.active ? 1 : 0.6,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 12, color: d.active ? C.bone : C.mute,
+                    transition: `background 0.3s ${SPRING}`,
+                  }}>
+                    {d.active ? "●" : ""}
+                  </div>
+                  <div style={{ fontSize: 8, color: C.mute, fontFamily: FONT_MONO, marginTop: 4 }}>
+                    {d.date.toLocaleDateString("en-US", { weekday: "narrow" })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ marginTop: 12, fontFamily: FONT_MONO, fontSize: 11, color: C.dim }}>
+            {activeCount} of 14 days active · last two weeks
+          </div>
+        </Surface>
+      </div>
+
+      {/* ── DAILY HYPE ── */}
+      <div className="ease-up-4">
+        <Surface accent={C.amber} padding={22}>
+          <Eyebrow color={C.amber}>Daily Hype</Eyebrow>
+          <p className="h-serif" style={{ fontSize: 22, color: C.bone, margin: "14px 0 0", lineHeight: 1.35 }}>
+            "{hype}"
+          </p>
         </Surface>
       </div>
     </>
