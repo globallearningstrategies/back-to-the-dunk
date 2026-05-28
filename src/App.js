@@ -2684,58 +2684,6 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
   const today = todayKey();
   const dateStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
-  const rim = bodyStats.rimHeightInches || 120;
-  const DUNK_CLEAR = 6; // inches your hand must clear the rim to throw one down
-  const standingReach = bodyStats.standingReachInches || Math.round((bodyStats.heightInches || 77) * 1.32);
-  const vertical = bodyStats.verticalInches || 0;
-  const jumpReach = standingReach + vertical;
-  const dunkTarget = rim + DUNK_CLEAR;
-
-  const inchesToDunk = Math.max(0, dunkTarget - jumpReach);
-  const verticalNeeded = dunkTarget - standingReach; // total vertical required to dunk
-  const climbPct = Math.max(0, Math.min(100, (vertical / verticalNeeded) * 100));
-
-  const canGrabRim = jumpReach >= rim + 3;
-  const canDunk = jumpReach >= dunkTarget;
-
-  // Milestone positions along the climb axis (standingReach → dunkTarget)
-  const milestonePct = (target) => Math.max(0, Math.min(100, ((target - standingReach) / verticalNeeded) * 100));
-
-  const heroColor = canDunk ? C.moss : canGrabRim ? C.amber : C.rust;
-
-  const [editing, setEditing] = useState(false);
-  const [tmpReach, setTmpReach] = useState(String(standingReach));
-  const [tmpVert, setTmpVert] = useState(String(vertical));
-
-  const milestoneFor = (jr) => (jr >= dunkTarget ? 2 : jr >= rim + 3 ? 1 : 0);
-  const stepVert = (delta) => {
-    const v = Math.max(0, Math.round((vertical + delta) * 2) / 2);
-    const before = milestoneFor(standingReach + vertical);
-    const after = milestoneFor(standingReach + v);
-    onUpdateBody({ ...bodyStats, verticalInches: v });
-    if (after > before) {
-      // Crossed into a new milestone — celebrate.
-      beep(1175, 0.14, 0.35);
-      if (navigator.vibrate) navigator.vibrate([18, 40, 18, 40, 60]);
-      toast(after === 2 ? "🏀 Above the rim — you can dunk!" : "🙌 You can grab the rim!");
-    } else if (delta > 0) {
-      beep(880, 0.08, 0.3);
-      if (navigator.vibrate) navigator.vibrate(8);
-    } else if (navigator.vibrate) {
-      navigator.vibrate(6);
-    }
-  };
-  const saveMeasurements = () => {
-    const r = parseFloat(tmpReach);
-    const v = parseFloat(tmpVert);
-    onUpdateBody({
-      ...bodyStats,
-      standingReachInches: !isNaN(r) && r > 0 ? r : standingReach,
-      verticalInches: !isNaN(v) && v >= 0 ? v : vertical,
-    });
-    setEditing(false);
-  };
-
   // Daily rings
   const trainedToday = [
     ...history.map(h => new Date(h.logged_at)),
@@ -2778,119 +2726,12 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
           {greeting()}.
         </h1>
         <p className="h-serif" style={{ fontSize: 16, color: C.dim, margin: "6px 0 0", lineHeight: 1.4 }}>
-          {canDunk ? "You're above the rim. Go throw one down." : canGrabRim ? "Rim's in reach. The dunk is close." : "Every rep closes the gap. Let's climb."}
+          Every rep closes the gap. Let's climb.
         </p>
       </div>
 
-      {/* ── NORTH STAR: inches to the dunk ── */}
-      <div className="ease-up-1">
-        <Surface accent={heroColor} padding={24}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <Eyebrow color={heroColor}>The North Star</Eyebrow>
-            <Pill color={heroColor}>{canDunk ? "Dunking" : canGrabRim ? "Grabbing rim" : "Climbing"}</Pill>
-          </div>
-
-          <div style={{ textAlign: "center", margin: "18px 0 6px" }}>
-            {canDunk ? (
-              <>
-                <div style={{ fontSize: 52, lineHeight: 1 }}>🏀</div>
-                <div className="h-display" style={{ fontSize: 30, fontWeight: 800, color: heroColor, letterSpacing: "-0.03em", marginTop: 8 }}>
-                  Above the rim
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="num-tab h-display" style={{ fontSize: 76, fontWeight: 800, color: heroColor, letterSpacing: "-0.05em", lineHeight: 0.85 }}>
-                  <AnimatedNumber value={inchesToDunk} format={n => { const r = Math.round(n * 10) / 10; return r % 1 === 0 ? r : r.toFixed(1); }} />
-                  <span style={{ fontSize: 26, color: C.dim, fontWeight: 600, marginLeft: 6 }}>in</span>
-                </div>
-                <div className="h-serif" style={{ fontSize: 16, color: C.cream, marginTop: 6 }}>
-                  to your first dunk
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Climb bar with milestone flags */}
-          <div style={{ position: "relative", height: 12, borderRadius: 999, background: C.line, marginTop: 20, overflow: "hidden" }}>
-            <div className="ring-progress" style={{
-              position: "absolute", left: 0, top: 0, bottom: 0,
-              width: `${climbPct}%`, background: `linear-gradient(90deg, ${C.rust}, ${heroColor})`,
-              borderRadius: 999, transition: "width 0.7s cubic-bezier(0.22,1,0.36,1)",
-            }} />
-          </div>
-          <div style={{ position: "relative", height: 18, marginTop: 4 }}>
-            {[
-              { label: "Grab", pct: milestonePct(rim + 3), hit: canGrabRim },
-              { label: "Dunk", pct: 100, hit: canDunk },
-            ].map(m => (
-              <div key={m.label} style={{ position: "absolute", left: `${m.pct}%`, transform: "translateX(-50%)", textAlign: "center" }}>
-                <div style={{ fontSize: 9, fontFamily: FONT_MONO, letterSpacing: "0.06em", color: m.hit ? heroColor : C.mute, fontWeight: 600 }}>{m.label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Reach math */}
-          <div style={{ display: "flex", justifyContent: "space-around", marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.line}` }}>
-            {[
-              { v: `${standingReach}"`, l: "STANDING REACH" },
-              { v: `+${vertical}"`, l: "VERTICAL" },
-              { v: `${jumpReach}"`, l: "JUMP REACH" },
-              { v: `${rim}"`, l: "RIM" },
-            ].map((s, i) => (
-              <div key={i} style={{ textAlign: "center" }}>
-                <div className="num-tab h-display" style={{ fontSize: 18, fontWeight: 700, color: s.l === "RIM" ? C.dim : C.bone, letterSpacing: "-0.02em" }}>{s.v}</div>
-                <div style={{ fontSize: 8, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginTop: 3 }}>{s.l}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Quick vertical logging */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 18 }}>
-            <button onClick={() => stepVert(-0.5)} className="btn" style={{
-              flexShrink: 0, width: 44, height: 44, borderRadius: 12, fontSize: 20, fontWeight: 700,
-              background: "transparent", border: `1px solid ${C.line}`, color: C.dim, cursor: "pointer",
-            }}>−</button>
-            <div style={{ flex: 1, textAlign: "center" }}>
-              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em" }}>LOG VERTICAL</div>
-              <div className="num-tab h-display" style={{ fontSize: 22, fontWeight: 700, color: C.bone }}>{vertical}" <span style={{ fontSize: 11, color: C.dim }}>jump</span></div>
-            </div>
-            <button onClick={() => stepVert(0.5)} className="btn" style={{
-              flexShrink: 0, width: 44, height: 44, borderRadius: 12, fontSize: 20, fontWeight: 700,
-              background: heroColor, border: `1px solid ${heroColor}`, color: C.ink, cursor: "pointer",
-            }}>+</button>
-          </div>
-
-          <button onClick={() => { setTmpReach(String(standingReach)); setTmpVert(String(vertical)); setEditing(!editing); }} className="btn" style={{
-            marginTop: 12, width: "100%", padding: "8px", borderRadius: 10, background: "transparent",
-            border: "none", color: C.dim, fontSize: 12, fontFamily: FONT_MONO, letterSpacing: "0.06em", cursor: "pointer",
-          }}>
-            {editing ? "▲ CLOSE" : "▾ EDIT MEASUREMENTS"}
-          </button>
-
-          {editing && (
-            <div className="ease-in" style={{ marginTop: 8, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
-              <div style={{ display: "flex", gap: 10 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 6 }}>STANDING REACH (in)</div>
-                  <NumIn value={tmpReach} onChange={setTmpReach} placeholder="102" decimal={true} step="0.5" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 6 }}>VERTICAL (in)</div>
-                  <NumIn value={tmpVert} onChange={setTmpVert} placeholder="18" decimal={true} step="0.5" />
-                </div>
-              </div>
-              <p className="h-serif" style={{ fontSize: 12, color: C.mute, margin: "10px 0 12px", lineHeight: 1.4, fontStyle: "italic" }}>
-                Standing reach = how high you touch flat-footed with one arm up. Vertical = your best max jump.
-              </p>
-              <Btn color={heroColor} full onClick={saveMeasurements}>Save Measurements</Btn>
-            </div>
-          )}
-        </Surface>
-      </div>
-
       {/* ── DAILY RINGS — close them every day ── */}
-      <div className="ease-up-2">
+      <div className="ease-up-1">
         <Surface>
           <Eyebrow>Today · Close the rings</Eyebrow>
           <div style={{ display: "flex", justifyContent: "space-around", marginTop: 16 }}>
