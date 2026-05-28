@@ -249,15 +249,8 @@ const SESSIONS = [
   }
 ];
 
-const TABATA_CONFIG = { rounds: 5, sprintSec: 5, restSec: 5 };
-const COURT_CONFIG = { rounds: 10, workSec: 30, restSec: 30 };
-
-const COURT_PROMPTS = ["Suicides", "Full court sprint", "Up and back layups", "Defensive slides", "Crossover dribble", "Side shuffle", "Vertical jumps", "Lane sprint"];
-
-const CARDIO_TYPES = {
-  tabata:           { label: "Tabata Bodyweight", icon: "🔥", color: C.electric, duration: "15 min", detail: "8 rounds · 20s on / 10s off · jumping jacks, high knees, mountain climbers, run in place" },
-  court_intervals:  { label: "Court Intervals", icon: "🏀", color: C.amber,    duration: "20 min", detail: "10 rounds · 30s hard / 30s rest · suicides, sprints, layups" },
-};
+// Classic 4-minute tabata: 8 rounds of 20s all-out / 10s rest.
+const TABATA_CONFIG = { rounds: 8, sprintSec: 20, restSec: 10 };
 
 const PHASES = [
   { weeks: "01—04", color: C.rust,     weight: "225 → 218", focus: "Build the habit. Nail form. Ease in.",         goals: ["2× gym/week", "1× court/week", "Sleep 7+ hrs", "Cut late-night eating"] },
@@ -754,6 +747,29 @@ function todayKey() {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+// Local date key (YYYY-MM-DD) for an arbitrary Date.
+function dateKey(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// Keys for the current calendar week, Monday → Sunday.
+function weekKeysMonday() {
+  const now = new Date();
+  const mondayOffset = (now.getDay() + 6) % 7; // 0=Sun → 6, 1=Mon → 0, ...
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - mondayOffset);
+  const keys = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    keys.push(dateKey(d));
+  }
+  return keys;
 }
 
 function loadProteinLog() {
@@ -1625,7 +1641,7 @@ function ExRow({ ex, checked, onCheck, vals, onVal, color, onRest, lastPerf, onE
 }
 
 /* ── Tabata Timer — premium ── */
-function TabataTimer({ onLog }) {
+function TabataTimer({ onLog, loggedToday }) {
   const [phase, setPhase] = useState("idle");
   const [round, setRound] = useState(1);
   const [count, setCount] = useState(TABATA_CONFIG.sprintSec);
@@ -1668,7 +1684,7 @@ function TabataTimer({ onLog }) {
           setRound(r => {
             if (r >= TABATA_CONFIG.rounds) {
               ringAlarm(); speak("Done! Great work!");
-              fireNotification("🏁 Tabata complete", "5 rounds. 25 seconds of work. Done.");
+              fireNotification("🏁 Tabata complete", "8 rounds. 4 minutes. Done.");
               releaseWakeLock(); setPhase("done"); return r;
             }
             beep(880, 0.18, 0.5); speak("Sprint!");
@@ -1692,13 +1708,27 @@ function TabataTimer({ onLog }) {
     <Surface accent={C.moss} style={{ background: C.panel }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
         <div>
-          <Pill color={C.moss}>Daily · Tabata</Pill>
-          <h2 className="h-display" style={{ fontSize: 26, margin: "10px 0 4px", color: C.bone }}>Sprint Timer</h2>
-          <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>{TABATA_CONFIG.rounds} rounds · {TABATA_CONFIG.sprintSec}s ON / {TABATA_CONFIG.restSec}s OFF</div>
-          <div style={{ fontSize: 11, color: C.mute, marginTop: 4, fontFamily: FONT_MONO }}>jumping jacks · high knees · run in place</div>
+          <Pill color={loggedToday ? C.moss : C.amber}>{loggedToday ? "✓ Done today" : "Daily · 4-min Tabata"}</Pill>
+          <h2 className="h-display" style={{ fontSize: 26, margin: "10px 0 4px", color: C.bone }}>Tabata Timer</h2>
+          <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>{TABATA_CONFIG.rounds} rounds · {TABATA_CONFIG.sprintSec}s ON / {TABATA_CONFIG.restSec}s OFF · 4 min</div>
+          <div style={{ fontSize: 11, color: C.mute, marginTop: 4, fontFamily: FONT_MONO }}>all-out effort · any movement</div>
         </div>
         {phase === "idle" && countdown === null && <Btn color={C.moss} onClick={start}>Start</Btn>}
       </div>
+
+      {/* Already did it elsewhere? One-tap log without running the timer. */}
+      {phase === "idle" && countdown === null && (
+        <button onClick={() => { onLog(); beep(880, 0.12, 0.4); if (navigator.vibrate) navigator.vibrate(10); }} className="btn"
+          style={{
+            width: "100%", marginTop: 16, padding: "11px 12px", borderRadius: 12, cursor: "pointer",
+            background: loggedToday ? `${C.moss}12` : "transparent",
+            border: `1px ${loggedToday ? "solid" : "dashed"} ${loggedToday ? C.moss : C.dim}66`,
+            color: loggedToday ? C.moss : C.dim, fontFamily: FONT_MONO, fontSize: 11,
+            letterSpacing: "0.05em", textTransform: "uppercase", fontWeight: 700,
+          }}>
+          {loggedToday ? "✓ Tabata logged today · tap to log another" : "✓ Already did it? Log today's tabata"}
+        </button>
+      )}
 
       {countdown !== null && (
         <div className="ease-up" style={{ textAlign: "center", padding: "32px 0 12px" }}>
@@ -1746,7 +1776,7 @@ function TabataTimer({ onLog }) {
             <div className="ease-up" style={{ textAlign: "center", padding: "12px 0" }}>
               <div style={{ fontSize: 56, marginBottom: 12 }}>🏁</div>
               <h3 className="h-display" style={{ fontSize: 28, color: C.moss, margin: "0 0 6px" }}>Done.</h3>
-              <p className="h-serif" style={{ fontSize: 18, color: C.cream, margin: "0 0 20px" }}>5 rounds. 25 seconds of work.</p>
+              <p className="h-serif" style={{ fontSize: 18, color: C.cream, margin: "0 0 20px" }}>8 rounds. 4 minutes of work.</p>
               <div style={{ display: "flex", gap: 10 }}>
                 <Btn ghost color={C.dim} onClick={reset} style={{ flex: 1 }}>Reset</Btn>
                 <Btn color={C.moss} onClick={() => { onLog(); reset(); }} style={{ flex: 1 }}>Log It</Btn>
@@ -1754,98 +1784,6 @@ function TabataTimer({ onLog }) {
             </div>
           )}
         </div>
-      )}
-    </Surface>
-  );
-}
-
-/* ── Suicide Counter ── */
-function SuicideCounter({ onLog, onClose }) {
-  const [reps, setReps] = useState(0);
-  const goal = 10; // long-term goal, not a hard limit
-
-  const tap = () => {
-    const next = reps + 1;
-    setReps(next);
-    if (next === goal) {
-      ringAlarm();
-      speak("Goal! Ten suicides!");
-    } else if (next > goal) {
-      beep(1046, 0.3, 0.6);
-      speak("Beast mode! " + next);
-    } else {
-      beep(660, 0.12, 0.4);
-      speak(String(next));
-    }
-  };
-
-  const undo = () => { if (reps > 0) setReps(reps - 1); };
-  const reset = () => setReps(0);
-
-  const reachedGoal = reps >= goal;
-  const motivational = reps === 0 ? "TAP AFTER EACH SUICIDE"
-    : reps < 3 ? "GREAT START — KEEP GOING"
-    : reps < 5 ? "HALFWAY · YOU'RE BUILDING"
-    : reps < goal ? "SO CLOSE TO 10"
-    : reps === goal ? "✓ GOAL REACHED — BEAST"
-    : "🔥 BEYOND THE GOAL";
-
-  return (
-    <Surface accent={C.amber} style={{ background: C.panel }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
-        <div>
-          <Pill color={C.amber}>Court · Suicide Counter</Pill>
-          <h2 className="h-display" style={{ fontSize: 26, margin: "10px 0 4px", color: C.bone }}>Tap each suicide</h2>
-          <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>Goal: 10 · Log whenever you're done</div>
-        </div>
-        <Btn ghost color={C.dim} onClick={onClose} size="sm">Close</Btn>
-      </div>
-
-      {/* Big tap area — ALWAYS tappable */}
-      <button
-        onClick={tap}
-        className="btn"
-        style={{
-          width: "100%", padding: "32px 0",
-          background: reachedGoal ? C.moss : C.amber,
-          border: "none", borderRadius: 18,
-          color: "#fff", cursor: "pointer",
-          marginBottom: 16,
-          boxShadow: `0 8px 30px ${reachedGoal ? C.moss : C.amber}33`,
-        }}>
-        <div className="h-display num-tab" style={{ fontSize: 80, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.04em" }}>
-          {reps}<span style={{ fontSize: 32, opacity: 0.5 }}>/{goal}</span>
-        </div>
-        <div style={{ fontSize: 13, fontWeight: 600, marginTop: 8, letterSpacing: "0.1em" }}>
-          {motivational}
-        </div>
-      </button>
-
-      {/* Visual dots — dynamic, expand if user goes past goal */}
-      <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
-        {Array.from({ length: Math.max(goal, reps) }).map((_, i) => (
-          <div key={i} style={{
-            width: 14, height: 14, borderRadius: 999,
-            background: i < reps ? (i >= goal ? C.moss : C.amber) : "transparent",
-            border: `2px solid ${i < reps ? (i >= goal ? C.moss : C.amber) : C.faint}`,
-            transition: "all 0.2s",
-          }} />
-        ))}
-      </div>
-
-      {/* Action buttons — Log It is ALWAYS available once you have ≥1 rep */}
-      <div style={{ display: "flex", gap: 8 }}>
-        <Btn ghost color={C.dim} onClick={undo} disabled={reps === 0} style={{ flex: 1 }}>Undo</Btn>
-        <Btn ghost color={C.dim} onClick={reset} disabled={reps === 0} style={{ flex: 1 }}>Reset</Btn>
-        <Btn color={reachedGoal ? C.moss : C.amber} onClick={() => { onLog(reps); reset(); onClose && onClose(); }} disabled={reps === 0} style={{ flex: 1.4 }}>
-          Log {reps > 0 ? reps : ""}
-        </Btn>
-      </div>
-
-      {reps > 0 && reps < goal && (
-        <p className="h-serif" style={{ fontSize: 13, color: C.dim, textAlign: "center", margin: "12px 0 0", fontStyle: "italic" }}>
-          Done for today? {reps} {reps === 1 ? "suicide" : "suicides"} is a real workout. Tap Log.
-        </p>
       )}
     </Surface>
   );
@@ -2055,17 +1993,14 @@ function SupplementRow({ name, dose, blurb, icon, accent, log, onToggle }) {
   const takenToday = !!log[today];
   const streak = calcSupplementStreak(log);
 
-  const trail = [];
-  for (let i = 6; i >= 0; i--) {
-    const k = dayKeyAgo(i);
-    const d = new Date(k + "T00:00:00");
-    trail.push({
-      key: k,
-      done: !!log[k],
-      isToday: i === 0,
-      letter: ["S", "M", "T", "W", "T", "F", "S"][d.getDay()],
-    });
-  }
+  // Current week, Monday → Sunday.
+  const weekLetters = ["M", "T", "W", "T", "F", "S", "S"];
+  const trail = weekKeysMonday().map((k, i) => ({
+    key: k,
+    done: !!log[k],
+    isToday: k === today,
+    letter: weekLetters[i],
+  }));
 
   const toggle = () => {
     onToggle(today);
@@ -2760,20 +2695,19 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
   const verticalNeeded = dunkTarget - standingReach; // total vertical required to dunk
   const climbPct = Math.max(0, Math.min(100, (vertical / verticalNeeded) * 100));
 
-  const canTouchRim = jumpReach >= rim;
   const canGrabRim = jumpReach >= rim + 3;
   const canDunk = jumpReach >= dunkTarget;
 
   // Milestone positions along the climb axis (standingReach → dunkTarget)
   const milestonePct = (target) => Math.max(0, Math.min(100, ((target - standingReach) / verticalNeeded) * 100));
 
-  const heroColor = canDunk ? C.moss : canTouchRim ? C.amber : C.rust;
+  const heroColor = canDunk ? C.moss : canGrabRim ? C.amber : C.rust;
 
   const [editing, setEditing] = useState(false);
   const [tmpReach, setTmpReach] = useState(String(standingReach));
   const [tmpVert, setTmpVert] = useState(String(vertical));
 
-  const milestoneFor = (jr) => (jr >= dunkTarget ? 3 : jr >= rim + 3 ? 2 : jr >= rim ? 1 : 0);
+  const milestoneFor = (jr) => (jr >= dunkTarget ? 2 : jr >= rim + 3 ? 1 : 0);
   const stepVert = (delta) => {
     const v = Math.max(0, Math.round((vertical + delta) * 2) / 2);
     const before = milestoneFor(standingReach + vertical);
@@ -2783,7 +2717,7 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
       // Crossed into a new milestone — celebrate.
       beep(1175, 0.14, 0.35);
       if (navigator.vibrate) navigator.vibrate([18, 40, 18, 40, 60]);
-      toast(after === 3 ? "🏀 Above the rim — you can dunk!" : after === 2 ? "🙌 You can grab the rim!" : "✋ You can touch the rim!");
+      toast(after === 2 ? "🏀 Above the rim — you can dunk!" : "🙌 You can grab the rim!");
     } else if (delta > 0) {
       beep(880, 0.08, 0.3);
       if (navigator.vibrate) navigator.vibrate(8);
@@ -2844,7 +2778,7 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
           {greeting()}.
         </h1>
         <p className="h-serif" style={{ fontSize: 16, color: C.dim, margin: "6px 0 0", lineHeight: 1.4 }}>
-          {canDunk ? "You're above the rim. Go throw one down." : canTouchRim ? "Rim's in reach. The dunk is close." : "Every rep closes the gap. Let's climb."}
+          {canDunk ? "You're above the rim. Go throw one down." : canGrabRim ? "Rim's in reach. The dunk is close." : "Every rep closes the gap. Let's climb."}
         </p>
       </div>
 
@@ -2853,7 +2787,7 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
         <Surface accent={heroColor} padding={24}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <Eyebrow color={heroColor}>The North Star</Eyebrow>
-            <Pill color={heroColor}>{canDunk ? "Dunking" : canGrabRim ? "Grabbing rim" : canTouchRim ? "Touching rim" : "Climbing"}</Pill>
+            <Pill color={heroColor}>{canDunk ? "Dunking" : canGrabRim ? "Grabbing rim" : "Climbing"}</Pill>
           </div>
 
           <div style={{ textAlign: "center", margin: "18px 0 6px" }}>
@@ -2887,7 +2821,6 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
           </div>
           <div style={{ position: "relative", height: 18, marginTop: 4 }}>
             {[
-              { label: "Touch", pct: milestonePct(rim), hit: canTouchRim },
               { label: "Grab", pct: milestonePct(rim + 3), hit: canGrabRim },
               { label: "Dunk", pct: 100, hit: canDunk },
             ].map(m => (
@@ -3021,9 +2954,6 @@ export default function App() {
   const [weightInput, setWeightInput] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
   const [cardioSessions, setCardioSessions] = useState([]);
-  const [cardioNotes, setCardioNotes] = useState("");
-  const [cardioLogging, setCardioLogging] = useState(null);
-  const [courtTimerOpen, setCourtTimerOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [restTimer, setRestTimer] = useState(null); // null or { seconds }
   const [confetti, setConfetti] = useState(false);
@@ -3234,7 +3164,7 @@ export default function App() {
   };
 
   const logTabata = async () => {
-    const { data, error } = await supabase.from("workouts").insert([{ session_name: "Daily Tabata Sprints", color: C.moss, total_volume: 0, exercises: [{ name: "Bodyweight HIIT (jumping jacks / high knees / mountain climbers)", sets: 5, reps: "5s on/5s off", weight: 0, volume: 0 }] }]).select();
+    const { data, error } = await supabase.from("workouts").insert([{ session_name: "Daily Tabata Sprints", color: C.moss, total_volume: 0, exercises: [{ name: "4-min Tabata · 8 rounds (20s on / 10s off)", sets: 8, reps: "20s on/10s off", weight: 0, volume: 0 }] }]).select();
     if (!error && data) { setHistory(p => [data[0],...p]); showSave(true); } else showSave(false);
   };
 
@@ -3244,27 +3174,6 @@ export default function App() {
     if (!error && data) { setHistory(p => [data[0],...p]); showSave(true); } else showSave(false);
   };
 
-  const logCardio = async (workoutType, reps) => {
-    setCardioLogging(workoutType);
-    let noteText = cardioNotes || null;
-    if (workoutType === "court_intervals" && reps) {
-      const repNote = `${reps} ${reps === 1 ? "suicide" : "suicides"}`;
-      noteText = noteText ? `${repNote} · ${noteText}` : repNote;
-    }
-    const { data, error } = await supabase.from("cardio_sessions").insert([{ workout_type: workoutType, completed_at: new Date().toISOString(), notes: noteText }]).select();
-    if (!error && data) { setCardioSessions(p => [data[0],...p]); setCardioNotes(""); showSave(true); } else showSave(false);
-    setCardioLogging(null);
-  };
-
-  const deleteCardio = async id => {
-    const row = cardioSessions.find(s => s.id === id);
-    setCardioSessions(p => p.filter(s => s.id !== id));
-    await supabase.from("cardio_sessions").delete().eq("id", id);
-    if (row) toast("Cardio session deleted", { actionLabel: "UNDO", onAction: async () => {
-      const { data } = await supabase.from("cardio_sessions").insert([row]).select();
-      if (data) setCardioSessions(p => [...p, data[0]].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
-    }});
-  };
   const deleteLog = async id => {
     const row = history.find(h => h.id === id);
     setHistory(p => p.filter(h => h.id !== id));
@@ -3313,14 +3222,8 @@ export default function App() {
   const lastGym = history.find(h => h.session_name && /^[ABC]:/.test(h.session_name));
   const restDay = lastGym && Math.floor((Date.now()-new Date(lastGym.logged_at))/86400000) < 1;
 
-  // Cardio derived
-  const lastCardio = cardioSessions[0] || null;
-  const lastCardioType = lastCardio?.workout_type || null;
-  const hoursSinceCardio = lastCardio ? (Date.now()-new Date(lastCardio.completed_at))/3600000 : null;
-  const cardioInRecovery = hoursSinceCardio !== null && hoursSinceCardio < 48;
-  const nextCardioType = lastCardioType === "tabata" ? "court_intervals" : "tabata";
-  const hoursUntilCardio = cardioInRecovery ? Math.ceil(48-hoursSinceCardio) : 0;
-  const cardioOverdue = !cardioInRecovery && hoursSinceCardio !== null && hoursSinceCardio/24 > 3;
+  // Did today's 4-minute tabata get logged?
+  const tabataToday = history.some(h => h.session_name === "Daily Tabata Sprints" && new Date(h.logged_at).toDateString() === new Date().toDateString());
 
   // Primary navigation — three groups, each fronting a set of sub-tabs.
   const GROUPS = [
@@ -3498,7 +3401,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="ease-up-1"><TabataTimer onLog={logTabata} /></div>
+            <div className="ease-up-1"><TabataTimer onLog={logTabata} loggedToday={tabataToday} /></div>
             <div className="ease-up-2"><TreadmillLogger onLog={logTreadmill} /></div>
 
             {/* Status banners */}
@@ -3512,13 +3415,13 @@ export default function App() {
                   {restDay ? `Last: ${daysAgo(lastGym.logged_at)}` : "Ready when you are"}
                 </div>
               </Surface>
-              <Surface accent={cardioOverdue ? C.red : cardioInRecovery ? C.faint : CARDIO_TYPES[nextCardioType].color} padding={14} style={{ marginBottom: 0 }}>
-                <Eyebrow color={cardioOverdue ? C.red : cardioInRecovery ? C.dim : CARDIO_TYPES[nextCardioType].color}>HIIT · Next</Eyebrow>
+              <Surface accent={tabataToday ? C.moss : C.amber} padding={14} style={{ marginBottom: 0 }}>
+                <Eyebrow color={tabataToday ? C.moss : C.amber}>Tabata · Today</Eyebrow>
                 <div style={{ marginTop: 8, fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em", color: C.bone }}>
-                  {CARDIO_TYPES[nextCardioType].icon} {CARDIO_TYPES[nextCardioType].label}
+                  {tabataToday ? "✓ Done" : "🔥 4-min Tabata"}
                 </div>
-                <div style={{ fontSize: 11, color: cardioOverdue ? C.red : C.dim, marginTop: 2, fontFamily: FONT_MONO }}>
-                  {cardioInRecovery ? `Ready in ${hoursUntilCardio}h` : cardioOverdue ? "Overdue · do today" : "Ready"}
+                <div style={{ fontSize: 11, color: tabataToday ? C.moss : C.dim, marginTop: 2, fontFamily: FONT_MONO }}>
+                  {tabataToday ? "Logged today" : "Every day · 4 min"}
                 </div>
               </Surface>
             </div>
@@ -3574,151 +3477,6 @@ export default function App() {
               </Surface>
             </div>
 
-
-            {/* ─── CARDIO HIIT ─── */}
-            {(() => {
-              const last30 = cardioSessions.filter(s => (Date.now()-new Date(s.completed_at))/86400000 <= 30);
-              const startOfWeek = new Date(); startOfWeek.setDate(startOfWeek.getDate()-startOfWeek.getDay()); startOfWeek.setHours(0,0,0,0);
-              const thisWeekCardio = cardioSessions.filter(s => new Date(s.completed_at) >= startOfWeek);
-              const weekDays = ["S","M","T","W","T","F","S"];
-              const weekFull = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-              const weekSessions = weekDays.map((_,i) => {
-                const day = new Date(startOfWeek); day.setDate(startOfWeek.getDate()+i);
-                return cardioSessions.find(s => new Date(s.completed_at).toDateString() === day.toDateString()) || null;
-              });
-
-              return (
-                <>
-                  <div style={{ marginTop: 32, marginBottom: 16 }}>
-                    <Eyebrow color={C.amber}>Cardio · HIIT</Eyebrow>
-                    <h2 className="h-display" style={{ fontSize: 28, margin: "8px 0 4px", color: C.bone, letterSpacing: "-0.03em" }}>Conditioning</h2>
-                    <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>2 sessions/week · 48h recovery between</div>
-                  </div>
-
-                  {/* Whats Next */}
-                  <Surface accent={cardioOverdue ? C.red : cardioInRecovery ? C.faint : CARDIO_TYPES[nextCardioType].color} padding={20}>
-                    <Eyebrow color={cardioOverdue ? C.red : C.dim}>What's Next</Eyebrow>
-                    {!lastCardio ? (
-                      <div className="h-display" style={{ fontSize: 22, marginTop: 10, color: C.bone, letterSpacing: "-0.02em" }}>No sessions yet — pick one below 🏁</div>
-                    ) : cardioInRecovery ? (
-                      <>
-                        <div className="h-display" style={{ fontSize: 26, marginTop: 10, color: C.bone, letterSpacing: "-0.03em" }}>{CARDIO_TYPES[nextCardioType].icon} {CARDIO_TYPES[nextCardioType].label}</div>
-                        <div style={{ fontSize: 13, color: C.electric, marginTop: 6, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>READY IN {hoursUntilCardio}h</div>
-                      </>
-                    ) : cardioOverdue ? (
-                      <>
-                        <div className="h-display" style={{ fontSize: 26, marginTop: 10, color: C.red, letterSpacing: "-0.03em" }}>{CARDIO_TYPES[nextCardioType].icon} Do today</div>
-                        <div style={{ fontSize: 13, color: C.red, marginTop: 6, fontFamily: FONT_MONO }}>{Math.floor(hoursSinceCardio/24)}d since last</div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="h-display" style={{ fontSize: 26, marginTop: 10, color: C.bone, letterSpacing: "-0.03em" }}>{CARDIO_TYPES[nextCardioType].icon} {CARDIO_TYPES[nextCardioType].label}</div>
-                        <div style={{ fontSize: 13, color: C.moss, marginTop: 6, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>READY · LET'S GO</div>
-                      </>
-                    )}
-                  </Surface>
-
-                  {/* Weekly Grid */}
-                  <Surface>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
-                      <Eyebrow>This Week · 2× Target</Eyebrow>
-                      <span style={{ fontSize: 13, fontFamily: FONT_MONO, color: thisWeekCardio.length >= 2 ? C.moss : C.dim, fontWeight: 600 }}>
-                        {thisWeekCardio.length}/2 {thisWeekCardio.length >= 2 && "✓"}
-                      </span>
-                    </div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {weekDays.map((d, i) => {
-                        const s = weekSessions[i];
-                        const w = s ? CARDIO_TYPES[s.workout_type] : null;
-                        const isToday = new Date().getDay() === i;
-                        return (
-                          <div key={i} style={{ flex: 1 }}>
-                            <div style={{ fontSize: 10, color: isToday ? C.rust : C.dim, marginBottom: 6, fontWeight: 700, fontFamily: FONT_MONO, letterSpacing: "0.1em", textAlign: "center" }}>
-                              {d}
-                            </div>
-                            <div style={{
-                              aspectRatio: "1", borderRadius: 12,
-                              background: s ? w.color+"22" : C.raised,
-                              border: `1px solid ${s ? w.color+"55" : isToday ? C.rust+"55" : C.line}`,
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                              fontSize: 18,
-                            }}>
-                              {s ? w.icon : isToday ? <div className="pulse-dot" style={{ width: 6, height: 6, borderRadius: 999, background: C.rust }} /> : ""}
-                            </div>
-                            <div style={{ fontSize: 9, color: C.mute, fontFamily: FONT_MONO, textAlign: "center", marginTop: 5 }}>
-                              {weekFull[i].slice(0,3).toUpperCase()}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </Surface>
-
-                  {/* Court Counter */}
-                  {courtTimerOpen && (
-                    <SuicideCounter
-                      onLog={(reps) => logCardio("court_intervals", reps)}
-                      onClose={() => setCourtTimerOpen(false)}
-                    />
-                  )}
-
-                  {/* Workout Cards */}
-                  {Object.entries(CARDIO_TYPES).map(([key, w]) => (
-                    <Surface key={key} accent={w.color}>
-                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14 }}>
-                        <div>
-                          <div style={{ fontSize: 32 }}>{w.icon}</div>
-                          <h3 className="h-display" style={{ fontSize: 22, margin: "10px 0 4px", color: C.bone, letterSpacing: "-0.02em" }}>{w.label}</h3>
-                          <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.5, fontFamily: FONT_MONO, marginTop: 4 }}>{w.detail}</div>
-                        </div>
-                        <Pill color={w.color}>{w.duration}</Pill>
-                      </div>
-                      <input
-                        type="text" placeholder="Notes (optional)" value={cardioNotes} onChange={e => setCardioNotes(e.target.value)}
-                        style={{ background: C.raised, border: `1px solid ${C.line}`, borderRadius: 10, color: C.bone, padding: "10px 14px", fontSize: 13, width: "100%", marginBottom: 12, outline: "none" }}
-                      />
-                      {key === "court_intervals" && !courtTimerOpen && (
-                        <Btn color={w.color} onClick={() => setCourtTimerOpen(true)} full style={{ marginBottom: 8 }}>
-                          Open Suicide Counter
-                        </Btn>
-                      )}
-                      <Btn ghost={key === "court_intervals"} color={w.color} onClick={() => logCardio(key)} disabled={!!cardioLogging} full>
-                        {cardioLogging === key ? "Logging…" : `Log ${w.label}${key === "court_intervals" ? " manually" : ""}`}
-                      </Btn>
-                    </Surface>
-                  ))}
-
-                  {last30.length > 0 && (
-                    <>
-                      <div style={{ marginTop: 16, marginBottom: 12 }}>
-                        <Eyebrow>Recent Cardio</Eyebrow>
-                      </div>
-                      {last30.map((s, i) => {
-                        const w = CARDIO_TYPES[s.workout_type];
-                        const prev = last30[i+1];
-                        const gap = prev ? Math.round((new Date(s.completed_at)-new Date(prev.completed_at))/3600000) : null;
-                        return (
-                          <Surface key={s.id} accent={w.color} padding={14}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                              <div style={{ width: 40, height: 40, borderRadius: 10, background: w.color+"22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>{w.icon}</div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 14, fontWeight: 600, color: C.bone, letterSpacing: "-0.01em" }}>{w.label}</div>
-                                <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>
-                                  {daysAgo(s.completed_at)} · {new Date(s.completed_at).toLocaleDateString("en-CA")}
-                                  {gap !== null && <span style={{ marginLeft: 6, color: gap >= 48 ? C.moss : C.red }}>{gap}h gap</span>}
-                                </div>
-                                {s.notes && <div className="h-serif" style={{ fontSize: 13, color: C.cream, marginTop: 4 }}>"{s.notes}"</div>}
-                              </div>
-                              <button onClick={() => deleteCardio(s.id)} className="btn" style={{ background: "transparent", border: "none", color: C.mute, cursor: "pointer", fontSize: 14, padding: 8 }}>✕</button>
-                            </div>
-                          </Surface>
-                        );
-                      })}
-                    </>
-                  )}
-                </>
-              );
-            })()}
 
             <p className="h-serif" style={{ textAlign: "center", color: C.dim, fontSize: 16, margin: "24px 0 0" }}>
               "I am a basketball player who trains."
