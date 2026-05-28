@@ -658,6 +658,8 @@ function greeting() {
 const LS_BODY = "bttd_body_stats";
 const LS_PROTEIN = "bttd_protein_log_v1";
 const LS_CALORIES = "bttd_calorie_log_v1";
+const LS_VITAMIN_D3 = "bttd_vitamin_d3_log_v1";
+const LS_CREATINE = "bttd_creatine_log_v1";
 
 function loadBodyStats() {
   try {
@@ -706,6 +708,50 @@ function loadCalorieLog() {
 }
 function saveCalorieLog(log) {
   try { localStorage.setItem(LS_CALORIES, JSON.stringify(log)); } catch(e) {}
+}
+
+function loadVitaminD3Log() {
+  try {
+    const raw = localStorage.getItem(LS_VITAMIN_D3);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return {};
+}
+function saveVitaminD3Log(log) {
+  try { localStorage.setItem(LS_VITAMIN_D3, JSON.stringify(log)); } catch(e) {}
+}
+
+function loadCreatineLog() {
+  try {
+    const raw = localStorage.getItem(LS_CREATINE);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return {};
+}
+function saveCreatineLog(log) {
+  try { localStorage.setItem(LS_CREATINE, JSON.stringify(log)); } catch(e) {}
+}
+
+/* Day key for N days ago in LOCAL time (0 = today). */
+function dayKeyAgo(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/* Consecutive-day streak ending today. If today isn't logged yet,
+   yesterday's streak still counts as "current" until the day rolls over. */
+function calcSupplementStreak(log) {
+  const start = log[dayKeyAgo(0)] ? 0 : 1;
+  let streak = 0;
+  for (let i = start; ; i++) {
+    if (log[dayKeyAgo(i)]) streak++;
+    else break;
+  }
+  return streak;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1816,7 +1862,76 @@ function StatsTab({ history, weightLog, cardioSessions }) {
    NUTRITION TAB — Kosher pre/post workout + protein tracker
    ════════════════════════════════════════════════════════════ */
 
-function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange, calorieLog, onCalorieChange }) {
+/* One daily supplement: tap-to-log toggle + streak + 7-day trail. */
+function SupplementRow({ name, dose, blurb, icon, accent, log, onToggle }) {
+  const today = todayKey();
+  const takenToday = !!log[today];
+  const streak = calcSupplementStreak(log);
+
+  const trail = [];
+  for (let i = 6; i >= 0; i--) {
+    const k = dayKeyAgo(i);
+    const d = new Date(k + "T00:00:00");
+    trail.push({
+      key: k,
+      done: !!log[k],
+      isToday: i === 0,
+      letter: ["S", "M", "T", "W", "T", "F", "S"][d.getDay()],
+    });
+  }
+
+  const toggle = () => {
+    onToggle(today);
+    if (!takenToday) {
+      beep(880, 0.08, 0.3);
+      if (navigator.vibrate) navigator.vibrate(8);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{
+          fontSize: 22, width: 42, height: 42, borderRadius: 12, flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: accent + "15", border: `1px solid ${accent}30`,
+        }}>{icon}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="h-display" style={{ fontSize: 17, fontWeight: 700, color: C.bone, letterSpacing: "-0.02em" }}>{name}</div>
+          <div style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.06em", marginTop: 2 }}>
+            {dose}{streak > 0 ? ` · 🔥 ${streak} day${streak === 1 ? "" : "s"}` : ""}
+          </div>
+        </div>
+        <button onClick={toggle} className="btn" style={{
+          flexShrink: 0, padding: "10px 18px", borderRadius: 14,
+          background: takenToday ? accent : "transparent",
+          border: `1px solid ${takenToday ? accent : accent + "55"}`,
+          color: takenToday ? C.ink : accent,
+          fontSize: 13, fontWeight: 700, cursor: "pointer",
+          fontFamily: FONT_DISPLAY, letterSpacing: "-0.01em",
+        }}>{takenToday ? "✓ Taken" : "Log it"}</button>
+      </div>
+
+      {/* 7-day trail */}
+      <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
+        {trail.map(d => (
+          <div key={d.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+            <div style={{
+              width: "100%", height: 6, borderRadius: 3,
+              background: d.done ? accent : C.line,
+              outline: d.isToday ? `1px solid ${accent}` : "none", outlineOffset: 1,
+            }} />
+            <div style={{ fontSize: 9, color: d.isToday ? accent : C.mute, fontFamily: FONT_MONO }}>{d.letter}</div>
+          </div>
+        ))}
+      </div>
+
+      <p className="h-serif" style={{ fontSize: 13, color: C.cream, margin: "10px 0 0", lineHeight: 1.4 }}>{blurb}</p>
+    </div>
+  );
+}
+
+function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange, calorieLog, onCalorieChange, vitaminD3Log, onVitaminD3Toggle, creatineLog, onCreatineToggle }) {
   const [editingBody, setEditingBody] = useState(false);
   const [tmpHeight, setTmpHeight] = useState(bodyStats.heightInches);
   const [tmpWeight, setTmpWeight] = useState(bodyStats.weightLbs);
@@ -2112,6 +2227,35 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange, ca
               Tip: tapping a meal or food card below auto-adds both protein AND calories at once.
             </p>
           </div>
+        </Surface>
+      </div>
+
+      {/* ── DAILY SUPPLEMENTS ── */}
+      <div className="ease-up-2">
+        <Surface accent={C.plum}>
+          <Eyebrow color={C.plum}>Daily · Supplements</Eyebrow>
+          <p className="h-serif" style={{ fontSize: 14, color: C.cream, margin: "8px 0 18px", lineHeight: 1.4 }}>
+            Tap to log each day. Consistency is the cheat code — keep the streak alive.
+          </p>
+          <SupplementRow
+            name="Vitamin D3"
+            dose="5,000 IU"
+            icon="☀️"
+            accent={C.amber}
+            blurb="Bones, joints, immune system, mood. Take with a meal that has some fat."
+            log={vitaminD3Log}
+            onToggle={onVitaminD3Toggle}
+          />
+          <div style={{ height: 1, background: C.line, margin: "18px 0" }} />
+          <SupplementRow
+            name="Creatine"
+            dose="5 g monohydrate"
+            icon="⚡"
+            accent={C.electric}
+            blurb="Power, explosiveness, recovery. Daily dose matters more than timing — just don't skip."
+            log={creatineLog}
+            onToggle={onCreatineToggle}
+          />
         </Surface>
       </div>
 
@@ -2436,6 +2580,8 @@ export default function App() {
   const [bodyStats, setBodyStats] = useState(loadBodyStats());
   const [proteinLog, setProteinLog] = useState(loadProteinLog());
   const [calorieLog, setCalorieLog] = useState(loadCalorieLog());
+  const [vitaminD3Log, setVitaminD3Log] = useState(loadVitaminD3Log());
+  const [creatineLog, setCreatineLog] = useState(loadCreatineLog());
 
   // Reps editor state
   const [repsEditor, setRepsEditor] = useState(null); // { exId, sk, setIndex, currentReps, defaultReps, exerciseName }
@@ -2546,6 +2692,22 @@ export default function App() {
     if (cals <= 0) delete next[dateKey];
     setCalorieLog(next);
     saveCalorieLog(next);
+  };
+
+  const toggleVitaminD3 = (dateKey) => {
+    const next = { ...vitaminD3Log };
+    if (next[dateKey]) delete next[dateKey];
+    else next[dateKey] = true;
+    setVitaminD3Log(next);
+    saveVitaminD3Log(next);
+  };
+
+  const toggleCreatine = (dateKey) => {
+    const next = { ...creatineLog };
+    if (next[dateKey]) delete next[dateKey];
+    else next[dateKey] = true;
+    setCreatineLog(next);
+    saveCreatineLog(next);
   };
 
   const logSession = async () => {
@@ -3020,6 +3182,10 @@ export default function App() {
             onProteinChange={updateProtein}
             calorieLog={calorieLog}
             onCalorieChange={updateCalories}
+            vitaminD3Log={vitaminD3Log}
+            onVitaminD3Toggle={toggleVitaminD3}
+            creatineLog={creatineLog}
+            onCreatineToggle={toggleCreatine}
           />
         )}
 
