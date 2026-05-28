@@ -78,6 +78,9 @@ function applyThemePalette(mode) {
   Object.keys(p).forEach(k => { C[k] = p[k]; });
 }
 
+// Springy overshoot easing for progress fills — settles past target then back.
+const SPRING = "cubic-bezier(0.34, 1.4, 0.64, 1)";
+
 const FONT_DISPLAY = `"Bricolage Grotesque", -apple-system, system-ui, sans-serif`;
 const FONT_SERIF   = `"Instrument Serif", "Times New Roman", serif`;
 const FONT_MONO    = `"JetBrains Mono", ui-monospace, monospace`;
@@ -152,6 +155,11 @@ const injectStyles = (force) => {
       to { transform: translateY(0); opacity: 1; }
     }
     .slide-down { animation: slide-down 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+    @keyframes slide-up {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    .slide-up { animation: slide-up 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
     .ease-up { animation: ease-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
     .ease-up-1 { animation: ease-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both; }
@@ -660,6 +668,10 @@ function getLastPerformance(history, exerciseName) {
   return null;
 }
 
+// Progressive overload: suggested next weight = last + 5 lb.
+const PROGRESS_STEP = 5;
+const nextTarget = (w) => (parseFloat(w) || 0) + PROGRESS_STEP;
+
 // Greedy: given a target TOTAL barbell weight, compute the plates to load PER SIDE.
 // Bar = 45 lb. Returns an array of plate weights (heaviest first) or null if impossible.
 function platesToReach(totalLbs) {
@@ -856,6 +868,29 @@ function Pill({ children, color = C.rust, size = "sm" }) {
       letterSpacing: "0.06em", textTransform: "uppercase",
       fontFamily: FONT_MONO, display: "inline-block",
     }}>{children}</span>
+  );
+}
+
+function NavItem({ g, active, onGo }) {
+  return (
+    <button onClick={() => onGo(g)} className="btn"
+      style={{
+        flex: 1, padding: "8px 4px", border: "none", background: "transparent",
+        cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+        position: "relative",
+      }}>
+      <span style={{ fontSize: 20, opacity: active ? 1 : 0.55, transition: "opacity 0.2s, transform 0.2s", transform: active ? "scale(1.05)" : "scale(1)" }}>
+        {g.icon}
+      </span>
+      <span style={{
+        fontSize: 10, fontWeight: active ? 700 : 500,
+        color: active ? C.rust : C.dim,
+        letterSpacing: "0.02em", fontFamily: FONT_DISPLAY, transition: "color 0.2s",
+      }}>
+        {g.label}
+      </span>
+      {active && <div style={{ position: "absolute", top: 0, left: "30%", right: "30%", height: 2, background: C.rust, borderRadius: 999 }} />}
+    </button>
   );
 }
 
@@ -1290,6 +1325,25 @@ function BarbellInput({ vals, onVal, lastPerf }) {
         </div>
       )}
 
+      {/* Progressive overload nudge — bump the last weight by +5 */}
+      {lastPerf && total < nextTarget(lastPerf.weight) && platesToReach(nextTarget(lastPerf.weight)) && (
+        <button onClick={() => {
+            const pl = platesToReach(nextTarget(lastPerf.weight));
+            onVal("plates", JSON.stringify([...pl].sort((a, b) => b - a)));
+            onVal("perSide", String(pl.reduce((a, b) => a + b, 0)));
+            if (navigator.vibrate) navigator.vibrate(8);
+          }} className="btn"
+          style={{
+            width: "100%", padding: "10px 12px", marginBottom: 12,
+            background: `${C.moss}12`, border: `1px solid ${C.moss}55`, borderRadius: 10,
+            color: C.moss, fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.05em",
+            cursor: "pointer", textTransform: "uppercase", fontWeight: 700,
+          }}>
+          ↗ Progress to {nextTarget(lastPerf.weight)} lb
+          <span style={{ color: C.mute, marginLeft: 6, fontSize: 9 }}>(was {lastPerf.weight})</span>
+        </button>
+      )}
+
       {/* Visual barbell */}
       <div style={{
         background: "linear-gradient(180deg, #1A1814 0%, #0F0E0C 100%)", borderRadius: 10, padding: "16px 8px",
@@ -1473,22 +1527,20 @@ function ExRow({ ex, checked, onCheck, vals, onVal, color, onRest, lastPerf, onE
         </div>
         {!ex.noWeight && !ex.timed && !ex.bodyweight && !ex.barbell && (
           <div style={{ width: 72, flexShrink: 0 }}>
-            {lastPerf && !vals?.weight ? (
-              <button onClick={() => onVal("weight", String(lastPerf.weight))} className="btn"
-                title={lastPerf.daysAgo === 0 ? "Today" : lastPerf.daysAgo === 1 ? "Yesterday" : `${lastPerf.daysAgo} days ago`}
+            {lastPerf && (parseFloat(vals?.weight) || 0) < nextTarget(lastPerf.weight) ? (
+              <button onClick={() => onVal("weight", String(nextTarget(lastPerf.weight)))} className="btn"
+                title={`Last: ${lastPerf.weight} lb. Tap to bump +${PROGRESS_STEP}.`}
                 style={{
                   background: "transparent", border: "none", padding: 0,
-                  fontSize: 10, fontFamily: FONT_MONO, color: C.electric,
-                  letterSpacing: "0.06em", textTransform: "uppercase",
-                  fontWeight: 600, cursor: "pointer", textAlign: "center", width: "100%",
-                  marginBottom: 2, lineHeight: 1.25,
+                  fontSize: 11, fontFamily: FONT_MONO, color: C.moss,
+                  letterSpacing: "0.04em", textTransform: "uppercase",
+                  fontWeight: 700, cursor: "pointer", textAlign: "center", width: "100%",
+                  marginBottom: 2, lineHeight: 1.2,
                 }}>
-                ↻ {lastPerf.weight}<span style={{ color: C.dim }}> × {String(lastPerf.reps).split(",")[0]}</span>
-                {lastPerf.daysAgo !== null && (
-                  <div style={{ fontSize: 8, color: C.mute, marginTop: 1, fontWeight: 500 }}>
-                    {lastPerf.daysAgo === 0 ? "TODAY" : lastPerf.daysAgo === 1 ? "1D AGO" : `${lastPerf.daysAgo}D AGO`}
-                  </div>
-                )}
+                ↗ {nextTarget(lastPerf.weight)}
+                <div style={{ fontSize: 8, color: C.mute, marginTop: 1, fontWeight: 500 }}>
+                  WAS {lastPerf.weight}
+                </div>
               </button>
             ) : (
               <div style={{ textAlign: "center" }}><Eyebrow>lbs</Eyebrow></div>
@@ -2205,7 +2257,7 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange, ca
                   strokeLinecap="round"
                   strokeDasharray={2 * Math.PI * 44}
                   strokeDashoffset={2 * Math.PI * 44 * (1 - pct / 100)}
-                  style={{ transition: "stroke-dashoffset 0.6s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.3s" }}
+                  style={{ transition: `stroke-dashoffset 0.75s ${SPRING}, stroke 0.3s` }}
                 />
               </svg>
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
@@ -2291,7 +2343,7 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange, ca
                   strokeLinecap="round"
                   strokeDasharray={2 * Math.PI * 44}
                   strokeDashoffset={2 * Math.PI * 44 * (1 - Math.min(100, calPct) / 100)}
-                  style={{ transition: "stroke-dashoffset 0.6s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.3s" }}
+                  style={{ transition: `stroke-dashoffset 0.75s ${SPRING}, stroke 0.3s` }}
                 />
               </svg>
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
@@ -2721,10 +2773,23 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
   const [tmpReach, setTmpReach] = useState(String(standingReach));
   const [tmpVert, setTmpVert] = useState(String(vertical));
 
+  const milestoneFor = (jr) => (jr >= dunkTarget ? 3 : jr >= rim + 3 ? 2 : jr >= rim ? 1 : 0);
   const stepVert = (delta) => {
     const v = Math.max(0, Math.round((vertical + delta) * 2) / 2);
+    const before = milestoneFor(standingReach + vertical);
+    const after = milestoneFor(standingReach + v);
     onUpdateBody({ ...bodyStats, verticalInches: v });
-    if (delta > 0) { beep(880, 0.08, 0.3); if (navigator.vibrate) navigator.vibrate(8); }
+    if (after > before) {
+      // Crossed into a new milestone — celebrate.
+      beep(1175, 0.14, 0.35);
+      if (navigator.vibrate) navigator.vibrate([18, 40, 18, 40, 60]);
+      toast(after === 3 ? "🏀 Above the rim — you can dunk!" : after === 2 ? "🙌 You can grab the rim!" : "✋ You can touch the rim!");
+    } else if (delta > 0) {
+      beep(880, 0.08, 0.3);
+      if (navigator.vibrate) navigator.vibrate(8);
+    } else if (navigator.vibrate) {
+      navigator.vibrate(6);
+    }
   };
   const saveMeasurements = () => {
     const r = parseFloat(tmpReach);
@@ -2910,7 +2975,7 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
                         strokeDasharray={CIRC}
                         strokeDashoffset={CIRC * (1 - pct / 100)}
                         transform="rotate(-90 50 50)"
-                        style={{ transition: "stroke-dashoffset 0.7s cubic-bezier(0.22,1,0.36,1)" }}
+                        style={{ transition: `stroke-dashoffset 0.75s ${SPRING}` }}
                       />
                     </svg>
                     <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -2959,6 +3024,7 @@ export default function App() {
   const [cardioNotes, setCardioNotes] = useState("");
   const [cardioLogging, setCardioLogging] = useState(null);
   const [courtTimerOpen, setCourtTimerOpen] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [restTimer, setRestTimer] = useState(null); // null or { seconds }
   const [confetti, setConfetti] = useState(false);
   const [restEnabled, setRestEnabled] = useState(true);
@@ -3031,6 +3097,39 @@ export default function App() {
     }
     setActiveSessionInit(true);
   }, [history, activeSessionInit]);
+
+  // Pre-fill each exercise with last session's weight (editable). Only logs
+  // exercises the user actually checks off, so seeding is safe. Never clobbers
+  // a value the user already entered.
+  useEffect(() => {
+    const s = SESSIONS[activeSession];
+    const key = s.id;
+    setVals(prev => {
+      let changed = false;
+      const next = { ...prev };
+      s.exercises.forEach(ex => {
+        const k = key + "_" + ex.id;
+        const cur = next[k] || {};
+        const lp = getLastPerformance(history, ex.name);
+        if (!lp) return;
+        if (ex.barbell) {
+          if (cur.plates === undefined && cur.perSide === undefined) {
+            const pl = platesToReach(lp.weight);
+            if (pl) {
+              next[k] = { ...cur, plates: JSON.stringify([...pl].sort((a, b) => b - a)), perSide: String(pl.reduce((a, b) => a + b, 0)) };
+              changed = true;
+            }
+          }
+        } else if (!ex.noWeight && !ex.timed && !ex.bodyweight) {
+          if (cur.weight === undefined) {
+            next[k] = { ...cur, weight: String(lp.weight) };
+            changed = true;
+          }
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [activeSession, history]);
 
   const session = SESSIONS[activeSession];
   const sk = session.id;
@@ -3223,15 +3322,22 @@ export default function App() {
   const hoursUntilCardio = cardioInRecovery ? Math.ceil(48-hoursSinceCardio) : 0;
   const cardioOverdue = !cardioInRecovery && hoursSinceCardio !== null && hoursSinceCardio/24 > 3;
 
-  const TABS = [
-    { id: "dunk",      label: "Dunk",   icon: "🏀" },
-    { id: "workout",   label: "Train",  icon: "🏋️" },
-    { id: "nutrition", label: "Fuel",   icon: "🥤" },
-    { id: "history",   label: "Log",    icon: "📓" },
-    { id: "stats",     label: "Stats",  icon: "📊" },
-    { id: "weight",    label: "Weight", icon: "⚖️" },
-    { id: "goals",     label: "Plan",   icon: "🎯" },
+  // Primary navigation — three groups, each fronting a set of sub-tabs.
+  const GROUPS = [
+    { id: "today",    label: "Today",    icon: "🏀", tabs: ["dunk"] },
+    { id: "train",    label: "Train",    icon: "🏋️", tabs: ["workout", "history", "goals"] },
+    { id: "progress", label: "Progress", icon: "📊", tabs: ["stats", "weight", "nutrition"] },
   ];
+  const SUB_LABELS = {
+    dunk: "Today", workout: "Train", history: "Log", goals: "Plan",
+    stats: "Stats", weight: "Weight", nutrition: "Fuel",
+  };
+  const groupOf = (id) => (GROUPS.find(g => g.tabs.includes(id)) || GROUPS[0]);
+  const activeGroup = groupOf(tab);
+  const goGroup = (g) => {
+    setTab(g.tabs[0]);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   if (loading) return (
     <div className="court-bg" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -3277,6 +3383,26 @@ export default function App() {
       </header>
 
       <main style={{ padding: "20px 16px 100px", maxWidth: 480, margin: "0 auto" }}>
+
+        {/* ── SUB-RAIL — switch within a group ── */}
+        {activeGroup.tabs.length > 1 && (
+          <div className="tab-rail" style={{ marginBottom: 18, padding: 4, background: C.raised, borderRadius: 14, border: `1px solid ${C.line}` }}>
+            {activeGroup.tabs.map(id => {
+              const on = tab === id;
+              return (
+                <button key={id} className="btn" onClick={() => { setTab(id); window.scrollTo({ top: 0, behavior: "smooth" }); if (navigator.vibrate) navigator.vibrate(5); }}
+                  style={{
+                    flex: 1, whiteSpace: "nowrap", padding: "9px 14px", border: "none", borderRadius: 10,
+                    background: on ? C.panel : "transparent", color: on ? C.bone : C.dim,
+                    fontFamily: FONT_DISPLAY, fontWeight: on ? 700 : 500, fontSize: 13, letterSpacing: "-0.01em",
+                    cursor: "pointer", boxShadow: on ? `0 1px 3px ${C.bone}14` : "none", transition: "background 0.2s, color 0.2s",
+                  }}>
+                  {SUB_LABELS[id]}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* ── DUNK (North Star home) ── */}
         {tab === "dunk" && (
@@ -3935,31 +4061,108 @@ export default function App() {
         padding: "8px 4px calc(8px + env(safe-area-inset-bottom)) 4px",
         display: "flex", justifyContent: "space-around",
       }}>
-        {TABS.map(t => {
-          const active = tab === t.id;
-          return (
-            <button key={t.id} onClick={() => { setTab(t.id); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="btn"
-              style={{
-                flex: 1, padding: "8px 4px", border: "none", background: "transparent",
-                cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
-                position: "relative",
-              }}>
-              <span style={{ fontSize: 20, opacity: active ? 1 : 0.55, transition: "opacity 0.2s, transform 0.2s", transform: active ? "scale(1.05)" : "scale(1)" }}>
-                {t.icon}
-              </span>
-              <span style={{
-                fontSize: 10, fontWeight: active ? 700 : 500,
-                color: active ? C.rust : C.dim,
-                letterSpacing: "0.02em", fontFamily: FONT_DISPLAY,
-                transition: "color 0.2s",
-              }}>
-                {t.label}
-              </span>
-              {active && <div style={{ position: "absolute", top: 0, left: "30%", right: "30%", height: 2, background: C.rust, borderRadius: 999 }} />}
-            </button>
-          );
-        })}
+        {GROUPS.slice(0, 2).map(g => <NavItem key={g.id} g={g} active={activeGroup.id === g.id} onGo={goGroup} />)}
+
+        {/* Quick-add FAB */}
+        <button className="btn" onClick={() => { setQuickAddOpen(true); if (navigator.vibrate) navigator.vibrate(10); }}
+          aria-label="Quick add"
+          style={{
+            flex: "0 0 auto", width: 52, height: 52, marginTop: -18, borderRadius: 999, border: "none",
+            background: `linear-gradient(135deg, ${C.rust}, ${C.amber})`, color: "#fff",
+            fontSize: 26, fontWeight: 700, lineHeight: 1, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: `0 6px 18px ${C.rust}55`,
+          }}>
+          +
+        </button>
+
+        {GROUPS.slice(2).map(g => <NavItem key={g.id} g={g} active={activeGroup.id === g.id} onGo={goGroup} />)}
       </nav>
+
+      {/* ── QUICK ADD bottom sheet ── */}
+      {quickAddOpen && (() => {
+        const tk = todayKey();
+        const curProtein = proteinLog[tk] || 0;
+        const pTarget = calcProteinTarget(bodyStats.weightLbs);
+        const d3 = !!vitaminD3Log[tk];
+        const cr = !!creatineLog[tk];
+        const addProtein = (g) => { updateProtein(tk, curProtein + g); if (navigator.vibrate) navigator.vibrate(8); };
+        const close = () => setQuickAddOpen(false);
+        const chip = (label, on, onTap, color) => (
+          <button className="btn" onClick={onTap} style={{
+            flex: 1, padding: "12px 8px", borderRadius: 12, cursor: "pointer",
+            border: `1px solid ${on ? color : C.line}`,
+            background: on ? `${color}18` : C.raised, color: on ? color : C.cream,
+            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+          }}>
+            <span style={{ fontSize: 18 }}>{on ? "✓" : "○"}</span>{label}
+          </button>
+        );
+        return (
+          <div className="backdrop" style={{ alignItems: "flex-end", padding: 0 }} onClick={close}>
+            <div className="slide-up" onClick={e => e.stopPropagation()} style={{
+              width: "100%", maxWidth: 480, margin: "0 auto",
+              background: C.panel, borderRadius: "22px 22px 0 0",
+              borderTop: `1px solid ${C.line}`, padding: "10px 18px calc(24px + env(safe-area-inset-bottom))",
+              maxHeight: "85vh", overflowY: "auto",
+            }}>
+              <div style={{ width: 38, height: 4, borderRadius: 999, background: C.faint, margin: "0 auto 16px" }} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
+                <h2 className="h-display" style={{ fontSize: 22, fontWeight: 700, color: C.bone, margin: 0, letterSpacing: "-0.03em" }}>Quick add</h2>
+                <button onClick={close} className="btn" style={{ border: "none", background: "transparent", color: C.dim, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+              </div>
+
+              {/* Protein */}
+              <Eyebrow>Protein · {Math.round(curProtein)}/{pTarget}g</Eyebrow>
+              <div style={{ display: "flex", gap: 8, margin: "8px 0 18px" }}>
+                {[20, 30, 40].map(g => (
+                  <button key={g} className="btn" onClick={() => addProtein(g)} style={{
+                    flex: 1, padding: "13px 8px", borderRadius: 12, cursor: "pointer",
+                    border: `1px solid ${C.amber}40`, background: `${C.amber}12`, color: C.amber,
+                    fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15,
+                  }}>+{g}g</button>
+                ))}
+              </div>
+
+              {/* Supplements */}
+              <Eyebrow>Supplements</Eyebrow>
+              <div style={{ display: "flex", gap: 8, margin: "8px 0 18px" }}>
+                {chip("Vitamin D3", d3, () => { toggleVitaminD3(tk); if (navigator.vibrate) navigator.vibrate(8); }, C.electric)}
+                {chip("Creatine", cr, () => { toggleCreatine(tk); if (navigator.vibrate) navigator.vibrate(8); }, C.plum)}
+              </div>
+
+              {/* Weight */}
+              <Eyebrow>Bodyweight</Eyebrow>
+              <div style={{ display: "flex", gap: 8, margin: "8px 0 18px" }}>
+                <input type="number" inputMode="decimal" value={weightInput} onChange={e => setWeightInput(e.target.value)}
+                  placeholder="lbs" style={{
+                    flex: 1, padding: "13px 14px", borderRadius: 12, border: `1px solid ${C.line}`,
+                    background: C.raised, color: C.bone, fontSize: 16, fontFamily: FONT_MONO, outline: "none",
+                  }} />
+                <button className="btn" onClick={async () => { await logWeight(); }} style={{
+                  padding: "13px 22px", borderRadius: 12, border: "none", cursor: "pointer",
+                  background: C.moss, color: "#fff", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14,
+                }}>Log</button>
+              </div>
+
+              {/* Shortcuts */}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn" onClick={() => { setTab("workout"); close(); window.scrollTo({ top: 0 }); }} style={{
+                  flex: 1, padding: "13px 8px", borderRadius: 12, cursor: "pointer",
+                  border: `1px solid ${C.rust}40`, background: `${C.rust}12`, color: C.rust,
+                  fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14,
+                }}>🏋️ Start a workout</button>
+                <button className="btn" onClick={() => { setTab("nutrition"); close(); window.scrollTo({ top: 0 }); }} style={{
+                  flex: 1, padding: "13px 8px", borderRadius: 12, cursor: "pointer",
+                  border: `1px solid ${C.line}`, background: C.raised, color: C.cream,
+                  fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14,
+                }}>🥤 Full nutrition</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <ToastHost />
     </div>
