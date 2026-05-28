@@ -259,6 +259,73 @@ const PHASES = [
   { weeks: "13—16", color: C.plum,     weight: "206 → 200", focus: "Dunk attempt. You earned it.",                 goals: ["Full vertical test", "Attempt the dunk", "Film it", "Plan next cycle"] },
 ];
 
+/* ── PROGRAM CLOCK — the 16-week countdown to dunk day ── */
+const PROGRAM_WEEKS = 16;
+const PROGRAM_DAYS = PROGRAM_WEEKS * 7; // 112
+
+// Resolve the program start: an explicit pinned date wins; otherwise the
+// earliest workout ever logged anchors Day 1; otherwise today.
+function resolveProgramStart(programStartISO, history) {
+  if (programStartISO) {
+    const d = new Date(programStartISO);
+    if (!isNaN(d)) { d.setHours(0, 0, 0, 0); return d; }
+  }
+  if (history && history.length) {
+    let earliest = null;
+    for (const h of history) {
+      const t = new Date(h.logged_at);
+      if (!isNaN(t) && (!earliest || t < earliest)) earliest = t;
+    }
+    if (earliest) { earliest.setHours(0, 0, 0, 0); return earliest; }
+  }
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return today;
+}
+
+// Where are we in the 16-week arc? Pure date math, clamped to the program.
+function programProgress(start) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dayNum = Math.max(1, Math.floor((today - start) / 86400000) + 1);
+  const rawWeek = Math.ceil(dayNum / 7);
+  const week = Math.min(Math.max(1, rawWeek), PROGRAM_WEEKS);
+  const daysToDunk = Math.max(0, PROGRAM_DAYS - dayNum + 1);
+  const pct = Math.min(100, (dayNum / PROGRAM_DAYS) * 100);
+  const phaseIndex = Math.min(PHASES.length - 1, Math.floor((week - 1) / 4));
+  const complete = dayNum > PROGRAM_DAYS;
+  const dunkDate = new Date(start.getTime() + (PROGRAM_DAYS - 1) * 86400000);
+  return { dayNum, week, rawWeek, daysToDunk, pct, phaseIndex, complete, dunkDate };
+}
+
+/* ── DAILY HYPE — one line, rotates by calendar day so it's stable all day ── */
+const DUNK_QUOTES = [
+  ["Gravity is just a suggestion.", "THE WORK"],
+  ["Six inches between the floor and the dunk. Close it.", "THE WORK"],
+  ["Everybody wants to be a beast — until it's time to do what beasts do.", "ERIC THOMAS"],
+  ["Hard work beats talent when talent doesn't work hard.", "TIM NOTKE"],
+  ["Discipline is choosing what you want most over what you want now.", "ABRAHAM LINCOLN"],
+  ["Don't count the days. Make the days count.", "MUHAMMAD ALI"],
+  ["Suffer the pain of discipline or suffer the pain of regret.", "JIM ROHN"],
+  ["Every rep is a vote for the man you're becoming.", "THE WORK"],
+  ["The rim doesn't move. You do.", "THE WORK"],
+  ["Fall in love with the process and the results will come.", "ERIC THOMAS"],
+  ["Pressure is a privilege.", "BILLIE JEAN KING"],
+  ["You don't have to be great to start — you have to start to be great.", "ZIG ZIGLAR"],
+  ["Train like the rim owes you money.", "THE WORK"],
+  ["The only bad workout is the one that didn't happen.", "THE WORK"],
+  ["Consistency is the cheat code.", "THE WORK"],
+  ["Sweat now, fly later.", "THE WORK"],
+  ["Be stronger than your excuses.", "THE WORK"],
+  ["The body achieves what the mind believes.", "THE WORK"],
+  ["Show up on the days you don't feel like it. That's the whole game.", "THE WORK"],
+  ["You're one workout away from a good mood.", "THE WORK"],
+];
+function quoteOfDay() {
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 0);
+  const dayOfYear = Math.floor((now - startOfYear) / 86400000);
+  return DUNK_QUOTES[dayOfYear % DUNK_QUOTES.length];
+}
+
 /* ── KOSHER NUTRITION DATABASE ── */
 const PRE_WORKOUT_FOODS = [
   { name: "Banana + 2 tbsp peanut butter",   protein: 8,  calories: 295, timing: "30–60 min before", note: "Quick carbs + sustained energy. Classic." },
@@ -730,10 +797,11 @@ function loadBodyStats() {
       if (typeof parsed.rimHeightInches !== "number") parsed.rimHeightInches = 120;
       if (typeof parsed.standingReachInches !== "number") parsed.standingReachInches = Math.round((parsed.heightInches || 77) * 1.32);
       if (typeof parsed.verticalInches !== "number") parsed.verticalInches = 18;
+      if (typeof parsed.programStartISO === "undefined") parsed.programStartISO = null;
       return parsed;
     }
   } catch(e) {}
-  return { heightInches: 77, weightLbs: 222, age: 47, goal: "lean", activityFactor: 1.55, rimHeightInches: 120, standingReachInches: Math.round(77 * 1.32), verticalInches: 18 };
+  return { heightInches: 77, weightLbs: 222, age: 47, goal: "lean", activityFactor: 1.55, rimHeightInches: 120, standingReachInches: Math.round(77 * 1.32), verticalInches: 18, programStartISO: null };
 }
 function saveBodyStats(stats) {
   try { localStorage.setItem(LS_BODY, JSON.stringify(stats)); } catch(e) {}
@@ -2702,6 +2770,53 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
   const R = 40;
   const CIRC = 2 * Math.PI * R;
 
+  /* ── PROGRAM CLOCK ── */
+  const programStart = resolveProgramStart(bodyStats.programStartISO, history);
+  const prog = programProgress(programStart);
+  const phase = PHASES[prog.phaseIndex];
+  const [editStart, setEditStart] = useState(false);
+  const [tmpStart, setTmpStart] = useState(dateKey(programStart));
+  const saveStart = () => {
+    const d = new Date(tmpStart + "T00:00:00");
+    if (!isNaN(d)) onUpdateBody({ ...bodyStats, programStartISO: d.toISOString() });
+    setEditStart(false);
+  };
+
+  /* ── MOMENTUM — combined training density over the last 14 days ── */
+  const activeDays = new Set([
+    ...history.map(h => new Date(h.logged_at).toDateString()),
+    ...cardioSessions.map(s => new Date(s.completed_at).toDateString()),
+  ]);
+  const strip = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
+    strip.push({ key: d.toDateString(), active: activeDays.has(d.toDateString()), isToday: i === 0 });
+  }
+  const last7 = strip.slice(-7).filter(d => d.active).length;
+  const last14 = strip.filter(d => d.active).length;
+  // Consecutive-day streak (today not-yet-logged still counts as live).
+  let streak = 0;
+  for (let i = 0; ; i++) {
+    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
+    if (activeDays.has(d.toDateString())) streak++;
+    else if (i === 0) continue;
+    else break;
+  }
+  // How long since the last session?
+  let lastAgo = null;
+  for (let i = 0; i < 60; i++) {
+    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
+    if (activeDays.has(d.toDateString())) { lastAgo = i; break; }
+  }
+  let momentumVerdict, momentumColor;
+  if (trainedToday) { momentumVerdict = "On fire. You showed up today."; momentumColor = C.moss; }
+  else if (lastAgo === 1) { momentumVerdict = "Momentum's hot — keep it rolling."; momentumColor = C.amber; }
+  else if (lastAgo !== null && lastAgo <= 3) { momentumVerdict = "Don't let it cool. Get one in."; momentumColor = C.amber; }
+  else if (lastAgo === null) { momentumVerdict = "Day one starts the second you log."; momentumColor = C.rust; }
+  else { momentumVerdict = "Restart the engine. One session does it."; momentumColor = C.rust; }
+
+  const [quoteText, quoteAuthor] = quoteOfDay();
+
   return (
     <>
       {/* ── Header ── */}
@@ -2730,8 +2845,81 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
         </p>
       </div>
 
-      {/* ── DAILY RINGS — close them every day ── */}
+      {/* ── PROGRAM CLOCK — the North Star countdown ── */}
       <div className="ease-up-1">
+        <Surface accent={phase.color} padding={22}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Eyebrow color={phase.color}>{prog.complete ? "Program complete" : `Phase ${prog.phaseIndex + 1} · ${phase.weeks}`}</Eyebrow>
+              <div className="h-display" style={{ fontSize: 30, fontWeight: 800, color: C.bone, letterSpacing: "-0.04em", lineHeight: 1, marginTop: 8 }}>
+                {prog.complete ? "Go get it." : `Week ${prog.week}`}
+                {!prog.complete && <span style={{ fontSize: 16, color: C.dim, fontWeight: 500, marginLeft: 6 }}>of {PROGRAM_WEEKS}</span>}
+              </div>
+              <p className="h-serif" style={{ fontSize: 15, color: C.cream, margin: "8px 0 0", lineHeight: 1.4 }}>{phase.focus}</p>
+            </div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div className="num-tab h-display" style={{ fontSize: 40, fontWeight: 800, color: phase.color, letterSpacing: "-0.05em", lineHeight: 0.9 }}>
+                {prog.complete ? 0 : prog.daysToDunk}
+              </div>
+              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4, letterSpacing: "0.08em" }}>DAYS TO DUNK</div>
+              <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginTop: 2 }}>
+                {prog.dunkDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              </div>
+            </div>
+          </div>
+
+          {/* 16-week progress bar with phase markers */}
+          <div style={{ marginTop: 18 }}>
+            <div style={{ position: "relative", background: C.raised, borderRadius: 999, height: 10, overflow: "hidden", border: `1px solid ${C.line}` }}>
+              <div style={{
+                width: prog.pct + "%", height: "100%",
+                background: `linear-gradient(90deg, ${C.rust}, ${C.amber} 40%, ${C.moss} 70%, ${C.plum})`,
+                borderRadius: 999, transition: `width 0.8s ${SPRING}`,
+              }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 9, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>
+              <span>WK 1</span>
+              <span style={{ color: phase.color }}>DAY {Math.min(prog.dayNum, PROGRAM_DAYS)} / {PROGRAM_DAYS}</span>
+              <span>🏀 WK 16</span>
+            </div>
+          </div>
+
+          {/* Weight arc target for this phase + adjustable start date */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
+            <div>
+              <Eyebrow>Phase target</Eyebrow>
+              <div className="num-tab h-display" style={{ fontSize: 18, fontWeight: 700, color: C.bone, letterSpacing: "-0.02em", marginTop: 4 }}>
+                {phase.weight} <span style={{ fontSize: 11, color: C.dim, fontWeight: 500 }}>lbs</span>
+              </div>
+            </div>
+            {!editStart && (
+              <button onClick={() => { setTmpStart(dateKey(programStart)); setEditStart(true); }} className="btn" style={{
+                background: "transparent", border: `1px solid ${C.line}`, color: C.dim,
+                fontSize: 10, fontFamily: FONT_MONO, letterSpacing: "0.05em", padding: "6px 10px",
+                borderRadius: 8, cursor: "pointer",
+              }}>
+                ◔ START {programStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              </button>
+            )}
+          </div>
+          {editStart && (
+            <div className="ease-up" style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
+              <Eyebrow>Set your Day 1</Eyebrow>
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <input type="date" value={tmpStart} onChange={e => setTmpStart(e.target.value)} style={{
+                  flex: 1, background: C.raised, border: `1px solid ${C.line}`, borderRadius: 10,
+                  color: C.bone, padding: "9px 12px", fontSize: 14, outline: "none", fontFamily: FONT_MONO,
+                }} />
+                <Btn ghost color={C.dim} size="sm" onClick={() => setEditStart(false)}>Cancel</Btn>
+                <Btn color={phase.color} size="sm" onClick={saveStart}>Save</Btn>
+              </div>
+            </div>
+          )}
+        </Surface>
+      </div>
+
+      {/* ── DAILY RINGS — close them every day ── */}
+      <div className="ease-up-2">
         <Surface>
           <Eyebrow>Today · Close the rings</Eyebrow>
           <div style={{ display: "flex", justifyContent: "space-around", marginTop: 16 }}>
@@ -2762,6 +2950,60 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
               );
             })}
           </div>
+        </Surface>
+      </div>
+
+      {/* ── MOMENTUM — 14-day activity + a nudge back in ── */}
+      <div className="ease-up-3">
+        <Surface accent={momentumColor}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <Eyebrow color={momentumColor}>Momentum · last 14 days</Eyebrow>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 8 }}>
+                {streak > 0 && <span style={{ fontSize: 22 }}>🔥</span>}
+                <span className="num-tab h-display" style={{ fontSize: 32, fontWeight: 800, color: streak > 0 ? momentumColor : C.dim, letterSpacing: "-0.04em", lineHeight: 1 }}>{streak}</span>
+                <span style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>day streak</span>
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 700, color: C.bone, letterSpacing: "-0.03em", lineHeight: 1 }}>{last7}<span style={{ fontSize: 12, color: C.dim, fontWeight: 500 }}>/7</span></div>
+              <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, marginTop: 3, letterSpacing: "0.06em" }}>THIS WEEK · {last14} IN 14D</div>
+            </div>
+          </div>
+
+          {/* Activity strip */}
+          <div style={{ display: "flex", gap: 4, marginTop: 16 }}>
+            {strip.map((d, i) => (
+              <div key={i} title={d.key} style={{
+                flex: 1, height: 26, borderRadius: 5,
+                background: d.active ? momentumColor : C.raised,
+                border: `1px solid ${d.active ? momentumColor : C.line}`,
+                outline: d.isToday ? `1.5px solid ${C.bone}` : "none", outlineOffset: 1,
+                transition: "background 0.3s",
+              }} />
+            ))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 9, color: C.mute, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>
+            <span>14 DAYS AGO</span><span>TODAY</span>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
+            <p className="h-serif" style={{ fontSize: 15, color: C.cream, margin: 0, lineHeight: 1.4, flex: 1 }}>{momentumVerdict}</p>
+            {!trainedToday && (
+              <Btn color={momentumColor} size="sm" onClick={() => onGoTab("workout")} style={{ flexShrink: 0 }}>Train →</Btn>
+            )}
+          </div>
+        </Surface>
+      </div>
+
+      {/* ── DAILY HYPE ── */}
+      <div className="ease-up-4">
+        <Surface accent={C.rust} padding={22}>
+          <Eyebrow color={C.rust}>Today's word</Eyebrow>
+          <p className="h-serif" style={{ fontSize: 22, color: C.bone, margin: "12px 0 0", lineHeight: 1.3, letterSpacing: "-0.01em" }}>
+            "{quoteText}"
+          </p>
+          <div className="mono" style={{ fontSize: 10, letterSpacing: "0.15em", marginTop: 12, color: C.mute }}>— {quoteAuthor}</div>
         </Surface>
       </div>
     </>
