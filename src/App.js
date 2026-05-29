@@ -252,6 +252,249 @@ const SESSIONS = [
 // Classic 4-minute tabata: 8 rounds of 20s all-out / 10s rest.
 const TABATA_CONFIG = { rounds: 8, sprintSec: 20, restSec: 10 };
 
+/* ════════════════════════════════════════════════════════════
+   RECOVERY ENGINE — single source of tunable values
+   ────────────────────────────────────────────────────────────
+   Every recovery rule the scheduler uses lives here so the numbers
+   (recovery spacing, RPE defaults, layoff thresholds, weekly targets)
+   are easy to tune later without touching the logic below.
+   Colors are stored as palette KEYS (resolved against the live `C`
+   palette at render time) so they track dark/light theme correctly.
+   ════════════════════════════════════════════════════════════ */
+const RECOVERY = {
+  // The three activities the engine reasons about.
+  TYPES: {
+    tabata: {
+      key: "tabata", label: "Tabata", short: "Tabata", emoji: "🔥", colorKey: "moss",
+      defaultDurationMin: 4, defaultRPE: 8,
+      hard: true,        // counts toward intensity / overtraining load
+      scheduled: true,   // the engine can recommend this
+      weeklyTarget: 2,   // rolling 7-day goal
+      blurb: "4-min all-out intervals",
+    },
+    long_interval: {
+      key: "long_interval", label: "Long Interval", short: "Long Int", emoji: "⚡", colorKey: "electric",
+      defaultDurationMin: 20, defaultRPE: 9,
+      hard: true, scheduled: true, weeklyTarget: 1,
+      blurb: "~20-min hard intervals",
+    },
+    game: {
+      key: "game", label: "Basketball Game", short: "Game", emoji: "🏀", colorKey: "rust",
+      defaultDurationMin: 44, defaultRPE: 8, // two 22-min halves
+      hard: true,
+      scheduled: false,  // logged as an activity, never recommended
+      weeklyTarget: 0,
+      blurb: "Two 22-min halves",
+    },
+  },
+  // Lowest-priority first. Used when deciding what to drop when the week is
+  // short on spacing, and which weekly slot a game should consume first.
+  DROP_ORDER: ["tabata", "long_interval"],
+  // Days since the last session → ramp band. 0–2 normal, 3–6 ease back in,
+  // 7+ treat as a restart.
+  LAYOFF: { normalMax: 2, easeMax: 6 },
+  // Above this many missed days, the comeback session is forced to a Tabata
+  // (a moderate re-entry) even inside the "ease" band.
+  reentryTabataAfterDays: 5,
+  // Minimum easier/rest days required after a hard session before the next
+  // hard one (1 = no back-to-back hard days; next hard allowed two days later).
+  minEasyDaysAfterHard: 1,
+  // A basketball game depletes more — delay the next hard session this many
+  // extra days beyond the normal gap.
+  gameExtraRecoveryDays: 1,
+  // A brutal session (RPE ≥ this) adds one more recovery day.
+  brutalRPE: 9,
+  // 4+ hard sessions in the trailing 7 days → force a rest day.
+  overtrainingHardCount: 4,
+  // How many days the tentative plan looks ahead (including today).
+  planDays: 3,
+};
+
+/* ── Recovery engine — pure functions over a normalized session list ──
+   A "session" is { id, type, date(Date), rpe, duration, planned? }.
+   `recommend()` returns { action:'rest'|'train', type, reason, band, flags[] }. */
+
+function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+function addDays(d, n) { const x = startOfDay(d); x.setDate(x.getDate() + n); return x; }
+// Whole calendar days from b to a (a - b). Positive when a is later.
+function dayGap(a, b) { return Math.round((startOfDay(a) - startOfDay(b)) / 86400000); }
+function isHardType(type) { return !!(RECOVERY.TYPES[type] && RECOVERY.TYPES[type].hard); }
+function agoWord(days) { return days === 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`; }
+
+// Map raw cardio_sessions rows → normalized engine sessions.
+function normalizeSessions(rows) {
+  return (rows || [])
+    .filter(r => r && RECOVERY.TYPES[r.workout_type])
+    .map(r => {
+      const def = RECOVERY.TYPES[r.workout_type];
+      return {
+        id: r.id,
+        type: r.workout_type,
+        date: new Date(r.completed_at),
+        rpe: r.rpe != null ? Number(r.rpe) : def.defaultRPE,
+        duration: r.duration_min != null ? Number(r.duration_min) : def.defaultDurationMin,
+      };
+    });
+}
+
+// Sessions falling within the trailing `windowDays` ending on refDate (inclusive).
+function sessionsInTrailing(sessions, refDate, windowDays) {
+  return sessions.filter(s => { const g = dayGap(refDate, s.date); return g >= 0 && g <= windowDays - 1; });
+}
+
+// Required gap (in days) before the next HARD session is allowed after `s`.
+function requiredGapAfter(s) {
+  let gap = RECOVERY.minEasyDaysAfterHard + 1;          // normal hard → train 2 days later
+  if (s.type === "game") gap += RECOVERY.gameExtraRecoveryDays;
+  if (s.rpe >= RECOVERY.brutalRPE) gap += 1;            // a brutal session needs one more
+  return gap;
+}
+
+// The core recommendation for a single day.
+function recommend(allSessions, refDate) {
+  const ref = startOfDay(refDate);
+  const T = RECOVERY.TYPES;
+  const flags = [];
+
+  const todays = allSessions.filter(s => dayGap(ref, s.date) === 0);
+  const todaysHard = todays.filter(s => isHardType(s.type));
+  const before = allSessions.filter(s => dayGap(ref, s.date) >= 1);
+  const beforeHard = before.filter(s => isHardType(s.type));
+  const lastBefore = before.slice().sort((a, b) => b.date - a.date)[0] || null;
+  const lastHard = beforeHard.slice().sort((a, b) => b.date - a.date)[0] || null;
+  const daysSinceLast = lastBefore ? dayGap(ref, lastBefore.date) : null;
+  const daysSinceHard = lastHard ? dayGap(ref, lastHard.date) : null;
+
+  const trailing7 = sessionsInTrailing(allSessions, ref, 7);
+  const hard7 = trailing7.filter(s => isHardType(s.type));
+
+  // Layoff band (used for messaging + ramp).
+  let band;
+  if (daysSinceLast === null) band = "fresh";
+  else if (daysSinceLast <= RECOVERY.LAYOFF.normalMax) band = "normal";
+  else if (daysSinceLast <= RECOVERY.LAYOFF.easeMax) band = "ease";
+  else band = "restart";
+
+  const rest = (reason) => ({ action: "rest", type: null, reason, band, flags, daysSinceLast, daysSinceHard });
+  const train = (type, reason) => ({ action: "train", type, reason, band, flags, daysSinceLast, daysSinceHard });
+
+  // 1) Already trained hard today — don't stack.
+  if (todaysHard.length) {
+    if (daysSinceHard === 1) flags.push("Two hard days in a row — keep tomorrow easy.");
+    const t = T[todaysHard[0].type];
+    return rest(`${t.label} already done today — let it absorb and recover.`);
+  }
+
+  // 2) Overtraining guard — overrides weekly targets.
+  if (hard7.length >= RECOVERY.overtrainingHardCount) {
+    return rest(`${hard7.length} hard sessions in 7 days — your body needs a rest day, targets can wait.`);
+  }
+
+  // 3) Spacing — no back-to-back hard days; games/brutal sessions need longer.
+  if (lastHard && daysSinceHard < requiredGapAfter(lastHard)) {
+    const t = T[lastHard.type];
+    const why = lastHard.type === "game"
+      ? `Hard game ${agoWord(daysSinceHard)} still counts as load — take an easy/rest day first.`
+      : `Hard ${t.short} ${agoWord(daysSinceHard)} — recover today so hard days don't stack.`;
+    return rest(why);
+  }
+
+  // ── Cleared to train. Work out what's owed this rolling week. ──
+  const done = {
+    tabata: trailing7.filter(s => s.type === "tabata").length,
+    long_interval: trailing7.filter(s => s.type === "long_interval").length,
+  };
+  const games7 = trailing7.filter(s => s.type === "game").length;
+
+  // Games consume weekly hard slots, lowest priority first.
+  let targetTab = T.tabata.weeklyTarget;
+  let targetLI = T.long_interval.weeklyTarget;
+  let offset = games7;
+  const cutTab = Math.min(targetTab, offset); targetTab -= cutTab; offset -= cutTab;
+  const cutLI = Math.min(targetLI, offset); targetLI -= cutLI; offset -= cutLI;
+
+  const owedLI = Math.max(0, targetLI - done.long_interval);
+  const owedTab = Math.max(0, targetTab - done.tabata);
+
+  // Highest priority owed first (Long Interval is the marquee weekly session).
+  let pick = owedLI > 0 ? "long_interval" : owedTab > 0 ? "tabata" : null;
+  let rampReason = "";
+
+  // Layoff ramp — never throw the hardest session at a returning athlete.
+  if (band === "restart" || band === "fresh") {
+    pick = "tabata";
+    rampReason = band === "fresh"
+      ? "First session in — start with a Tabata to set a baseline."
+      : `It's been ${daysSinceLast} days off — restart with a single Tabata. Expect a session or two to feel normal again.`;
+  } else if (band === "ease" && pick === "long_interval" && daysSinceLast >= RECOVERY.reentryTabataAfterDays) {
+    pick = "tabata";
+    rampReason = `${daysSinceLast} days since your last session — ease back with a Tabata before the Long Interval.`;
+  }
+
+  if (!pick) {
+    if (games7 > 0) return rest("Your game this week already covers the hard load — rest or keep it light.");
+    return rest(`Weekly targets met (${T.tabata.weeklyTarget} Tabata + ${T.long_interval.weeklyTarget} Long Interval) — take a well-earned rest day.`);
+  }
+
+  let reason;
+  if (rampReason) reason = rampReason;
+  else if (pick === "long_interval") reason = `Long Interval owed this week (${done.long_interval}/${T.long_interval.weeklyTarget}) and you're recovered — go get it.`;
+  else {
+    const gameNote = games7 > 0 ? ` (a game already covered some load)` : "";
+    reason = `Tabata owed this week (${done.tabata}/${T.tabata.weeklyTarget})${gameNote} and you're recovered — quick and hard.`;
+  }
+  return train(pick, reason);
+}
+
+// Forward-simulated tentative plan. Each recommended session is added to the
+// working set so spacing and weekly targets carry into the following days —
+// which naturally drops a lower-priority session when there's no room to space.
+function buildPlan(allSessions, fromDate, nDays) {
+  const work = allSessions.slice();
+  const out = [];
+  for (let i = 0; i < nDays; i++) {
+    const day = addDays(fromDate, i);
+    const r = recommend(work, day);
+    out.push({ date: day, ...r });
+    if (r.action === "train" && r.type) {
+      const def = RECOVERY.TYPES[r.type];
+      work.push({ type: r.type, date: day, rpe: def.defaultRPE, duration: def.defaultDurationMin, planned: true });
+    }
+  }
+  return out;
+}
+
+// Trailing-window summary for the dashboard.
+function trailingSummary(allSessions, refDate, windowDays) {
+  const t = sessionsInTrailing(allSessions, refDate, windowDays);
+  return {
+    count: t.length,
+    hard: t.filter(s => isHardType(s.type)).length,
+    byType: {
+      tabata: t.filter(s => s.type === "tabata").length,
+      long_interval: t.filter(s => s.type === "long_interval").length,
+      game: t.filter(s => s.type === "game").length,
+    },
+  };
+}
+
+// Current consecutive-day streak + days since last session, for display.
+function streakInfo(allSessions, refDate) {
+  const days = new Set(allSessions.map(s => startOfDay(s.date).getTime()));
+  let streak = 0;
+  for (let i = 0; ; i++) {
+    const key = addDays(refDate, -i).getTime();
+    if (days.has(key)) streak++;
+    else if (i === 0) continue; // today not logged yet still keeps the streak live
+    else break;
+  }
+  let layoff = null;
+  for (let i = 0; i < 120; i++) {
+    if (days.has(addDays(refDate, -i).getTime())) { layoff = i; break; }
+  }
+  return { streak, layoff };
+}
+
 const PHASES = [
   { weeks: "01—04", color: C.rust,     weight: "225 → 218", focus: "Build the habit. Nail form. Ease in.",         goals: ["2× gym/week", "1× cardio/week", "Sleep 7+ hrs", "Cut late-night eating"] },
   { weeks: "05—08", color: C.amber,    weight: "218 → 212", focus: "Add intensity. Move more.",                    goals: ["Progress the weights", "Add interval cardio", "Drop processed meals", "Hit protein daily"] },
@@ -1879,7 +2122,10 @@ function StatCard({ kicker, value, unit, color, big, sub }) {
 function StatsTab({ history, weightLog, cardioSessions }) {
   const gymSessions = history.filter(h => h.session_name?.startsWith("DAY") || h.session_name?.startsWith("A:") || h.session_name?.startsWith("B:") || h.session_name?.startsWith("C:") || /^[ABC] /.test(h.session_name||""));
   const treadmillSessions = history.filter(h => h.session_name === "Treadmill Walk");
-  const tabataSessions = history.filter(h => h.session_name === "Daily Tabata Sprints");
+  // Conditioning now lives in cardio_sessions (engine-managed).
+  const tabataSessions = cardioSessions.filter(s => s.workout_type === "tabata");
+  const longIntervalSessions = cardioSessions.filter(s => s.workout_type === "long_interval");
+  const gameSessions = cardioSessions.filter(s => s.workout_type === "game");
 
   const totalVolume = gymSessions.reduce((a, h) => a + (h.total_volume || 0), 0);
   const thisWeekVol = gymSessions.filter(h => (Date.now() - new Date(h.logged_at)) < 7*86400000).reduce((a,h) => a+(h.total_volume||0),0);
@@ -1915,10 +2161,13 @@ function StatsTab({ history, weightLog, cardioSessions }) {
         </Surface>
       )}
 
+      <div className="ease-up-1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+        <StatCard kicker="TABATA" value={tabataSessions.length} color={C.moss} sub="sessions" />
+        <StatCard kicker="LONG INT" value={longIntervalSessions.length} color={C.electric} sub="sessions" />
+        <StatCard kicker="GAMES" value={gameSessions.length} color={C.rust} sub="played" />
+      </div>
       <div className="ease-up-1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-        <StatCard kicker="GYM" value={gymSessions.length} color={C.rust} sub="sessions" />
-        <StatCard kicker="HIIT" value={cardioSessions.length} color={C.electric} sub="sessions" />
-        <StatCard kicker="TABATAS" value={tabataSessions.length} color={C.moss} sub="sprints done" />
+        <StatCard kicker="GYM" value={gymSessions.length} color={C.amber} sub="lift sessions" />
         <StatCard kicker="WALKS" value={treadmillSessions.length} color={C.plum} sub="treadmill" />
       </div>
 
@@ -2704,10 +2953,224 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange, ca
   );
 }
 
+/* ── datetime-local <input> helper (local time, not UTC) ── */
+function toLocalInput(d) {
+  const x = new Date(d); const p = n => String(n).padStart(2, "0");
+  return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}T${p(x.getHours())}:${p(x.getMinutes())}`;
+}
+
+/* ════════════════════════════════════════════════════════════
+   TODAY CARD — the recovery engine's recommendation, front & center
+   ════════════════════════════════════════════════════════════ */
+function TodayCard({ sessions, onOpenLogger }) {
+  const [showOverride, setShowOverride] = useState(false);
+  const engine = normalizeSessions(sessions);
+  const today = startOfDay(new Date());
+  const plan = buildPlan(engine, today, RECOVERY.planDays);
+  const rec = plan[0];
+  const s7 = trailingSummary(engine, today, 7);
+  const s30 = trailingSummary(engine, today, 30);
+  const { streak, layoff } = streakInfo(engine, today);
+
+  const trained = rec.action === "train";
+  const recDef = trained ? RECOVERY.TYPES[rec.type] : null;
+  const recColor = trained ? C[recDef.colorKey] : C.dim;
+  const headline = trained ? recDef.label : "Rest";
+  const headEmoji = trained ? recDef.emoji : "🛌";
+
+  const bandNote = {
+    restart: layoff != null ? `Restart · ${layoff}d layoff` : "Restart",
+    ease: layoff != null ? `Ease back · ${layoff}d off` : "Ease back",
+    fresh: "Day one",
+    normal: null,
+  }[rec.band];
+
+  return (
+    <Surface accent={recColor} padding={22}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <Eyebrow color={recColor}>Today · {new Date().toLocaleDateString("en-US", { weekday: "long" })}</Eyebrow>
+        {bandNote && <span style={{ fontSize: 10, color: C.amber, fontFamily: FONT_MONO, letterSpacing: "0.06em" }}>{bandNote}</span>}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
+        <span style={{ fontSize: 34, lineHeight: 1 }}>{headEmoji}</span>
+        <h2 className="h-display" style={{ fontSize: 34, margin: 0, color: recColor, letterSpacing: "-0.04em", lineHeight: 1 }}>{headline}</h2>
+      </div>
+      <p className="h-serif" style={{ fontSize: 17, color: C.cream, margin: "10px 0 0", lineHeight: 1.45 }}>{rec.reason}</p>
+
+      {(rec.flags || []).map((f, i) => (
+        <div key={i} style={{ marginTop: 10, fontSize: 12, color: C.red, fontFamily: FONT_MONO, display: "flex", gap: 6, alignItems: "center" }}>⚠ {f}</div>
+      ))}
+
+      {/* Primary action */}
+      {trained ? (
+        <Btn color={recColor} full size="lg" style={{ marginTop: 16 }} onClick={() => onOpenLogger({ prefillType: rec.type })}>
+          Log {recDef.label}
+        </Btn>
+      ) : (
+        <>
+          <Btn color={C.dim} ghost full style={{ marginTop: 16 }} onClick={() => setShowOverride(v => !v)}>
+            {showOverride ? "Never mind" : "Train anyway →"}
+          </Btn>
+          {showOverride && (
+            <div className="ease-up" style={{ marginTop: 12, padding: 14, borderRadius: 12, background: `${C.amber}12`, border: `1px solid ${C.amber}40` }}>
+              <div style={{ fontSize: 12, color: C.amber, fontFamily: FONT_MONO, marginBottom: 10, lineHeight: 1.5 }}>⚠ Today's a recovery day. Pushing through cuts into recovery — go lighter than usual.</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {["tabata", "long_interval"].map(tk => {
+                  const d = RECOVERY.TYPES[tk];
+                  return <Btn key={tk} color={C[d.colorKey]} style={{ flex: 1 }} onClick={() => onOpenLogger({ prefillType: tk, warn: "Recovery day — logging this as an override." })}>{d.emoji} {d.short}</Btn>;
+                })}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Tentative next-days plan */}
+      <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.line}` }}>
+        <Eyebrow>Coming up</Eyebrow>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          {plan.slice(1).map((p, i) => {
+            const def = p.action === "train" ? RECOVERY.TYPES[p.type] : null;
+            const col = def ? C[def.colorKey] : C.dim;
+            return (
+              <div key={i} style={{ flex: 1, padding: "10px 8px", borderRadius: 12, background: C.raised, border: `1px solid ${C.line}`, textAlign: "center" }}>
+                <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.06em" }}>{p.date.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()}</div>
+                <div style={{ fontSize: 18, marginTop: 6 }}>{def ? def.emoji : "🛌"}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: col, marginTop: 4 }}>{def ? def.short : "Rest"}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginTop: 8 }}>Tentative — updates every time you log.</div>
+      </div>
+
+      {/* Trailing summaries */}
+      <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.line}`, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        {[["7-DAY", s7], ["30-DAY", s30]].map(([lbl, s]) => (
+          <div key={lbl} style={{ background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, padding: "12px 14px" }}>
+            <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em" }}>{lbl}</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 6 }}>
+              <span className="num-tab h-display" style={{ fontSize: 24, fontWeight: 700, color: C.bone, letterSpacing: "-0.03em" }}>{s.count}</span>
+              <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO }}>· {s.hard} hard</span>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 8, fontSize: 11, fontFamily: FONT_MONO, color: C.dim }}>
+              <span title="Tabata">{RECOVERY.TYPES.tabata.emoji} {s.byType.tabata}</span>
+              <span title="Long Interval">{RECOVERY.TYPES.long_interval.emoji} {s.byType.long_interval}</span>
+              <span title="Game">{RECOVERY.TYPES.game.emoji} {s.byType.game}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: C.dim, fontFamily: FONT_MONO }}>
+        <span>{streak > 0 ? `🔥 ${streak}-day streak` : (layoff != null ? `${layoff}d since last session` : "No sessions yet")}</span>
+        <button onClick={() => onOpenLogger({})} className="btn" style={{ background: "transparent", border: "none", color: C.electric, fontFamily: FONT_MONO, fontSize: 11, cursor: "pointer", padding: 0, fontWeight: 700 }}>+ Log a session</button>
+      </div>
+    </Surface>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   CONDITIONING LOGGER — log / edit Tabata · Long Interval · Game
+   Supports retroactive date+time, optional RPE, duration, notes.
+   ════════════════════════════════════════════════════════════ */
+function ConditioningLogger({ state, onClose, onSave, onDelete }) {
+  const editing = state.editing || null;
+  const initType = state.prefillType || (editing && editing.workout_type) || "tabata";
+  const [type, setType] = useState(initType);
+  const [touchedRpe, setTouchedRpe] = useState(editing ? editing.rpe != null : false);
+  const [when, setWhen] = useState(editing ? toLocalInput(editing.completed_at) : toLocalInput(new Date()));
+  const [duration, setDuration] = useState(editing && editing.duration_min != null ? String(editing.duration_min) : "");
+  const [rpe, setRpe] = useState(editing && editing.rpe != null ? Number(editing.rpe) : RECOVERY.TYPES[initType].defaultRPE);
+  const [notes, setNotes] = useState(editing ? (editing.notes || "") : "");
+
+  const def = RECOVERY.TYPES[type];
+  const chooseType = (tk) => { setType(tk); if (!touchedRpe) setRpe(RECOVERY.TYPES[tk].defaultRPE); };
+
+  const save = () => {
+    onSave({
+      id: editing ? editing.id : undefined,
+      type,
+      completed_at: new Date(when).toISOString(),
+      duration_min: duration !== "" ? Number(duration) : def.defaultDurationMin,
+      rpe,
+      notes: notes.trim() || null,
+    });
+  };
+
+  return (
+    <div className="backdrop" style={{ alignItems: "flex-end", padding: 0 }} onClick={onClose}>
+      <div className="slide-up" onClick={e => e.stopPropagation()} style={{
+        width: "100%", maxWidth: 480, margin: "0 auto",
+        background: C.panel, borderRadius: "22px 22px 0 0",
+        borderTop: `1px solid ${C.line}`, padding: "10px 18px calc(24px + env(safe-area-inset-bottom))",
+        maxHeight: "90vh", overflowY: "auto",
+      }}>
+        <div style={{ width: 38, height: 4, borderRadius: 999, background: C.faint, margin: "0 auto 16px" }} />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
+          <h2 className="h-display" style={{ fontSize: 22, fontWeight: 700, color: C.bone, margin: 0, letterSpacing: "-0.03em" }}>{editing ? "Edit session" : "Log a session"}</h2>
+          <button onClick={onClose} className="btn" style={{ border: "none", background: "transparent", color: C.dim, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+        </div>
+
+        {state.warn && (
+          <div style={{ marginBottom: 14, padding: "10px 12px", borderRadius: 10, background: `${C.amber}12`, border: `1px solid ${C.amber}40`, color: C.amber, fontSize: 12, fontFamily: FONT_MONO, lineHeight: 1.4 }}>⚠ {state.warn}</div>
+        )}
+
+        {/* Type */}
+        <Eyebrow>Type</Eyebrow>
+        <div style={{ display: "flex", gap: 8, margin: "8px 0 18px" }}>
+          {Object.values(RECOVERY.TYPES).map(t => {
+            const on = type === t.key; const col = C[t.colorKey];
+            return (
+              <button key={t.key} className="btn" onClick={() => chooseType(t.key)} style={{
+                flex: 1, padding: "12px 6px", borderRadius: 12, cursor: "pointer",
+                border: `1px solid ${on ? col : C.line}`, background: on ? `${col}18` : C.raised,
+                color: on ? col : C.cream, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 13,
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+              }}>
+                <span style={{ fontSize: 20 }}>{t.emoji}</span>{t.short}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* When */}
+        <Eyebrow>When</Eyebrow>
+        <input type="datetime-local" value={when} max={toLocalInput(new Date())} onChange={e => setWhen(e.target.value)}
+          style={{ width: "100%", margin: "8px 0 18px", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 15, outline: "none", fontFamily: FONT_DISPLAY }} />
+
+        {/* Duration */}
+        <Eyebrow>Duration (min)</Eyebrow>
+        <input type="number" inputMode="numeric" min="1" placeholder={String(def.defaultDurationMin)} value={duration} onChange={e => setDuration(e.target.value)}
+          style={{ width: "100%", margin: "8px 0 18px", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 15, outline: "none", fontFamily: FONT_MONO }} />
+
+        {/* RPE */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <Eyebrow>Perceived intensity (RPE)</Eyebrow>
+          <span className="num-tab h-display" style={{ fontSize: 20, fontWeight: 700, color: C[def.colorKey] }}>{rpe}<span style={{ fontSize: 11, color: C.dim, fontWeight: 500 }}>/10</span></span>
+        </div>
+        <input type="range" min="1" max="10" step="1" value={rpe} onChange={e => { setRpe(Number(e.target.value)); setTouchedRpe(true); }}
+          style={{ width: "100%", margin: "10px 0 4px", accentColor: C[def.colorKey] }} />
+        <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginBottom: 18 }}>Default for {def.label}: {def.defaultRPE}. Adjust if it felt easier or harder.</div>
+
+        {/* Notes */}
+        <Eyebrow>Notes (optional)</Eyebrow>
+        <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. felt strong, legs heavy…"
+          style={{ width: "100%", margin: "8px 0 18px", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 14, outline: "none" }} />
+
+        <Btn color={C[def.colorKey]} full size="lg" onClick={save}>{editing ? "Save changes" : `Log ${def.label}`}</Btn>
+        {editing && (
+          <button onClick={() => onDelete(editing.id)} className="btn" style={{ width: "100%", marginTop: 10, padding: "12px", borderRadius: 12, border: `1px solid ${C.red}40`, background: "transparent", color: C.red, fontFamily: FONT_MONO, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Delete session</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ════════════════════════════════════════════════════════════
    HOME — consistency-first home screen
    ════════════════════════════════════════════════════════════ */
-function HomeTab({ bodyStats, history, cardioSessions, proteinLog, vitaminD3Log, creatineLog, onGoTab, theme, onToggleTheme }) {
+function HomeTab({ bodyStats, history, cardioSessions, proteinLog, vitaminD3Log, creatineLog, onGoTab, onOpenLogger, theme, onToggleTheme }) {
   const today = todayKey();
   const dateStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
@@ -2790,6 +3253,11 @@ function HomeTab({ bodyStats, history, cardioSessions, proteinLog, vitaminD3Log,
         <p className="h-serif" style={{ fontSize: 16, color: C.dim, margin: "6px 0 0", lineHeight: 1.4 }}>
           Small reps, stacked daily. That's the whole game.
         </p>
+      </div>
+
+      {/* ── TODAY — recovery engine recommendation, front & center ── */}
+      <div className="ease-up-1" style={{ marginBottom: 18 }}>
+        <TodayCard sessions={cardioSessions} onOpenLogger={onOpenLogger} />
       </div>
 
       {/* ── DAILY RINGS — close them every day ── */}
@@ -2912,6 +3380,8 @@ export default function App() {
   const [saveMsg, setSaveMsg] = useState("");
   const [cardioSessions, setCardioSessions] = useState([]);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  // Conditioning logger sheet: { open, prefillType?, warn?, editing? }
+  const [loggerState, setLoggerState] = useState({ open: false });
   const [restTimer, setRestTimer] = useState(null); // null or { seconds }
   const [confetti, setConfetti] = useState(false);
   const [restEnabled, setRestEnabled] = useState(true);
@@ -3120,9 +3590,36 @@ export default function App() {
     } else showSave(false);
   };
 
+  // Tabata completions feed the recovery engine — write to cardio_sessions.
+  const sortCardio = (rows) => [...rows].sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at));
   const logTabata = async () => {
-    const { data, error } = await supabase.from("workouts").insert([{ session_name: "Daily Tabata Sprints", color: C.moss, total_volume: 0, exercises: [{ name: "4-min Tabata · 8 rounds (20s on / 10s off)", sets: 8, reps: "20s on/10s off", weight: 0, volume: 0 }] }]).select();
-    if (!error && data) { setHistory(p => [data[0],...p]); showSave(true); } else showSave(false);
+    const def = RECOVERY.TYPES.tabata;
+    const { data, error } = await supabase.from("cardio_sessions").insert([{ workout_type: "tabata", completed_at: new Date().toISOString(), duration_min: def.defaultDurationMin, rpe: def.defaultRPE }]).select();
+    if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); showSave(true); } else showSave(false);
+  };
+
+  // Create or update a conditioning session (Tabata / Long Interval / Game).
+  const saveCardio = async ({ id, type, completed_at, duration_min, rpe, notes }) => {
+    const row = { workout_type: type, completed_at, duration_min, rpe, notes };
+    if (id != null) {
+      const { data, error } = await supabase.from("cardio_sessions").update(row).eq("id", id).select();
+      if (!error && data) { setCardioSessions(p => sortCardio(p.map(r => r.id === id ? data[0] : r))); showSave(true); } else showSave(false);
+    } else {
+      const { data, error } = await supabase.from("cardio_sessions").insert([row]).select();
+      if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); setConfetti(true); showSave(true); } else showSave(false);
+    }
+    setLoggerState({ open: false });
+  };
+
+  const deleteCardio = async (id) => {
+    const row = cardioSessions.find(r => r.id === id);
+    setCardioSessions(p => p.filter(r => r.id !== id));
+    setLoggerState({ open: false });
+    await supabase.from("cardio_sessions").delete().eq("id", id);
+    if (row) toast("Session deleted", { actionLabel: "UNDO", onAction: async () => {
+      const { data } = await supabase.from("cardio_sessions").insert([row]).select();
+      if (data) setCardioSessions(p => sortCardio([...p, data[0]]));
+    }});
   };
 
   const logTreadmill = async ({ duration, speed, incline, miles, notes }) => {
@@ -3180,7 +3677,7 @@ export default function App() {
   const restDay = lastGym && Math.floor((Date.now()-new Date(lastGym.logged_at))/86400000) < 1;
 
   // Did today's 4-minute tabata get logged?
-  const tabataToday = history.some(h => h.session_name === "Daily Tabata Sprints" && new Date(h.logged_at).toDateString() === new Date().toDateString());
+  const tabataToday = cardioSessions.some(s => s.workout_type === "tabata" && new Date(s.completed_at).toDateString() === new Date().toDateString());
 
   // Primary navigation — three groups, each fronting a set of sub-tabs.
   const GROUPS = [
@@ -3274,6 +3771,7 @@ export default function App() {
             vitaminD3Log={vitaminD3Log}
             creatineLog={creatineLog}
             onGoTab={setTab}
+            onOpenLogger={(opts) => setLoggerState({ open: true, ...opts })}
             theme={theme}
             onToggleTheme={toggleTheme}
           />
@@ -3469,7 +3967,43 @@ export default function App() {
               <StatCard kicker="LBS" value={fmtNum(totalLbs)} color={C.moss} />
             </div>
 
-            {history.length === 0 && (
+            {/* ── Conditioning sessions — engine-managed, editable ── */}
+            <div className="ease-up-1" style={{ marginBottom: 16 }}>
+              <Surface>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <Eyebrow color={C.moss}>Conditioning · Tabata · Long Int · Games</Eyebrow>
+                  <button onClick={() => setLoggerState({ open: true })} className="btn" style={{ background: "transparent", border: "none", color: C.electric, fontFamily: FONT_MONO, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}>+ Log</button>
+                </div>
+                {cardioSessions.length === 0 ? (
+                  <div style={{ fontSize: 13, color: C.dim, marginTop: 10, fontFamily: FONT_MONO }}>No conditioning logged yet.</div>
+                ) : (
+                  <div style={{ marginTop: 8 }}>
+                    {cardioSessions.slice(0, 40).map((s, i) => {
+                      const def = RECOVERY.TYPES[s.workout_type] || {};
+                      const col = C[def.colorKey] || C.dim;
+                      return (
+                        <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: i < Math.min(cardioSessions.length, 40) - 1 ? `1px solid ${C.line}` : "none" }}>
+                          <span style={{ fontSize: 20 }}>{def.emoji || "•"}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: C.bone, letterSpacing: "-0.01em" }}>{def.label || s.workout_type}</div>
+                            <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>
+                              {new Date(s.completed_at).toLocaleDateString("en-CA", { month: "short", day: "numeric" })} · {daysAgo(s.completed_at)}
+                              {s.duration_min != null ? ` · ${s.duration_min}m` : ""}{s.rpe != null ? ` · RPE ${s.rpe}` : ""}
+                            </div>
+                            {s.notes && <div style={{ fontSize: 11, color: C.mute, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.notes}</div>}
+                          </div>
+                          <span style={{ width: 8, height: 8, borderRadius: 999, background: col, flexShrink: 0 }} />
+                          <button onClick={() => setLoggerState({ open: true, editing: s })} className="btn" style={{ background: "transparent", border: "none", color: C.dim, cursor: "pointer", fontSize: 13, padding: 6 }}>✎</button>
+                          <button onClick={() => deleteCardio(s.id)} className="btn" style={{ background: "transparent", border: "none", color: C.mute, cursor: "pointer", fontSize: 14, padding: 6 }}>✕</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </Surface>
+            </div>
+
+            {history.length === 0 && cardioSessions.length === 0 && (
               <Surface style={{ textAlign: "center", padding: 48 }}>
                 <div style={{ fontSize: 36, marginBottom: 12 }}>💪</div>
                 <p className="h-serif" style={{ fontSize: 18, color: C.cream, margin: 0 }}>The page is blank.</p>
@@ -3860,6 +4394,19 @@ export default function App() {
                 }}>Log</button>
               </div>
 
+              {/* Conditioning — log Tabata / Long Interval / Game */}
+              <Eyebrow>Log conditioning</Eyebrow>
+              <div style={{ display: "flex", gap: 8, margin: "8px 0 18px" }}>
+                {Object.values(RECOVERY.TYPES).map(t => (
+                  <button key={t.key} className="btn" onClick={() => { close(); setLoggerState({ open: true, prefillType: t.key }); }} style={{
+                    flex: 1, padding: "12px 6px", borderRadius: 12, cursor: "pointer",
+                    border: `1px solid ${C[t.colorKey]}40`, background: `${C[t.colorKey]}12`, color: C[t.colorKey],
+                    fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 12,
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                  }}><span style={{ fontSize: 18 }}>{t.emoji}</span>{t.short}</button>
+                ))}
+              </div>
+
               {/* Shortcuts */}
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn" onClick={() => { setTab("workout"); close(); window.scrollTo({ top: 0 }); }} style={{
@@ -3877,6 +4424,16 @@ export default function App() {
           </div>
         );
       })()}
+
+      {/* ── CONDITIONING LOGGER sheet ── */}
+      {loggerState.open && (
+        <ConditioningLogger
+          state={loggerState}
+          onClose={() => setLoggerState({ open: false })}
+          onSave={saveCardio}
+          onDelete={deleteCardio}
+        />
+      )}
 
       <ToastHost />
     </div>
