@@ -3356,6 +3356,64 @@ function HomeTab({ bodyStats, history, cardioSessions, proteinLog, vitaminD3Log,
    APP
    ════════════════════════════════════════════════════════════ */
 
+/* ── Sign-in gate — passwordless magic link. The app is private; nothing
+   loads until the owner clicks the link emailed to them. ── */
+function AuthGate() {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState("idle"); // idle | sending | sent | error
+  const [errMsg, setErrMsg] = useState("");
+
+  const send = async () => {
+    const addr = email.trim();
+    if (!addr || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) { setStatus("error"); setErrMsg("Enter a valid email."); return; }
+    setStatus("sending"); setErrMsg("");
+    const { error } = await supabase.auth.signInWithOtp({ email: addr, options: { emailRedirectTo: window.location.origin } });
+    if (error) { setStatus("error"); setErrMsg(error.message); }
+    else setStatus("sent");
+  };
+
+  return (
+    <div className="court-bg" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div className="ease-up" style={{ width: "100%", maxWidth: 380 }}>
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div style={{ width: 56, height: 56, borderRadius: 16, background: `linear-gradient(135deg, ${C.rust}, ${C.amber})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "0 auto 14px" }}>💪</div>
+          <h1 className="h-display" style={{ fontSize: 26, fontWeight: 700, color: C.bone, letterSpacing: "-0.03em", margin: 0 }}>The Work</h1>
+          <p className="h-serif" style={{ fontSize: 16, color: C.dim, margin: "8px 0 0" }}>Your private training log. Sign in to continue.</p>
+        </div>
+
+        <Surface padding={22}>
+          {status === "sent" ? (
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 36, marginBottom: 10 }}>📧</div>
+              <div className="h-display" style={{ fontSize: 18, fontWeight: 700, color: C.bone }}>Check your email</div>
+              <p className="h-serif" style={{ fontSize: 15, color: C.dim, margin: "8px 0 0", lineHeight: 1.5 }}>
+                We sent a sign-in link to <strong style={{ color: C.cream }}>{email.trim()}</strong>. Open it on this device to log in.
+              </p>
+              <button onClick={() => setStatus("idle")} className="btn" style={{ marginTop: 16, background: "transparent", border: "none", color: C.electric, fontFamily: FONT_MONO, fontSize: 12, cursor: "pointer" }}>← Use a different email</button>
+            </div>
+          ) : (
+            <>
+              <Eyebrow>Email</Eyebrow>
+              <input
+                type="email" inputMode="email" autoComplete="email" placeholder="you@example.com"
+                value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && send()}
+                style={{ width: "100%", margin: "8px 0 14px", background: C.raised, border: `1px solid ${status === "error" ? C.red : C.line}`, borderRadius: 12, color: C.bone, padding: "13px 14px", fontSize: 16, outline: "none", fontFamily: FONT_DISPLAY }}
+              />
+              {status === "error" && <div style={{ fontSize: 12, color: C.red, fontFamily: FONT_MONO, marginBottom: 12 }}>⚠ {errMsg}</div>}
+              <Btn color={C.rust} full size="lg" onClick={send} disabled={status === "sending"}>
+                {status === "sending" ? "Sending…" : "Email me a sign-in link"}
+              </Btn>
+              <p style={{ fontSize: 11, color: C.mute, fontFamily: FONT_MONO, margin: "14px 0 0", lineHeight: 1.5, textAlign: "center" }}>
+                No password needed. We email you a one-time link.
+              </p>
+            </>
+          )}
+        </Surface>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [theme, setTheme] = useState(loadThemePref);
   // Synchronous so this render's inline styles read the current palette.
@@ -3369,6 +3427,9 @@ export default function App() {
 
   const [tab, setTab] = useState("home");
   const [loading, setLoading] = useState(true);
+  // Auth — the app is private; data is only loaded for the signed-in owner.
+  const [authSession, setAuthSession] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
   const [activeSession, setActiveSession] = useState(0);
   const [activeSessionInit, setActiveSessionInit] = useState(false);
   const [checked, setChecked] = useState({});
@@ -3438,7 +3499,30 @@ export default function App() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  // Track the auth session. supabase-js auto-detects the magic-link token in
+  // the URL on load and persists the session, so this fires once signed in.
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setAuthSession(data.session || null);
+      setAuthReady(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setAuthSession(s || null));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  // Load data only when signed in; first claim any pre-auth rows for the owner.
+  useEffect(() => {
+    if (!authSession) { setLoading(false); return; }
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try { await supabase.rpc("claim_orphan_rows"); } catch (e) {}
+      if (!cancelled) await loadData();
+    })();
+    return () => { cancelled = true; };
+  }, [authSession, loadData]);
+
+  const signOut = async () => { await supabase.auth.signOut(); setHistory([]); setWeightLog([]); setCardioSessions([]); };
 
   // Smart day suggestion: rotate A→B→C based on last gym session
   useEffect(() => {
@@ -3695,6 +3779,18 @@ export default function App() {
     setTab(g.tabs[0]);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  // Wait for the auth check, then gate the whole app behind sign-in.
+  if (!authReady) return (
+    <div className="court-bg" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div className="ease-up" style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 44, marginBottom: 14 }}>💪</div>
+        <div className="h-display" style={{ color: C.rust, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>The Work</div>
+        <div style={{ color: C.dim, fontSize: 12, marginTop: 6, fontFamily: FONT_MONO, letterSpacing: "0.1em" }}>LOADING…</div>
+      </div>
+    </div>
+  );
+  if (!authSession) return <AuthGate />;
 
   if (loading) return (
     <div className="court-bg" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -4213,6 +4309,13 @@ export default function App() {
                       <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Auto-rotate A → B → C</div>
                     </div>
                     <span style={{ fontSize: 11, color: C.moss, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>● ON</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: `1px solid ${C.line}` }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>Account</div>
+                      <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{authSession?.user?.email || "Signed in"}</div>
+                    </div>
+                    <Btn color={C.red} ghost size="sm" onClick={signOut}>Sign out</Btn>
                   </div>
                 </div>
               </Surface>
