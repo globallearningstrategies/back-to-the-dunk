@@ -3535,13 +3535,12 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Load data only when signed in; first claim any pre-auth rows for the owner.
+  // Load data only when signed in.
   useEffect(() => {
     if (!authSession) { setLoading(false); return; }
     let cancelled = false;
     (async () => {
       setLoading(true);
-      try { await supabase.rpc("claim_orphan_rows"); } catch (e) {}
       if (!cancelled) await loadData();
     })();
     return () => { cancelled = true; };
