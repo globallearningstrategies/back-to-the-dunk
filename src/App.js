@@ -3360,16 +3360,30 @@ function HomeTab({ bodyStats, history, cardioSessions, proteinLog, vitaminD3Log,
    loads until the owner clicks the link emailed to them. ── */
 function AuthGate() {
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState("idle"); // idle | sending | sent | error
+  const [code, setCode] = useState("");
+  const [step, setStep] = useState("email"); // email | code
+  const [status, setStatus] = useState("idle"); // idle | sending | verifying | error
   const [errMsg, setErrMsg] = useState("");
 
-  const send = async () => {
+  // Step 1 — email a 6-digit code (no link, so login finishes inside this app).
+  const sendCode = async () => {
     const addr = email.trim();
     if (!addr || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) { setStatus("error"); setErrMsg("Enter a valid email."); return; }
     setStatus("sending"); setErrMsg("");
-    const { error } = await supabase.auth.signInWithOtp({ email: addr, options: { emailRedirectTo: window.location.origin } });
+    const { error } = await supabase.auth.signInWithOtp({ email: addr, options: { shouldCreateUser: true } });
     if (error) { setStatus("error"); setErrMsg(error.message); }
-    else setStatus("sent");
+    else { setStatus("idle"); setStep("code"); setCode(""); }
+  };
+
+  // Step 2 — verify the code right here; supabase establishes the session
+  // in THIS context (home-screen app or browser), no redirect needed.
+  const verify = async () => {
+    const token = code.replace(/\D/g, "");
+    if (token.length < 6) { setStatus("error"); setErrMsg("Enter the 6-digit code."); return; }
+    setStatus("verifying"); setErrMsg("");
+    const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token, type: "email" });
+    if (error) { setStatus("error"); setErrMsg(error.message || "That code didn't work — try again."); }
+    // On success, onAuthStateChange handles the rest.
   };
 
   return (
@@ -3382,29 +3396,40 @@ function AuthGate() {
         </div>
 
         <Surface padding={22}>
-          {status === "sent" ? (
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 36, marginBottom: 10 }}>📧</div>
-              <div className="h-display" style={{ fontSize: 18, fontWeight: 700, color: C.bone }}>Check your email</div>
-              <p className="h-serif" style={{ fontSize: 15, color: C.dim, margin: "8px 0 0", lineHeight: 1.5 }}>
-                We sent a sign-in link to <strong style={{ color: C.cream }}>{email.trim()}</strong>. Open it on this device to log in.
+          {step === "code" ? (
+            <>
+              <Eyebrow>Enter the code</Eyebrow>
+              <p className="h-serif" style={{ fontSize: 15, color: C.dim, margin: "8px 0 14px", lineHeight: 1.5 }}>
+                We emailed a 6-digit code to <strong style={{ color: C.cream }}>{email.trim()}</strong>. Type it in below.
               </p>
-              <button onClick={() => setStatus("idle")} className="btn" style={{ marginTop: 16, background: "transparent", border: "none", color: C.electric, fontFamily: FONT_MONO, fontSize: 12, cursor: "pointer" }}>← Use a different email</button>
-            </div>
+              <input
+                type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="123456"
+                value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ""))} onKeyDown={e => e.key === "Enter" && verify()}
+                style={{ width: "100%", margin: "0 0 14px", background: C.raised, border: `1px solid ${status === "error" ? C.red : C.line}`, borderRadius: 12, color: C.bone, padding: "14px", fontSize: 28, letterSpacing: "0.3em", textAlign: "center", outline: "none", fontFamily: FONT_MONO }}
+              />
+              {status === "error" && <div style={{ fontSize: 12, color: C.red, fontFamily: FONT_MONO, marginBottom: 12 }}>⚠ {errMsg}</div>}
+              <Btn color={C.rust} full size="lg" onClick={verify} disabled={status === "verifying"}>
+                {status === "verifying" ? "Verifying…" : "Sign in"}
+              </Btn>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 14 }}>
+                <button onClick={() => { setStep("email"); setStatus("idle"); setErrMsg(""); }} className="btn" style={{ background: "transparent", border: "none", color: C.dim, fontFamily: FONT_MONO, fontSize: 12, cursor: "pointer", padding: 0 }}>← Change email</button>
+                <button onClick={sendCode} disabled={status === "sending"} className="btn" style={{ background: "transparent", border: "none", color: C.electric, fontFamily: FONT_MONO, fontSize: 12, cursor: "pointer", padding: 0 }}>{status === "sending" ? "Sending…" : "Resend code"}</button>
+              </div>
+            </>
           ) : (
             <>
               <Eyebrow>Email</Eyebrow>
               <input
                 type="email" inputMode="email" autoComplete="email" placeholder="you@example.com"
-                value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && send()}
+                value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && sendCode()}
                 style={{ width: "100%", margin: "8px 0 14px", background: C.raised, border: `1px solid ${status === "error" ? C.red : C.line}`, borderRadius: 12, color: C.bone, padding: "13px 14px", fontSize: 16, outline: "none", fontFamily: FONT_DISPLAY }}
               />
               {status === "error" && <div style={{ fontSize: 12, color: C.red, fontFamily: FONT_MONO, marginBottom: 12 }}>⚠ {errMsg}</div>}
-              <Btn color={C.rust} full size="lg" onClick={send} disabled={status === "sending"}>
-                {status === "sending" ? "Sending…" : "Email me a sign-in link"}
+              <Btn color={C.rust} full size="lg" onClick={sendCode} disabled={status === "sending"}>
+                {status === "sending" ? "Sending…" : "Email me a code"}
               </Btn>
               <p style={{ fontSize: 11, color: C.mute, fontFamily: FONT_MONO, margin: "14px 0 0", lineHeight: 1.5, textAlign: "center" }}>
-                No password needed. We email you a one-time link.
+                No password. We email you a 6-digit code to type in here.
               </p>
             </>
           )}
