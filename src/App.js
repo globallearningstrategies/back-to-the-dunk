@@ -3403,9 +3403,9 @@ function AuthGate() {
                 We emailed a 6-digit code to <strong style={{ color: C.cream }}>{email.trim()}</strong>. Type it in below.
               </p>
               <input
-                type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="123456"
+                type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={10} placeholder="Enter code"
                 value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ""))} onKeyDown={e => e.key === "Enter" && verify()}
-                style={{ width: "100%", margin: "0 0 14px", background: C.raised, border: `1px solid ${status === "error" ? C.red : C.line}`, borderRadius: 12, color: C.bone, padding: "14px", fontSize: 28, letterSpacing: "0.3em", textAlign: "center", outline: "none", fontFamily: FONT_MONO }}
+                style={{ width: "100%", margin: "0 0 14px", background: C.raised, border: `1px solid ${status === "error" ? C.red : C.line}`, borderRadius: 12, color: C.bone, padding: "14px", fontSize: 26, letterSpacing: "0.2em", textAlign: "center", outline: "none", fontFamily: FONT_MONO }}
               />
               {status === "error" && <div style={{ fontSize: 12, color: C.red, fontFamily: FONT_MONO, marginBottom: 12 }}>⚠ {errMsg}</div>}
               <Btn color={C.rust} full size="lg" onClick={verify} disabled={status === "verifying"}>
