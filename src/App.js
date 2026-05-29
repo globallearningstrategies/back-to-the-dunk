@@ -228,13 +228,13 @@ const SESSIONS = [
     ]
   },
   {
-    id: "B", code: "B", name: "Court & Conditioning", location: "Court", color: C.amber,
+    id: "B", code: "B", name: "Conditioning & Cardio", location: "Cardio", color: C.amber,
     exercises: [
-      { id: "b1", name: "Defensive Slides",   sets: 4, reps: "45s",     timed: true,    note: "Stay low" },
-      { id: "b2", name: "Full-Court Sprint",  sets: 8, reps: "x",       noWeight: true, note: "Walk back = rest" },
-      { id: "b3", name: "Vertical Jump",      sets: 3, reps: 8,         bodyweight: true, note: "Touch highest point" },
-      { id: "b4", name: "Layup Drill",        sets: 2, reps: "drill",   noWeight: true, note: "Both sides" },
-      { id: "b5", name: "Pickup / Solo Play", sets: 1, reps: "20min",   noWeight: true, note: "Cardio + IQ" },
+      { id: "b1", name: "Jump Rope",          sets: 4, reps: "60s",     timed: true,    note: "Light, fast feet" },
+      { id: "b2", name: "Kettlebell Swing",   sets: 4, reps: 15,                        note: "Hinge, snap the hips" },
+      { id: "b3", name: "Burpees",            sets: 3, reps: 12,        bodyweight: true, note: "Full extension" },
+      { id: "b4", name: "Mountain Climbers",  sets: 3, reps: "40s",     timed: true,    note: "Drive the knees" },
+      { id: "b5", name: "Incline Walk / Row", sets: 1, reps: "20min",   noWeight: true, note: "Steady-state cardio" },
     ]
   },
   {
@@ -253,62 +253,40 @@ const SESSIONS = [
 const TABATA_CONFIG = { rounds: 8, sprintSec: 20, restSec: 10 };
 
 const PHASES = [
-  { weeks: "01—04", color: C.rust,     weight: "225 → 218", focus: "Build the habit. Nail form. Ease in.",         goals: ["2× gym/week", "1× court/week", "Sleep 7+ hrs", "Cut late-night eating"] },
-  { weeks: "05—08", color: C.amber,    weight: "218 → 212", focus: "Add intensity. Increase court time.",          goals: ["Progress weights", "Add sprint sets", "Drop processed meals", "Vertical baseline"] },
-  { weeks: "09—12", color: C.moss,     weight: "212 → 206", focus: "Peak conditioning. Power is primary.",         goals: ["Max box jump", "3 sessions/week", "Nutrition locked", "Rim touches every session"] },
-  { weeks: "13—16", color: C.plum,     weight: "206 → 200", focus: "Dunk attempt. You earned it.",                 goals: ["Full vertical test", "Attempt the dunk", "Film it", "Plan next cycle"] },
+  { weeks: "01—04", color: C.rust,     weight: "225 → 218", focus: "Build the habit. Nail form. Ease in.",         goals: ["2× gym/week", "1× cardio/week", "Sleep 7+ hrs", "Cut late-night eating"] },
+  { weeks: "05—08", color: C.amber,    weight: "218 → 212", focus: "Add intensity. Move more.",                    goals: ["Progress the weights", "Add interval cardio", "Drop processed meals", "Hit protein daily"] },
+  { weeks: "09—12", color: C.moss,     weight: "212 → 206", focus: "Peak conditioning. Build real strength.",      goals: ["Push compound lifts", "3 sessions/week", "Nutrition locked", "Conditioning every week"] },
+  { weeks: "13—16", color: C.plum,     weight: "206 → 200", focus: "Lock it in. Set a new baseline.",              goals: ["Test your strength", "Hit goal weight", "Progress photos", "Plan the next cycle"] },
 ];
 
-// Day the 16-week climb began (local midnight). The Program Clock counts forward
-// from here; dunk day lands 16 full weeks (112 days) later.
-const PROGRAM_START = new Date(2026, 2, 30); // Mon Mar 30, 2026
-const PROGRAM_WEEKS = 16;
-
-// Where are we in the 16-week program right now?
-function programProgress(now = new Date()) {
-  const startMid = new Date(PROGRAM_START.getFullYear(), PROGRAM_START.getMonth(), PROGRAM_START.getDate());
-  const nowMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const dayMs = 86400000;
-  const daysElapsed = Math.floor((nowMid - startMid) / dayMs);
-  // Week 1 is days 0–6. Clamp into 1..16 so the clock never reads out of range.
-  const rawWeek = Math.floor(daysElapsed / 7) + 1;
-  const week = Math.min(PROGRAM_WEEKS, Math.max(1, rawWeek));
-  const phaseIdx = Math.min(PHASES.length - 1, Math.floor((week - 1) / 4));
-  const dunkDay = new Date(startMid.getTime() + PROGRAM_WEEKS * 7 * dayMs);
-  const daysToDunk = Math.max(0, Math.round((dunkDay - nowMid) / dayMs));
-  const pct = Math.min(100, Math.max(0, (daysElapsed / (PROGRAM_WEEKS * 7)) * 100));
-  return { week, phaseIdx, phase: PHASES[phaseIdx], dunkDay, daysToDunk, pct, started: daysElapsed >= 0 };
-}
-
-// Daily Hype — one line per day, stable for the whole day, rotates by day-of-year.
-const HYPE_LINES = [
-  "The rim hasn't moved. You're the variable.",
-  "Gravity is just resistance you haven't beaten yet.",
-  "Every rep is a deposit. Dunk day is the withdrawal.",
-  "You don't rise to the occasion. You fall to your training.",
-  "Quiet work today. Loud results in week sixteen.",
-  "The dunk is already yours. You're just catching up to it.",
-  "Discipline is choosing what you want most over what you want now.",
-  "Show up before you feel like it. Especially then.",
-  "Small hinges swing big doors. Lace up.",
-  "Your future self is watching this rep.",
-  "Be the person who didn't skip today.",
-  "Strength is earned in the reps nobody sees.",
-  "Hard now, or hard later. Pick your hard.",
-  "The ground is a launchpad. Treat it like one.",
+/* ── DAILY HYPE — one line, rotates by calendar day so it's stable all day ── */
+const WORK_QUOTES = [
+  ["Hard work beats talent when talent doesn't work hard.", "TIM NOTKE"],
+  ["Discipline is choosing what you want most over what you want now.", "ABRAHAM LINCOLN"],
+  ["Don't count the days. Make the days count.", "MUHAMMAD ALI"],
+  ["Suffer the pain of discipline or suffer the pain of regret.", "JIM ROHN"],
+  ["Every rep is a vote for the person you're becoming.", "THE WORK"],
+  ["Fall in love with the process and the results will come.", "ERIC THOMAS"],
+  ["Pressure is a privilege.", "BILLIE JEAN KING"],
+  ["You don't have to be great to start — you have to start to be great.", "ZIG ZIGLAR"],
+  ["The only bad workout is the one that didn't happen.", "THE WORK"],
+  ["Consistency is the cheat code.", "THE WORK"],
+  ["Be stronger than your excuses.", "THE WORK"],
+  ["The body achieves what the mind believes.", "THE WORK"],
+  ["Show up on the days you don't feel like it. That's the whole game.", "THE WORK"],
+  ["You're one workout away from a good mood.", "THE WORK"],
+  ["Everybody wants to be a beast — until it's time to do what beasts do.", "ERIC THOMAS"],
+  ["Take care of your body. It's the only place you have to live.", "JIM ROHN"],
+  ["Strength does not come from winning. Your struggles develop your strength.", "ARNOLD SCHWARZENEGGER"],
+  ["The successful warrior is the average person, with laser-like focus.", "BRUCE LEE"],
+  ["Today's effort is tomorrow's strength.", "THE WORK"],
+  ["Discipline equals freedom.", "JOCKO WILLINK"],
 ];
-function dailyHype(now = new Date()) {
-  const start = new Date(now.getFullYear(), 0, 0);
-  const doy = Math.floor((now - start) / 86400000);
-  return HYPE_LINES[doy % HYPE_LINES.length];
-}
-
-// Set of local date-keys on which any training happened (workouts + cardio).
-function buildActiveDaySet(history, cardioSessions) {
-  const set = new Set();
-  history.forEach(h => { if (h.logged_at) set.add(dateKey(new Date(h.logged_at))); });
-  cardioSessions.forEach(s => { if (s.completed_at) set.add(dateKey(new Date(s.completed_at))); });
-  return set;
+function quoteOfDay() {
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 0);
+  const dayOfYear = Math.floor((now - startOfYear) / 86400000);
+  return WORK_QUOTES[dayOfYear % WORK_QUOTES.length];
 }
 
 /* ── KOSHER NUTRITION DATABASE ── */
@@ -388,7 +366,7 @@ const PRE_WORKOUT_MEALS = [
       "Handful of berries + honey",
     ],
     why: "Pareve-flexible. Combines fast (whey in yogurt) and slower (eggs, granola) protein for steady energy.",
-    bestFor: "Basketball + Conditioning day",
+    bestFor: "Conditioning + cardio day",
   },
   {
     name: "Tuna Pita + Banana",
@@ -400,8 +378,8 @@ const PRE_WORKOUT_MEALS = [
       "1 tbsp olive oil mayo, lettuce, tomato",
       "1 banana on the side",
     ],
-    why: "Lean protein + complex carbs. Sits light, no dairy bloat for court work.",
-    bestFor: "Basketball + Conditioning · pickup runs",
+    why: "Lean protein + complex carbs. Sits light, no dairy bloat for cardio work.",
+    bestFor: "Conditioning + cardio · long sessions",
   },
   {
     name: "Quick Coffee + Quest Stack",
@@ -520,7 +498,7 @@ const POST_WORKOUT_MEALS = [
       "Capers, red onion, tomato, cucumber",
     ],
     why: "Carbs + protein + omega-3s in one nostalgic plate. Perfect after a Sunday morning lift.",
-    bestFor: "Weekend basketball + lift session",
+    bestFor: "Weekend cardio + lift session",
   },
   {
     name: "Turkey & Avocado Power Wrap",
@@ -633,7 +611,7 @@ function fireNotification(title, body) {
     if (document.visibilityState === "visible") return; // only when in another app/tab
     const n = new Notification(title, {
       body,
-      icon: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🏀</text></svg>",
+      icon: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>💪</text></svg>",
       tag: "bttd-timer",
       requireInteraction: false,
       silent: false,
@@ -779,13 +757,10 @@ function loadBodyStats() {
       // Backfill defaults for new fields if migrating from older saves
       if (!parsed.goal) parsed.goal = "lean";
       if (typeof parsed.activityFactor !== "number") parsed.activityFactor = 1.55;
-      if (typeof parsed.rimHeightInches !== "number") parsed.rimHeightInches = 120;
-      if (typeof parsed.standingReachInches !== "number") parsed.standingReachInches = Math.round((parsed.heightInches || 77) * 1.32);
-      if (typeof parsed.verticalInches !== "number") parsed.verticalInches = 18;
       return parsed;
     }
   } catch(e) {}
-  return { heightInches: 77, weightLbs: 222, age: 47, goal: "lean", activityFactor: 1.55, rimHeightInches: 120, standingReachInches: Math.round(77 * 1.32), verticalInches: 18 };
+  return { heightInches: 77, weightLbs: 222, age: 47, goal: "lean", activityFactor: 1.55 };
 }
 function saveBodyStats(stats) {
   try { localStorage.setItem(LS_BODY, JSON.stringify(stats)); } catch(e) {}
@@ -2730,9 +2705,9 @@ function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange, ca
 }
 
 /* ════════════════════════════════════════════════════════════
-   DUNK — the North Star home screen
+   HOME — consistency-first home screen
    ════════════════════════════════════════════════════════════ */
-function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog, vitaminD3Log, creatineLog, onGoTab, theme, onToggleTheme }) {
+function HomeTab({ bodyStats, history, cardioSessions, proteinLog, vitaminD3Log, creatineLog, onGoTab, theme, onToggleTheme }) {
   const today = todayKey();
   const dateStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
@@ -2754,31 +2729,40 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
   const R = 40;
   const CIRC = 2 * Math.PI * R;
 
-  // ── Program Clock — where we are in the 16-week climb ──
-  const prog = programProgress();
-
-  // ── 14-day Momentum — activity strip + current streak ──
-  const activeDays = buildActiveDaySet(history, cardioSessions);
-  const last14 = [];
+  /* ── MOMENTUM — combined training density over the last 14 days ── */
+  const activeDays = new Set([
+    ...history.map(h => new Date(h.logged_at).toDateString()),
+    ...cardioSessions.map(s => new Date(s.completed_at).toDateString()),
+  ]);
+  const strip = [];
   for (let i = 13; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    last14.push({ date: d, key: dateKey(d), active: activeDays.has(dateKey(d)) });
+    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
+    strip.push({ key: d.toDateString(), active: activeDays.has(d.toDateString()), isToday: i === 0 });
   }
-  const activeCount = last14.filter(d => d.active).length;
-  // Streak = consecutive active days counting back from today (today not yet
-  // logged doesn't break a streak that ran through yesterday).
+  const last7 = strip.slice(-7).filter(d => d.active).length;
+  const last14 = strip.filter(d => d.active).length;
+  // Consecutive-day streak (today not-yet-logged still counts as live).
   let streak = 0;
   for (let i = 0; ; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    if (activeDays.has(dateKey(d))) streak++;
-    else if (i === 0) continue; // today still open — keep counting back
+    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
+    if (activeDays.has(d.toDateString())) streak++;
+    else if (i === 0) continue;
     else break;
   }
+  // How long since the last session?
+  let lastAgo = null;
+  for (let i = 0; i < 60; i++) {
+    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
+    if (activeDays.has(d.toDateString())) { lastAgo = i; break; }
+  }
+  let momentumVerdict, momentumColor;
+  if (trainedToday) { momentumVerdict = "On fire. You showed up today."; momentumColor = C.moss; }
+  else if (lastAgo === 1) { momentumVerdict = "Momentum's hot — keep it rolling."; momentumColor = C.amber; }
+  else if (lastAgo !== null && lastAgo <= 3) { momentumVerdict = "Don't let it cool. Get one in."; momentumColor = C.amber; }
+  else if (lastAgo === null) { momentumVerdict = "Day one starts the second you log."; momentumColor = C.rust; }
+  else { momentumVerdict = "Restart the engine. One session does it."; momentumColor = C.rust; }
 
-  // ── Daily Hype ──
-  const hype = dailyHype();
+  const [quoteText, quoteAuthor] = quoteOfDay();
 
   return (
     <>
@@ -2804,7 +2788,7 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
           {greeting()}.
         </h1>
         <p className="h-serif" style={{ fontSize: 16, color: C.dim, margin: "6px 0 0", lineHeight: 1.4 }}>
-          Every rep closes the gap. Let's climb.
+          Small reps, stacked daily. That's the whole game.
         </p>
       </div>
 
@@ -2843,94 +2827,57 @@ function DunkTab({ bodyStats, onUpdateBody, history, cardioSessions, proteinLog,
         </Surface>
       </div>
 
-      {/* ── PROGRAM CLOCK — the 16-week climb ── */}
+      {/* ── MOMENTUM — 14-day activity + a nudge back in ── */}
       <div className="ease-up-2">
-        <Surface accent={prog.phase.color} onClick={() => onGoTab("goals")} className="card-tap" style={{ cursor: "pointer" }}>
+        <Surface accent={momentumColor}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <Eyebrow color={prog.phase.color}>Program Clock</Eyebrow>
-            <Pill color={prog.phase.color}>Phase {prog.phaseIdx + 1} of {PHASES.length}</Pill>
+            <div>
+              <Eyebrow color={momentumColor}>Momentum · last 14 days</Eyebrow>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 8 }}>
+                {streak > 0 && <span style={{ fontSize: 22 }}>🔥</span>}
+                <span className="num-tab h-display" style={{ fontSize: 32, fontWeight: 800, color: streak > 0 ? momentumColor : C.dim, letterSpacing: "-0.04em", lineHeight: 1 }}>{streak}</span>
+                <span style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>day streak</span>
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 700, color: C.bone, letterSpacing: "-0.03em", lineHeight: 1 }}>{last7}<span style={{ fontSize: 12, color: C.dim, fontWeight: 500 }}>/7</span></div>
+              <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, marginTop: 3, letterSpacing: "0.06em" }}>THIS WEEK · {last14} IN 14D</div>
+            </div>
           </div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 12 }}>
-            <span className="num-tab h-display" style={{ fontSize: 46, fontWeight: 800, color: prog.phase.color, letterSpacing: "-0.04em", lineHeight: 0.9 }}>
-              {prog.week}
-            </span>
-            <span className="h-display" style={{ fontSize: 18, fontWeight: 600, color: C.dim }}>
-              / {PROGRAM_WEEKS} weeks
-            </span>
-          </div>
-          <p className="h-serif" style={{ fontSize: 17, color: C.cream, margin: "8px 0 14px", lineHeight: 1.4 }}>
-            {prog.phase.focus}
-          </p>
-          {/* 16-segment climb bar, colored by the phase each week belongs to */}
-          <div style={{ display: "flex", gap: 3 }}>
-            {Array.from({ length: PROGRAM_WEEKS }).map((_, i) => {
-              const wk = i + 1;
-              const done = wk < prog.week;
-              const current = wk === prog.week;
-              const segColor = PHASES[Math.min(PHASES.length - 1, Math.floor(i / 4))].color;
-              return (
-                <div key={i} style={{
-                  flex: 1, height: 8, borderRadius: 3,
-                  background: done || current ? segColor : C.line,
-                  opacity: done ? 0.55 : current ? 1 : 1,
-                  boxShadow: current ? `0 0 8px ${segColor}88` : "none",
-                  transition: `background 0.4s ${SPRING}`,
-                }} />
-              );
-            })}
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontFamily: FONT_MONO, fontSize: 11, color: C.dim }}>
-            <span>{Math.round(prog.pct)}% through the climb</span>
-            <span style={{ color: prog.phase.color }}>
-              {prog.daysToDunk === 0 ? "Dunk day is here 🏀" : `${prog.daysToDunk} days to dunk day`}
-            </span>
-          </div>
-        </Surface>
-      </div>
 
-      {/* ── 14-DAY MOMENTUM — keep the streak alive ── */}
-      <div className="ease-up-3">
-        <Surface>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Eyebrow>14-Day Momentum</Eyebrow>
-            <Pill color={streak > 0 ? C.rust : C.dim}>{streak > 0 ? `🔥 ${streak}-day streak` : "No streak yet"}</Pill>
-          </div>
+          {/* Activity strip */}
           <div style={{ display: "flex", gap: 4, marginTop: 16 }}>
-            {last14.map((d, i) => {
-              const isToday = i === last14.length - 1;
-              return (
-                <div key={d.key} style={{ flex: 1, textAlign: "center" }}>
-                  <div style={{
-                    height: 34, borderRadius: 8,
-                    background: d.active ? C.rust : C.line,
-                    border: isToday ? `1.5px solid ${C.bone}` : "1.5px solid transparent",
-                    opacity: d.active ? 1 : 0.6,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 12, color: d.active ? C.bone : C.mute,
-                    transition: `background 0.3s ${SPRING}`,
-                  }}>
-                    {d.active ? "●" : ""}
-                  </div>
-                  <div style={{ fontSize: 8, color: C.mute, fontFamily: FONT_MONO, marginTop: 4 }}>
-                    {d.date.toLocaleDateString("en-US", { weekday: "narrow" })}
-                  </div>
-                </div>
-              );
-            })}
+            {strip.map((d, i) => (
+              <div key={i} title={d.key} style={{
+                flex: 1, height: 26, borderRadius: 5,
+                background: d.active ? momentumColor : C.raised,
+                border: `1px solid ${d.active ? momentumColor : C.line}`,
+                outline: d.isToday ? `1.5px solid ${C.bone}` : "none", outlineOffset: 1,
+                transition: "background 0.3s",
+              }} />
+            ))}
           </div>
-          <div style={{ marginTop: 12, fontFamily: FONT_MONO, fontSize: 11, color: C.dim }}>
-            {activeCount} of 14 days active · last two weeks
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 9, color: C.mute, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>
+            <span>14 DAYS AGO</span><span>TODAY</span>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
+            <p className="h-serif" style={{ fontSize: 15, color: C.cream, margin: 0, lineHeight: 1.4, flex: 1 }}>{momentumVerdict}</p>
+            {!trainedToday && (
+              <Btn color={momentumColor} size="sm" onClick={() => onGoTab("workout")} style={{ flexShrink: 0 }}>Train →</Btn>
+            )}
           </div>
         </Surface>
       </div>
 
       {/* ── DAILY HYPE ── */}
-      <div className="ease-up-4">
-        <Surface accent={C.amber} padding={22}>
-          <Eyebrow color={C.amber}>Daily Hype</Eyebrow>
-          <p className="h-serif" style={{ fontSize: 22, color: C.bone, margin: "14px 0 0", lineHeight: 1.35 }}>
-            "{hype}"
+      <div className="ease-up-3">
+        <Surface accent={C.rust} padding={22}>
+          <Eyebrow color={C.rust}>Today's word</Eyebrow>
+          <p className="h-serif" style={{ fontSize: 22, color: C.bone, margin: "12px 0 0", lineHeight: 1.3, letterSpacing: "-0.01em" }}>
+            "{quoteText}"
           </p>
+          <div className="mono" style={{ fontSize: 10, letterSpacing: "0.15em", marginTop: 12, color: C.mute }}>— {quoteAuthor}</div>
         </Surface>
       </div>
     </>
@@ -2952,7 +2899,7 @@ export default function App() {
   }, [theme]);
   const toggleTheme = () => setTheme(t => (t === "dark" ? "light" : "dark"));
 
-  const [tab, setTab] = useState("dunk");
+  const [tab, setTab] = useState("home");
   const [loading, setLoading] = useState(true);
   const [activeSession, setActiveSession] = useState(0);
   const [activeSessionInit, setActiveSessionInit] = useState(false);
@@ -3221,7 +3168,7 @@ export default function App() {
     if (result === "granted") {
       // Test notification
       try {
-        const n = new Notification("🏀 Notifications on", { body: "You'll get banners when timers finish.", silent: false });
+        const n = new Notification("💪 Notifications on", { body: "You'll get banners when timers finish.", silent: false });
         setTimeout(() => n.close(), 4000);
       } catch(e) {}
     }
@@ -3237,12 +3184,12 @@ export default function App() {
 
   // Primary navigation — three groups, each fronting a set of sub-tabs.
   const GROUPS = [
-    { id: "today",    label: "Today",    icon: "🏀", tabs: ["dunk"] },
+    { id: "today",    label: "Today",    icon: "🔥", tabs: ["home"] },
     { id: "train",    label: "Train",    icon: "🏋️", tabs: ["workout", "history", "goals"] },
     { id: "progress", label: "Progress", icon: "📊", tabs: ["stats", "weight", "nutrition"] },
   ];
   const SUB_LABELS = {
-    dunk: "Today", workout: "Train", history: "Log", goals: "Plan",
+    home: "Today", workout: "Train", history: "Log", goals: "Plan",
     stats: "Stats", weight: "Weight", nutrition: "Fuel",
   };
   const groupOf = (id) => (GROUPS.find(g => g.tabs.includes(id)) || GROUPS[0]);
@@ -3255,8 +3202,8 @@ export default function App() {
   if (loading) return (
     <div className="court-bg" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div className="ease-up" style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 44, marginBottom: 14 }}>🏀</div>
-        <div className="h-display" style={{ color: C.rust, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>Back to the Dunk</div>
+        <div style={{ fontSize: 44, marginBottom: 14 }}>💪</div>
+        <div className="h-display" style={{ color: C.rust, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>The Work</div>
         <div style={{ color: C.dim, fontSize: 12, marginTop: 6, fontFamily: FONT_MONO, letterSpacing: "0.1em" }}>LOADING…</div>
       </div>
     </div>
@@ -3274,10 +3221,10 @@ export default function App() {
       }}>
         <div style={{ padding: "16px 20px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 10, background: `linear-gradient(135deg, ${C.rust}, ${C.amber})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🏀</div>
+            <div style={{ width: 32, height: 32, borderRadius: 10, background: `linear-gradient(135deg, ${C.rust}, ${C.amber})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>💪</div>
             <div>
-              <div className="h-display" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.02em", color: C.bone, lineHeight: 1.1 }}>Back to the Dunk</div>
-              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.1em", marginTop: 2 }}>16 WEEKS · 25 LBS · 1 GOAL</div>
+              <div className="h-display" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.02em", color: C.bone, lineHeight: 1.1 }}>The Work</div>
+              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.1em", marginTop: 2 }}>SHOW UP · DO THE WORK</div>
             </div>
           </div>
           {saveMsg && (
@@ -3317,11 +3264,10 @@ export default function App() {
           </div>
         )}
 
-        {/* ── DUNK (North Star home) ── */}
-        {tab === "dunk" && (
-          <DunkTab
+        {/* ── HOME (consistency-first) ── */}
+        {tab === "home" && (
+          <HomeTab
             bodyStats={bodyStats}
-            onUpdateBody={updateBodyStats}
             history={history}
             cardioSessions={cardioSessions}
             proteinLog={proteinLog}
@@ -3349,7 +3295,7 @@ export default function App() {
                 {greeting()}.
               </h1>
               <p className="h-serif" style={{ fontSize: 17, color: C.dim, margin: "6px 0 0", lineHeight: 1.4 }}>
-                {todayTotal === 0 ? (restDay ? "Recovery is part of the work." : "Let's build the dunk.") : todayTotal === 1 ? "One down. Strong start." : `${todayTotal} sessions in today. Beast.`}
+                {todayTotal === 0 ? (restDay ? "Recovery is part of the work." : "Let's get to work.") : todayTotal === 1 ? "One down. Strong start." : `${todayTotal} sessions in today. Beast.`}
               </p>
 
               {/* Notification permission prompt — non-intrusive */}
@@ -3489,7 +3435,7 @@ export default function App() {
 
 
             <p className="h-serif" style={{ textAlign: "center", color: C.dim, fontSize: 16, margin: "24px 0 0" }}>
-              "I am a basketball player who trains."
+              "I am someone who never misses a workout."
               <span style={{ display: "block", fontFamily: FONT_MONO, fontStyle: "normal", fontSize: 10, letterSpacing: "0.15em", marginTop: 6 }}>— JAMES CLEAR</span>
             </p>
           </>
@@ -3525,7 +3471,7 @@ export default function App() {
 
             {history.length === 0 && (
               <Surface style={{ textAlign: "center", padding: 48 }}>
-                <div style={{ fontSize: 36, marginBottom: 12 }}>🏀</div>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>💪</div>
                 <p className="h-serif" style={{ fontSize: 18, color: C.cream, margin: 0 }}>The page is blank.</p>
                 <div style={{ fontSize: 12, color: C.dim, marginTop: 8, fontFamily: FONT_MONO }}>GO WRITE THE FIRST CHAPTER</div>
               </Surface>
@@ -3689,7 +3635,7 @@ export default function App() {
         {/* ── PLAN ── */}
         {tab === "goals" && (
           <>
-            <div className="ease-up"><PageTitle kicker="16 weeks · 1 dunk">The Plan</PageTitle></div>
+            <div className="ease-up"><PageTitle kicker="Consistency · compounds">The Plan</PageTitle></div>
 
             {/* Quick Settings */}
             <div className="ease-up-1">
@@ -3775,7 +3721,7 @@ export default function App() {
               <div style={{ marginTop: 14 }}>
                 {[
                   ["1.", "Make It Obvious", C.rust, "Gym bag packed the night before. Shoes by the door."],
-                  ["2.", "Make It Attractive", C.amber, "Hype playlist only during training. Watch dunk compilations."],
+                  ["2.", "Make It Attractive", C.amber, "Hype playlist only during training. Pair it with something you enjoy."],
                   ["3.", "Make It Easy", C.moss, "2-Minute Rule: just lace up. The rest follows."],
                   ["4.", "Make It Satisfying", C.plum, "Log every session. The streak is the reward."],
                 ].map(([n, law, color, tip]) => (
@@ -3791,7 +3737,7 @@ export default function App() {
                 ))}
               </div>
               <p className="h-serif" style={{ fontSize: 16, color: C.dim, margin: "16px 0 0", textAlign: "center" }}>
-                "I am a basketball player who trains."
+                "I am someone who never misses a workout."
                 <span className="mono" style={{ display: "block", fontStyle: "normal", fontSize: 10, letterSpacing: "0.15em", marginTop: 6, color: C.mute }}>— JAMES CLEAR</span>
               </p>
             </Surface>
