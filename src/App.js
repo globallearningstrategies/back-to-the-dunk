@@ -324,6 +324,10 @@ const RECOVERY = {
   planDays: 3,
 };
 
+// Types logged through the conditioning sheet (stored in cardio_sessions).
+// Lifts log via the gym session card; walks via the walk logger.
+const CONDITIONING_TYPES = ["tabata", "long_interval", "game"];
+
 /* ── Recovery engine — pure functions over a normalized session list ──
    A "session" is { id, type, date(Date), rpe, duration, planned? }.
    `recommend()` returns { action:'rest'|'train', type, reason, band, flags[] }. */
@@ -3268,7 +3272,8 @@ function TodayCard({ cardioSessions, workouts, onOpenLogger, onChooseLift, onGoW
    ════════════════════════════════════════════════════════════ */
 function ConditioningLogger({ state, onClose, onSave, onDelete }) {
   const editing = state.editing || null;
-  const initType = state.prefillType || (editing && editing.workout_type) || "tabata";
+  const wanted = state.prefillType || (editing && editing.workout_type) || "tabata";
+  const initType = CONDITIONING_TYPES.includes(wanted) ? wanted : "tabata";
   const [type, setType] = useState(initType);
   const [touchedRpe, setTouchedRpe] = useState(editing ? editing.rpe != null : false);
   const [when, setWhen] = useState(editing ? toLocalInput(editing.completed_at) : toLocalInput(new Date()));
@@ -3311,7 +3316,7 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
         {/* Type */}
         <Eyebrow>Type</Eyebrow>
         <div style={{ display: "flex", gap: 8, margin: "8px 0 18px" }}>
-          {Object.values(RECOVERY.TYPES).map(t => {
+          {CONDITIONING_TYPES.map(tk => RECOVERY.TYPES[tk]).map(t => {
             const on = type === t.key; const col = C[t.colorKey];
             return (
               <button key={t.key} className="btn" onClick={() => chooseType(t.key)} style={{
@@ -3354,6 +3359,71 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
         {editing && (
           <button onClick={() => onDelete(editing.id)} className="btn" style={{ width: "100%", marginTop: 10, padding: "12px", borderRadius: 12, border: `1px solid ${C.red}40`, background: "transparent", color: C.red, fontFamily: FONT_MONO, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Delete session</button>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   WALK LOGGER — treadmill walk with minutes / speed / incline,
+   retroactive date+time. Saves a real entry (shows in the Log).
+   ════════════════════════════════════════════════════════════ */
+function WalkLogger({ state, onClose, onSave }) {
+  const [when, setWhen] = useState(toLocalInput(new Date()));
+  const [duration, setDuration] = useState("");
+  const [speed, setSpeed] = useState("");
+  const [incline, setIncline] = useState("");
+  const [notes, setNotes] = useState("");
+  const miles = duration && speed ? ((parseFloat(duration) / 60) * parseFloat(speed)).toFixed(2) : null;
+  const canSave = duration || speed || incline;
+
+  const save = () => {
+    if (!canSave) return;
+    onSave({ when, duration, speed, incline, miles, notes });
+  };
+
+  const field = (label, unit, val, set, ph) => (
+    <div>
+      <div style={{ textAlign: "center" }}><Eyebrow>{label}</Eyebrow></div>
+      <input type="number" inputMode="decimal" step="0.1" value={val} onChange={e => set(e.target.value)} placeholder={ph}
+        style={{ width: "100%", marginTop: 6, background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 8px", fontSize: 16, outline: "none", textAlign: "center", fontFamily: FONT_MONO, boxSizing: "border-box" }} />
+      <div style={{ textAlign: "center", fontSize: 9, color: C.mute, fontFamily: FONT_MONO, marginTop: 4 }}>{unit}</div>
+    </div>
+  );
+
+  return (
+    <div className="backdrop" style={{ alignItems: "flex-end", padding: 0 }} onClick={onClose}>
+      <div className="slide-up" onClick={e => e.stopPropagation()} style={{
+        width: "100%", maxWidth: 480, margin: "0 auto", background: C.panel,
+        borderRadius: "22px 22px 0 0", borderTop: `1px solid ${C.line}`,
+        padding: "10px 18px calc(24px + env(safe-area-inset-bottom))", maxHeight: "90vh", overflowY: "auto",
+      }}>
+        <div style={{ width: 38, height: 4, borderRadius: 999, background: C.faint, margin: "0 auto 16px" }} />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
+          <h2 className="h-display" style={{ fontSize: 22, fontWeight: 700, color: C.bone, margin: 0, letterSpacing: "-0.03em" }}>🚶 Log a walk</h2>
+          <button onClick={onClose} className="btn" style={{ border: "none", background: "transparent", color: C.dim, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+        </div>
+
+        {state && state.warn && (
+          <div style={{ marginBottom: 14, padding: "10px 12px", borderRadius: 10, background: `${C.amber}12`, border: `1px solid ${C.amber}40`, color: C.amber, fontSize: 12, fontFamily: FONT_MONO, lineHeight: 1.4 }}>⚠ {state.warn}</div>
+        )}
+
+        <Eyebrow>When</Eyebrow>
+        <input type="datetime-local" value={when} max={toLocalInput(new Date())} onChange={e => setWhen(e.target.value)}
+          style={{ width: "100%", margin: "8px 0 18px", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 15, outline: "none", fontFamily: FONT_DISPLAY, boxSizing: "border-box" }} />
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
+          {field("Minutes", "min", duration, setDuration, "45")}
+          {field("Speed", "mph", speed, setSpeed, "3.5")}
+          {field("Incline", "%", incline, setIncline, "8")}
+        </div>
+        {miles && <div style={{ textAlign: "center", color: C.plum, fontSize: 14, marginBottom: 14, fontFamily: FONT_SERIF, fontStyle: "italic" }}>≈ {miles} miles</div>}
+
+        <Eyebrow>Notes (optional)</Eyebrow>
+        <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. podcast walk, felt good"
+          style={{ width: "100%", margin: "8px 0 18px", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+
+        <Btn color={C.plum} full size="lg" onClick={save} disabled={!canSave}>{canSave ? "Log walk" : "Add minutes, speed or incline"}</Btn>
       </div>
     </div>
   );
@@ -3785,6 +3855,7 @@ export default function App() {
   // Gamification
   const [awardsOpen, setAwardsOpen] = useState(false);
   const [celebration, setCelebration] = useState(null); // null or [{kind,title,subtitle,emoji}]
+  const [walkOpen, setWalkOpen] = useState(false);
   const [restEnabled, setRestEnabled] = useState(true);
   const [notifEnabled, setNotifEnabled] = useState(false);
 
@@ -4061,6 +4132,20 @@ export default function App() {
     if (!error && data) { setHistory(p => [data[0],...p]); showSave(true); toast(`+${xpForType("walk")} XP 🚶`); } else showSave(false);
   };
 
+  // Walk logger (Home + quick-add): minutes/speed/incline, retroactive date.
+  const sortByLogged = (rows) => [...rows].sort((a, b) => new Date(b.logged_at) - new Date(a.logged_at));
+  const logWalk = async ({ when, duration, speed, incline, miles, notes }) => {
+    const label = [duration ? duration + " min" : null, speed ? speed + " mph" : null, incline ? incline + "% incline" : null, miles && miles > 0 ? miles + " mi" : null, notes || null].filter(Boolean).join(" · ");
+    const row = {
+      session_name: "Treadmill Walk", color: C.plum, total_volume: 0,
+      exercises: [{ name: label, sets: 1, reps: "walk", weight: 0, volume: 0, duration: parseFloat(duration) || 0, speed: parseFloat(speed) || 0, incline: parseFloat(incline) || 0, miles: parseFloat(miles) || 0 }],
+    };
+    if (when) row.logged_at = new Date(when).toISOString();
+    const { data, error } = await supabase.from("workouts").insert([row]).select();
+    if (!error && data) { setHistory(p => sortByLogged([data[0], ...p])); setConfetti(true); showSave(true); toast(`+${xpForType("walk")} XP 🚶`); } else showSave(false);
+    setWalkOpen(false);
+  };
+
   const deleteLog = async id => {
     const row = history.find(h => h.id === id);
     setHistory(p => p.filter(h => h.id !== id));
@@ -4221,7 +4306,7 @@ export default function App() {
             onOpenLogger={(opts) => setLoggerState({ open: true, ...opts })}
             onOpenAwards={() => setAwardsOpen(true)}
             onChooseLift={() => { setTab("workout"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-            onGoWalk={() => { setTab("workout"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+            onGoWalk={() => setWalkOpen(true)}
             theme={theme}
             onToggleTheme={toggleTheme}
           />
@@ -4827,14 +4912,19 @@ export default function App() {
                 }}>Log</button>
               </div>
 
-              {/* Conditioning — log Tabata / Long Interval / Game */}
-              <Eyebrow>Log conditioning</Eyebrow>
-              <div style={{ display: "flex", gap: 8, margin: "8px 0 18px" }}>
+              {/* Log a workout — routes to the right logger per type */}
+              <Eyebrow>Log a workout</Eyebrow>
+              <div style={{ display: "flex", gap: 6, margin: "8px 0 18px" }}>
                 {Object.values(RECOVERY.TYPES).map(t => (
-                  <button key={t.key} className="btn" onClick={() => { close(); setLoggerState({ open: true, prefillType: t.key }); }} style={{
-                    flex: 1, padding: "12px 6px", borderRadius: 12, cursor: "pointer",
+                  <button key={t.key} className="btn" onClick={() => {
+                    close();
+                    if (t.key === "walk") setWalkOpen(true);
+                    else if (t.key === "lift") { setTab("workout"); window.scrollTo({ top: 0 }); }
+                    else setLoggerState({ open: true, prefillType: t.key });
+                  }} style={{
+                    flex: 1, padding: "12px 4px", borderRadius: 12, cursor: "pointer",
                     border: `1px solid ${C[t.colorKey]}40`, background: `${C[t.colorKey]}12`, color: C[t.colorKey],
-                    fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 12,
+                    fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 11,
                     display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
                   }}><span style={{ fontSize: 18 }}>{t.emoji}</span>{t.short}</button>
                 ))}
@@ -4867,6 +4957,9 @@ export default function App() {
           onDelete={deleteCardio}
         />
       )}
+
+      {/* ── WALK LOGGER sheet ── */}
+      {walkOpen && <WalkLogger onClose={() => setWalkOpen(false)} onSave={logWalk} />}
 
       {/* ── GAMIFICATION overlays ── */}
       {awardsOpen && <AchievementsSheet game={game} onClose={() => setAwardsOpen(false)} />}
