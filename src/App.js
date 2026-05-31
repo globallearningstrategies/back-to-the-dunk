@@ -3412,6 +3412,21 @@ function WalkLogger({ state, onClose, onSave }) {
         <input type="datetime-local" value={when} max={toLocalInput(new Date())} onChange={e => setWhen(e.target.value)}
           style={{ width: "100%", margin: "8px 0 18px", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 15, outline: "none", fontFamily: FONT_DISPLAY, boxSizing: "border-box" }} />
 
+        {/* Quick durations — one tap for a casual walk */}
+        <Eyebrow>Quick log</Eyebrow>
+        <div style={{ display: "flex", gap: 8, margin: "8px 0 16px" }}>
+          {[20, 30, 45, 60, 90].map(n => {
+            const on = String(n) === String(duration);
+            return (
+              <button key={n} className="btn" onClick={() => setDuration(String(n))} style={{
+                flex: 1, padding: "12px 4px", borderRadius: 12, cursor: "pointer",
+                border: `1px solid ${on ? C.plum : C.line}`, background: on ? `${C.plum}18` : C.raised,
+                color: on ? C.plum : C.cream, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14,
+              }}>{n}<span style={{ fontSize: 9, color: on ? C.plum : C.mute, fontFamily: FONT_MONO, display: "block", marginTop: 1 }}>MIN</span></button>
+            );
+          })}
+        </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
           {field("Minutes", "min", duration, setDuration, "45")}
           {field("Speed", "mph", speed, setSpeed, "3.5")}
