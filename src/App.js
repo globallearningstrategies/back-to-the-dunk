@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -160,6 +160,19 @@ const injectStyles = (force) => {
       to { transform: translateY(0); }
     }
     .slide-up { animation: slide-up 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+    @keyframes celebrate-pop {
+      0% { opacity: 0; transform: scale(0.6) translateY(20px); }
+      60% { opacity: 1; transform: scale(1.06) translateY(0); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .celebrate-pop { animation: celebrate-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+    @keyframes celebrate-emoji {
+      0% { transform: scale(0.3) rotate(-18deg); }
+      55% { transform: scale(1.25) rotate(10deg); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+    .celebrate-emoji { display: inline-block; animation: celebrate-emoji 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both; }
 
     .ease-up { animation: ease-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
     .ease-up-1 { animation: ease-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both; }
@@ -538,6 +551,122 @@ function streakInfo(allSessions, refDate) {
   }
   return { streak, layoff };
 }
+
+/* ════════════════════════════════════════════════════════════
+   GAMIFICATION — XP, levels, ranks, achievements. All derived from
+   logged data (no extra storage), so it can never drift out of sync.
+   ════════════════════════════════════════════════════════════ */
+const XP_BASE = { tabata: 40, long_interval: 90, game: 120, lift: 70, walk: 20 };
+// Effort bonus: harder-felt sessions (higher RPE) are worth more.
+function sessionXP(s) {
+  const base = XP_BASE[s.type] || 0;
+  const bonus = (s.rpe && s.type !== "walk") ? Math.max(0, s.rpe - 5) * 5 : 0;
+  return base + bonus;
+}
+// Default XP for a freshly logged session (used for the "+XP" pop).
+function xpForType(type) {
+  const def = RECOVERY.TYPES[type];
+  return sessionXP({ type, rpe: def ? def.defaultRPE : 0 });
+}
+
+// Level curve: each level costs a bit more than the last — fast early wins,
+// satisfying long climb.
+function levelInfo(totalXP) {
+  let level = 1, need = 100, acc = 0;
+  while (totalXP >= acc + need) { acc += need; level++; need = 100 + (level - 1) * 60; }
+  return { level, into: totalXP - acc, span: need, progress: (totalXP - acc) / need, total: totalXP };
+}
+// Athletic rank tiers, climbing toward the dunk.
+const RANKS = [
+  [1, "Walk-On"], [3, "Rookie"], [6, "Starter"], [10, "Sixth Man"],
+  [15, "Hooper"], [22, "Veteran"], [30, "All-Star"], [42, "Franchise"], [60, "Legend"],
+];
+function rankFor(level) {
+  let r = RANKS[0][1];
+  for (const [lvl, name] of RANKS) if (level >= lvl) r = name;
+  return r;
+}
+
+const ACHIEVEMENTS = [
+  { id: "first",    emoji: "🌱", name: "First Rep",       desc: "Log your very first session", goal: 1,   val: s => s.totalSessions },
+  { id: "ten",      emoji: "💪", name: "Perfect 10",      desc: "10 sessions logged",          goal: 10,  val: s => s.totalSessions },
+  { id: "fifty",    emoji: "⚙️", name: "Grinder",         desc: "50 sessions logged",          goal: 50,  val: s => s.totalSessions },
+  { id: "century",  emoji: "💯", name: "Century Club",    desc: "100 sessions logged",         goal: 100, val: s => s.totalSessions },
+  { id: "streak3",  emoji: "✨", name: "Hat Trick",       desc: "3 days in a row",             goal: 3,   val: s => s.bestStreak },
+  { id: "streak7",  emoji: "🔥", name: "Week Warrior",    desc: "7-day streak",                goal: 7,   val: s => s.bestStreak },
+  { id: "streak14", emoji: "🌋", name: "Unstoppable",     desc: "14-day streak",               goal: 14,  val: s => s.bestStreak },
+  { id: "streak30", emoji: "🏆", name: "Iron Will",       desc: "30-day streak",               goal: 30,  val: s => s.bestStreak },
+  { id: "tab10",    emoji: "⚡", name: "Tabata Ten",      desc: "10 Tabatas done",             goal: 10,  val: s => s.byType.tabata },
+  { id: "li5",      emoji: "🌀", name: "Long Hauler",     desc: "5 Long Intervals",            goal: 5,   val: s => s.byType.long_interval },
+  { id: "lift25",   emoji: "🏋️", name: "Iron Paradise",   desc: "25 lifts",                    goal: 25,  val: s => s.byType.lift },
+  { id: "game1",    emoji: "🏀", name: "Baller",          desc: "Play a game",                 goal: 1,   val: s => s.byType.game },
+  { id: "game10",   emoji: "🔟", name: "Run It Back",     desc: "10 games played",             goal: 10,  val: s => s.byType.game },
+  { id: "walk20",   emoji: "🚶", name: "Active Recovery", desc: "20 recovery walks",           goal: 20,  val: s => s.byType.walk },
+  { id: "early",    emoji: "🌅", name: "Early Bird",      desc: "Train before 7am",            goal: 1,   val: s => (s.earlyBird ? 1 : 0) },
+  { id: "night",    emoji: "🌙", name: "Night Owl",       desc: "Train after 9pm",             goal: 1,   val: s => (s.nightOwl ? 1 : 0) },
+  { id: "comeback", emoji: "🔄", name: "Comeback Kid",    desc: "Train after a 7+ day break",  goal: 1,   val: s => (s.comeback ? 1 : 0) },
+  { id: "lvl10",    emoji: "⭐", name: "Double Digits",   desc: "Reach level 10",              goal: 10,  val: s => s.level },
+  { id: "lvl25",    emoji: "🌟", name: "Elite",           desc: "Reach level 25",              goal: 25,  val: s => s.level },
+  { id: "lost5",    emoji: "📉", name: "Down 5",          desc: "Drop 5 lbs",                  goal: 5,   val: s => s.weightLost },
+  { id: "lost15",   emoji: "🎯", name: "Down 15",         desc: "Drop 15 lbs",                 goal: 15,  val: s => s.weightLost },
+  { id: "lost25",   emoji: "👑", name: "Goal Weight",     desc: "Drop 25 lbs — the dunk awaits", goal: 25, val: s => s.weightLost },
+];
+
+// Roll up everything the game layer needs from raw rows.
+function computeGameState(history, cardioSessions, weightLog) {
+  const all = normalizeAll(cardioSessions, history);
+  const today = startOfDay(new Date());
+  const sessionXPTotal = all.reduce((a, s) => a + sessionXP(s), 0);
+  const totalXP = sessionXPTotal + (weightLog ? weightLog.length * 15 : 0);
+  const lvl = levelInfo(totalXP);
+
+  // Best historical streak from distinct active days.
+  const dayTimes = [...new Set(all.map(s => startOfDay(s.date).getTime()))].sort((a, b) => a - b);
+  let best = 0, run = 0, prev = null;
+  for (const t of dayTimes) { run = (prev != null && t - prev === 86400000) ? run + 1 : 1; best = Math.max(best, run); prev = t; }
+  const { streak } = streakInfo(all, today);
+
+  // Sorted by time for comeback detection.
+  const sorted = all.slice().sort((a, b) => a.date - b.date);
+  let comeback = false;
+  for (let i = 1; i < sorted.length; i++) if (dayGap(sorted[i].date, sorted[i - 1].date) >= 7) { comeback = true; break; }
+
+  const startW = 225, curW = (weightLog && weightLog[0] && weightLog[0].weight) || startW;
+
+  const stats = {
+    totalSessions: all.length,
+    byType: {
+      tabata: all.filter(s => s.type === "tabata").length,
+      long_interval: all.filter(s => s.type === "long_interval").length,
+      game: all.filter(s => s.type === "game").length,
+      lift: all.filter(s => s.type === "lift").length,
+      walk: all.filter(s => s.type === "walk").length,
+    },
+    bestStreak: best, currentStreak: streak,
+    earlyBird: all.some(s => s.date.getHours() < 7),
+    nightOwl: all.some(s => s.date.getHours() >= 21),
+    comeback,
+    weightLost: Math.max(0, startW - curW),
+    level: lvl.level,
+  };
+
+  const achievements = ACHIEVEMENTS.map(a => {
+    const value = a.val(stats);
+    return { ...a, value, unlocked: value >= a.goal, progress: Math.max(0, Math.min(1, value / a.goal)) };
+  });
+
+  return {
+    totalXP, ...lvl, rank: rankFor(lvl.level),
+    stats, achievements,
+    unlockedCount: achievements.filter(a => a.unlocked).length,
+  };
+}
+
+// Celebration snapshot — what the player has already "seen", so we only
+// celebrate genuinely new milestones (and never spam on first load).
+const LS_GAME = "bttd_game_seen";
+function loadGameSeen() { try { return JSON.parse(localStorage.getItem(LS_GAME)) || null; } catch (e) { return null; } }
+function saveGameSeen(v) { try { localStorage.setItem(LS_GAME, JSON.stringify(v)); } catch (e) {} }
 
 const PHASES = [
   { weeks: "01—04", color: C.rust,     weight: "225 → 218", focus: "Build the habit. Nail form. Ease in.",         goals: ["2× gym/week", "1× cardio/week", "Sleep 7+ hrs", "Cut late-night eating"] },
@@ -3231,9 +3360,125 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
 }
 
 /* ════════════════════════════════════════════════════════════
+   GAMIFICATION UI — level hero, achievement grid, celebrations
+   ════════════════════════════════════════════════════════════ */
+function LevelHero({ game, streak, onOpenAwards }) {
+  const pct = Math.round(game.progress * 100);
+  const toNext = Math.max(0, game.span - game.into);
+  const xp = useCountUp(game.totalXP, 700);
+  return (
+    <Surface accent={C.rust} padding={20} onClick={onOpenAwards} className="card-tap">
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        {/* Level medallion */}
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          <div style={{ width: 64, height: 64, borderRadius: 18, background: `linear-gradient(135deg, ${C.rust}, ${C.amber})`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", boxShadow: `0 6px 18px ${C.rust}44` }}>
+            <span style={{ fontSize: 9, color: "#fff", fontFamily: FONT_MONO, letterSpacing: "0.1em", opacity: 0.85, marginBottom: -2 }}>LVL</span>
+            <span className="num-tab h-display" style={{ fontSize: 30, fontWeight: 800, color: "#fff", lineHeight: 1 }}>{game.level}</span>
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+            <div className="h-display" style={{ fontSize: 20, fontWeight: 800, color: C.bone, letterSpacing: "-0.03em" }}>{game.rank}</div>
+            {streak > 0 && <span style={{ fontSize: 12, color: C.rust, fontFamily: FONT_MONO, fontWeight: 700 }}>🔥 {streak}d</span>}
+          </div>
+          <div style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, marginTop: 2 }}>{Math.round(xp).toLocaleString()} XP · {toNext} to level {game.level + 1}</div>
+          {/* XP bar */}
+          <div style={{ marginTop: 8, height: 10, borderRadius: 999, background: C.raised, border: `1px solid ${C.line}`, overflow: "hidden" }}>
+            <div style={{ width: pct + "%", height: "100%", background: `linear-gradient(90deg, ${C.rust}, ${C.amber})`, borderRadius: 999, transition: "width 0.8s cubic-bezier(0.22,1,0.36,1)" }} />
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
+        <div style={{ display: "flex", gap: 4 }}>
+          {game.achievements.slice(0, 6).map(a => (
+            <span key={a.id} style={{ fontSize: 17, filter: a.unlocked ? "none" : "grayscale(1)", opacity: a.unlocked ? 1 : 0.3 }}>{a.emoji}</span>
+          ))}
+        </div>
+        <span style={{ fontSize: 11, color: C.electric, fontFamily: FONT_MONO, fontWeight: 700 }}>{game.unlockedCount}/{game.achievements.length} badges →</span>
+      </div>
+    </Surface>
+  );
+}
+
+function AchievementsSheet({ game, onClose }) {
+  const sorted = [...game.achievements].sort((a, b) => (b.unlocked - a.unlocked) || (b.progress - a.progress));
+  return (
+    <div className="backdrop" style={{ alignItems: "flex-end", padding: 0 }} onClick={onClose}>
+      <div className="slide-up" onClick={e => e.stopPropagation()} style={{
+        width: "100%", maxWidth: 480, margin: "0 auto", background: C.panel,
+        borderRadius: "22px 22px 0 0", borderTop: `1px solid ${C.line}`,
+        padding: "10px 18px calc(24px + env(safe-area-inset-bottom))", maxHeight: "88vh", overflowY: "auto",
+      }}>
+        <div style={{ width: 38, height: 4, borderRadius: 999, background: C.faint, margin: "0 auto 16px" }} />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+          <h2 className="h-display" style={{ fontSize: 22, fontWeight: 700, color: C.bone, margin: 0, letterSpacing: "-0.03em" }}>Trophy Case</h2>
+          <button onClick={onClose} className="btn" style={{ border: "none", background: "transparent", color: C.dim, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+        </div>
+        <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO, marginBottom: 16 }}>Level {game.level} · {game.rank} · {game.unlockedCount}/{game.achievements.length} unlocked</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {sorted.map(a => (
+            <div key={a.id} style={{
+              background: a.unlocked ? `${C.rust}10` : C.raised, border: `1px solid ${a.unlocked ? C.rust + "55" : C.line}`,
+              borderRadius: 14, padding: 14, position: "relative", overflow: "hidden",
+            }}>
+              <div style={{ fontSize: 30, filter: a.unlocked ? "none" : "grayscale(1)", opacity: a.unlocked ? 1 : 0.35 }}>{a.emoji}</div>
+              <div className="h-display" style={{ fontSize: 14, fontWeight: 700, color: a.unlocked ? C.bone : C.dim, marginTop: 8, letterSpacing: "-0.01em" }}>{a.name}</div>
+              <div style={{ fontSize: 11, color: C.dim, marginTop: 2, lineHeight: 1.35 }}>{a.desc}</div>
+              {a.unlocked ? (
+                <div style={{ fontSize: 10, color: C.rust, fontFamily: FONT_MONO, fontWeight: 700, marginTop: 8 }}>✓ UNLOCKED</div>
+              ) : (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ height: 5, borderRadius: 999, background: C.faint, overflow: "hidden" }}>
+                    <div style={{ width: Math.round(a.progress * 100) + "%", height: "100%", background: C.amber, borderRadius: 999 }} />
+                  </div>
+                  <div style={{ fontSize: 9, color: C.mute, fontFamily: FONT_MONO, marginTop: 4 }}>{Math.min(a.value, a.goal)}/{a.goal}</div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Full-screen dopamine hit when a new level or badge lands. Cycles a queue.
+function CelebrationOverlay({ queue, onClose }) {
+  const [i, setI] = useState(0);
+  const item = queue[i];
+  useEffect(() => {
+    getAudioCtx(); beep(660, 0.1, 0.35);
+    setTimeout(() => beep(880, 0.12, 0.4), 120);
+    setTimeout(() => beep(1175, 0.18, 0.45), 260);
+    if (navigator.vibrate) navigator.vibrate([30, 40, 60]);
+  }, [i]);
+  if (!item) return null;
+  const next = () => { if (i + 1 < queue.length) setI(i + 1); else onClose(); };
+  const isLevel = item.kind === "level";
+  const accent = isLevel ? C.amber : C.rust;
+  return (
+    <div className="backdrop" style={{ alignItems: "center", justifyContent: "center", flexDirection: "column" }} onClick={next}>
+      <div className="celebrate-pop" onClick={e => e.stopPropagation()} style={{
+        width: "86%", maxWidth: 360, background: C.panel, borderRadius: 24, border: `1px solid ${accent}55`,
+        padding: "32px 24px", textAlign: "center", boxShadow: `0 20px 60px ${accent}33`,
+      }}>
+        <div style={{ fontSize: 11, color: accent, fontFamily: FONT_MONO, letterSpacing: "0.2em", fontWeight: 700 }}>
+          {isLevel ? "LEVEL UP" : "ACHIEVEMENT UNLOCKED"}
+        </div>
+        <div className="celebrate-emoji" style={{ fontSize: 76, margin: "16px 0 8px", lineHeight: 1 }}>{isLevel ? "⬆️" : item.emoji}</div>
+        <h2 className="h-display" style={{ fontSize: 30, fontWeight: 800, color: C.bone, margin: 0, letterSpacing: "-0.03em" }}>{item.title}</h2>
+        <p className="h-serif" style={{ fontSize: 17, color: C.cream, margin: "8px 0 0" }}>{item.subtitle}</p>
+        <Btn color={accent} full size="lg" style={{ marginTop: 22 }} onClick={next}>{i + 1 < queue.length ? "Next" : "Let's go 🔥"}</Btn>
+        {queue.length > 1 && <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginTop: 10 }}>{i + 1} / {queue.length}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
    HOME — consistency-first home screen
    ════════════════════════════════════════════════════════════ */
-function HomeTab({ bodyStats, history, cardioSessions, proteinLog, vitaminD3Log, creatineLog, onGoTab, onOpenLogger, onChooseLift, onGoWalk, theme, onToggleTheme }) {
+function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, proteinLog, vitaminD3Log, creatineLog, onGoTab, onOpenLogger, onOpenAwards, onChooseLift, onGoWalk, theme, onToggleTheme }) {
   const today = todayKey();
   const dateStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
@@ -3318,8 +3563,13 @@ function HomeTab({ bodyStats, history, cardioSessions, proteinLog, vitaminD3Log,
         </p>
       </div>
 
+      {/* ── LEVEL / XP / BADGES — progression spine ── */}
+      <div className="ease-up-1" style={{ marginBottom: 14 }}>
+        <LevelHero game={game} streak={game.stats.currentStreak} onOpenAwards={onOpenAwards} />
+      </div>
+
       {/* ── TODAY — recovery engine recommendation, front & center ── */}
-      <div className="ease-up-1" style={{ marginBottom: 18 }}>
+      <div className="ease-up-2" style={{ marginBottom: 18 }}>
         <TodayCard cardioSessions={cardioSessions} workouts={history} onOpenLogger={onOpenLogger} onChooseLift={onChooseLift} onGoWalk={onGoWalk} />
       </div>
 
@@ -3532,6 +3782,9 @@ export default function App() {
   const [loggerState, setLoggerState] = useState({ open: false });
   const [restTimer, setRestTimer] = useState(null); // null or { seconds }
   const [confetti, setConfetti] = useState(false);
+  // Gamification
+  const [awardsOpen, setAwardsOpen] = useState(false);
+  const [celebration, setCelebration] = useState(null); // null or [{kind,title,subtitle,emoji}]
   const [restEnabled, setRestEnabled] = useState(true);
   const [notifEnabled, setNotifEnabled] = useState(false);
 
@@ -3571,6 +3824,30 @@ export default function App() {
   }, []);
 
   const showSave = (ok) => { setSaveMsg(ok ? "Saved" : "Failed"); setTimeout(() => setSaveMsg(""), 2400); };
+
+  // Gamification state, derived purely from logged data.
+  const game = useMemo(() => computeGameState(history, cardioSessions, weightLog), [history, cardioSessions, weightLog]);
+
+  // Celebrate genuinely new levels / badges. First run for a given browser sets
+  // a silent baseline (so a returning player isn't bombarded with old unlocks).
+  useEffect(() => {
+    if (loading) return;
+    const seen = loadGameSeen();
+    const currentBadges = game.achievements.filter(a => a.unlocked).map(a => a.id);
+    if (!seen) { saveGameSeen({ level: game.level, badges: currentBadges }); return; }
+    const queue = [];
+    if (game.level > seen.level) {
+      queue.push({ kind: "level", title: `Level ${game.level}`, subtitle: `You're a ${game.rank} now. Keep stacking.`, emoji: "⬆️" });
+    }
+    game.achievements
+      .filter(a => a.unlocked && !seen.badges.includes(a.id))
+      .forEach(a => queue.push({ kind: "badge", title: a.name, subtitle: a.desc, emoji: a.emoji }));
+    if (queue.length) {
+      setCelebration(prev => prev || queue);
+      setConfetti(true);
+      saveGameSeen({ level: game.level, badges: currentBadges });
+    }
+  }, [game, loading]);
 
   const loadData = useCallback(async () => {
     try {
@@ -3742,6 +4019,7 @@ export default function App() {
       setConfetti(true);
       setRestTimer(null);
       showSave(true);
+      toast(`+${xpForType("lift")} XP 🏋️`);
     } else showSave(false);
   };
 
@@ -3750,7 +4028,7 @@ export default function App() {
   const logTabata = async () => {
     const def = RECOVERY.TYPES.tabata;
     const { data, error } = await supabase.from("cardio_sessions").insert([{ workout_type: "tabata", completed_at: new Date().toISOString(), duration_min: def.defaultDurationMin, rpe: def.defaultRPE }]).select();
-    if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); showSave(true); } else showSave(false);
+    if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); showSave(true); toast(`+${xpForType("tabata")} XP 🔥`); } else showSave(false);
   };
 
   // Create or update a conditioning session (Tabata / Long Interval / Game).
@@ -3761,7 +4039,7 @@ export default function App() {
       if (!error && data) { setCardioSessions(p => sortCardio(p.map(r => r.id === id ? data[0] : r))); showSave(true); } else showSave(false);
     } else {
       const { data, error } = await supabase.from("cardio_sessions").insert([row]).select();
-      if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); setConfetti(true); showSave(true); } else showSave(false);
+      if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); setConfetti(true); showSave(true); toast(`+${sessionXP({ type, rpe })} XP ${RECOVERY.TYPES[type].emoji}`); } else showSave(false);
     }
     setLoggerState({ open: false });
   };
@@ -3780,7 +4058,7 @@ export default function App() {
   const logTreadmill = async ({ duration, speed, incline, miles, notes }) => {
     const label = [duration?duration+" min":null, speed?speed+" mph":null, incline?incline+"% incline":null, miles?miles+" mi":null, notes||null].filter(Boolean).join(" · ");
     const { data, error } = await supabase.from("workouts").insert([{ session_name: "Treadmill Walk", color: C.plum, total_volume: 0, exercises: [{ name: label, sets: 1, reps: "walk", weight: 0, volume: 0, duration, speed, incline, miles }] }]).select();
-    if (!error && data) { setHistory(p => [data[0],...p]); showSave(true); } else showSave(false);
+    if (!error && data) { setHistory(p => [data[0],...p]); showSave(true); toast(`+${xpForType("walk")} XP 🚶`); } else showSave(false);
   };
 
   const deleteLog = async id => {
@@ -3934,11 +4212,14 @@ export default function App() {
             bodyStats={bodyStats}
             history={history}
             cardioSessions={cardioSessions}
+            weightLog={weightLog}
+            game={game}
             proteinLog={proteinLog}
             vitaminD3Log={vitaminD3Log}
             creatineLog={creatineLog}
             onGoTab={setTab}
             onOpenLogger={(opts) => setLoggerState({ open: true, ...opts })}
+            onOpenAwards={() => setAwardsOpen(true)}
             onChooseLift={() => { setTab("workout"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
             onGoWalk={() => { setTab("workout"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
             theme={theme}
@@ -4586,6 +4867,10 @@ export default function App() {
           onDelete={deleteCardio}
         />
       )}
+
+      {/* ── GAMIFICATION overlays ── */}
+      {awardsOpen && <AchievementsSheet game={game} onClose={() => setAwardsOpen(false)} />}
+      {celebration && <CelebrationOverlay queue={celebration} onClose={() => setCelebration(null)} />}
 
       <ToastHost />
     </div>
