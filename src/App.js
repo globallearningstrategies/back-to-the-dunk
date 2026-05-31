@@ -286,12 +286,32 @@ const RECOVERY = {
       weeklyTarget: 0,
       blurb: "Two 22-min halves",
     },
+    lift: {
+      key: "lift", label: "Lift", short: "Lift", emoji: "🏋️", colorKey: "amber",
+      defaultDurationMin: 50, defaultRPE: 8,
+      hard: true,        // strength work taxes recovery like conditioning does
+      scheduled: true,
+      weeklyTarget: 2,   // rotates A → B → C
+      blurb: "Strength · A/B/C",
+    },
+    walk: {
+      key: "walk", label: "Treadmill Walk", short: "Walk", emoji: "🚶", colorKey: "plum",
+      defaultDurationMin: 40, defaultRPE: 3,
+      hard: false,       // low intensity — active recovery, no recovery cost of its own
+      scheduled: true,
+      weeklyTarget: 3,   // a few a week, mostly on recovery days
+      blurb: "Active recovery",
+    },
   },
-  // Lowest-priority first. Used when deciding what to drop when the week is
-  // short on spacing, and which weekly slot a game should consume first.
+  // Strength day rotation.
+  LIFT_ROTATION: ["A", "B", "C"],
+  // A lift may share a single hard day with a Tabata (never with the brutal
+  // Long Interval), so other days stay free for walks and true rest.
+  pairLiftWithConditioning: true,
+  // Conditioning drop order when the week is full — lowest priority first.
   DROP_ORDER: ["tabata", "long_interval"],
-  // Days since the last session → ramp band. 0–2 normal, 3–6 ease back in,
-  // 7+ treat as a restart.
+  // Days since the last HARD session → ramp band. 0–2 normal, 3–6 ease back in,
+  // 7+ treat as a restart. (Walks don't count — they're recovery, not training.)
   LAYOFF: { normalMax: 2, easeMax: 6 },
   // Above this many missed days, the comeback session is forced to a Tabata
   // (a moderate re-entry) even inside the "ease" band.
@@ -304,8 +324,9 @@ const RECOVERY = {
   gameExtraRecoveryDays: 1,
   // A brutal session (RPE ≥ this) adds one more recovery day.
   brutalRPE: 9,
-  // 4+ hard sessions in the trailing 7 days → force a rest day.
-  overtrainingHardCount: 4,
+  // This many HARD DAYS in the trailing 7 → force a recovery day (overrides
+  // weekly targets). Counts distinct days, so a paired lift+Tabata day = one.
+  overtrainingHardDays: 5,
   // How many days the tentative plan looks ahead (including today).
   planDays: 3,
 };
@@ -337,6 +358,40 @@ function normalizeSessions(rows) {
     });
 }
 
+// Merge everything the engine reasons about into one normalized stream:
+// conditioning (cardio_sessions) + lifts and walks (workouts).
+function normalizeAll(cardioRows, workoutRows) {
+  const out = normalizeSessions(cardioRows);
+  (workoutRows || []).forEach(w => {
+    const name = w.session_name || "";
+    if (name === "Treadmill Walk") {
+      out.push({
+        id: "w" + w.id, type: "walk", date: new Date(w.logged_at),
+        rpe: RECOVERY.TYPES.walk.defaultRPE,
+        duration: (w.exercises && w.exercises[0] && w.exercises[0].duration) || RECOVERY.TYPES.walk.defaultDurationMin,
+      });
+    } else {
+      const m = name.match(/^([ABC])[:.\s]/);
+      if (m) out.push({
+        id: "w" + w.id, type: "lift", code: m[1], date: new Date(w.logged_at),
+        rpe: RECOVERY.TYPES.lift.defaultRPE, duration: RECOVERY.TYPES.lift.defaultDurationMin,
+      });
+    }
+  });
+  return out;
+}
+
+// Next strength day (A → B → C) based on the most recent lift on/before refDate.
+function nextLiftCode(allSessions, refDate) {
+  const rot = RECOVERY.LIFT_ROTATION;
+  const lifts = allSessions
+    .filter(s => s.type === "lift" && s.code && dayGap(refDate, s.date) >= 0)
+    .sort((a, b) => b.date - a.date);
+  if (!lifts.length) return rot[0];
+  const idx = rot.indexOf(lifts[0].code);
+  return idx === -1 ? rot[0] : rot[(idx + 1) % rot.length];
+}
+
 // Sessions falling within the trailing `windowDays` ending on refDate (inclusive).
 function sessionsInTrailing(sessions, refDate, windowDays) {
   return sessions.filter(s => { const g = dayGap(refDate, s.date); return g >= 0 && g <= windowDays - 1; });
@@ -350,7 +405,10 @@ function requiredGapAfter(s) {
   return gap;
 }
 
-// The core recommendation for a single day.
+// The core recommendation for a single day. Returns an `items` array (what to
+// do today: 0, 1, or 2 things) plus a one-line reason. `type` mirrors items[0]
+// for convenient display. A day can pair a Tabata with a lift; walks fill
+// recovery days as active recovery.
 function recommend(allSessions, refDate) {
   const ref = startOfDay(refDate);
   const T = RECOVERY.TYPES;
@@ -365,85 +423,101 @@ function recommend(allSessions, refDate) {
   const daysSinceLast = lastBefore ? dayGap(ref, lastBefore.date) : null;
   const daysSinceHard = lastHard ? dayGap(ref, lastHard.date) : null;
 
-  const trailing7 = sessionsInTrailing(allSessions, ref, 7);
-  const hard7 = trailing7.filter(s => isHardType(s.type));
+  const t7 = sessionsInTrailing(allSessions, ref, 7);
+  // Overtraining is judged on hard DAYS, so a paired lift+Tabata day counts once.
+  const hardDays7 = new Set(t7.filter(s => isHardType(s.type)).map(s => startOfDay(s.date).getTime())).size;
 
-  // Layoff band (used for messaging + ramp).
+  const done = {
+    long_interval: t7.filter(s => s.type === "long_interval").length,
+    tabata: t7.filter(s => s.type === "tabata").length,
+    lift: t7.filter(s => s.type === "lift").length,
+    walk: t7.filter(s => s.type === "walk").length,
+    game: t7.filter(s => s.type === "game").length,
+  };
+
+  // Ramp band is driven by hard-training recency (walks don't count).
   let band;
-  if (daysSinceLast === null) band = "fresh";
-  else if (daysSinceLast <= RECOVERY.LAYOFF.normalMax) band = "normal";
-  else if (daysSinceLast <= RECOVERY.LAYOFF.easeMax) band = "ease";
+  if (daysSinceHard === null) band = "fresh";
+  else if (daysSinceHard <= RECOVERY.LAYOFF.normalMax) band = "normal";
+  else if (daysSinceHard <= RECOVERY.LAYOFF.easeMax) band = "ease";
   else band = "restart";
 
-  const rest = (reason) => ({ action: "rest", type: null, reason, band, flags, daysSinceLast, daysSinceHard });
-  const train = (type, reason) => ({ action: "train", type, reason, band, flags, daysSinceLast, daysSinceHard });
+  const mk = (action, items, reason) => ({ action, items, type: items[0] ? items[0].type : null, reason, band, flags, daysSinceLast, daysSinceHard });
+  const rest = (reason) => mk("rest", [], reason);
 
-  // 1) Already trained hard today — don't stack.
-  if (todaysHard.length) {
-    if (daysSinceHard === 1) flags.push("Two hard days in a row — keep tomorrow easy.");
-    const t = T[todaysHard[0].type];
-    return rest(`${t.label} already done today — let it absorb and recover.`);
-  }
+  const walkOwed = done.walk < T.walk.weeklyTarget && !todays.some(s => s.type === "walk");
+  const liftCode = nextLiftCode(allSessions, ref);
 
-  // 2) Overtraining guard — overrides weekly targets.
-  if (hard7.length >= RECOVERY.overtrainingHardCount) {
-    return rest(`${hard7.length} hard sessions in 7 days — your body needs a rest day, targets can wait.`);
-  }
+  // On a non-hard day, an owed walk is the active-recovery pick; else rest.
+  const recoveryDay = (why) => walkOwed
+    ? mk("train", [{ type: "walk" }], `${why} An easy walk is ideal active recovery (${done.walk}/${T.walk.weeklyTarget} this week).`)
+    : rest(`${why} You're recovered and on track — take it easy.`);
 
-  // 3) Spacing — no back-to-back hard days; games/brutal sessions need longer.
-  if (lastHard && daysSinceHard < requiredGapAfter(lastHard)) {
-    const t = T[lastHard.type];
-    const why = lastHard.type === "game"
-      ? `Hard game ${agoWord(daysSinceHard)} still counts as load — take an easy/rest day first.`
-      : `Hard ${t.short} ${agoWord(daysSinceHard)} — recover today so hard days don't stack.`;
-    return rest(why);
-  }
-
-  // ── Cleared to train. Work out what's owed this rolling week. ──
-  const done = {
-    tabata: trailing7.filter(s => s.type === "tabata").length,
-    long_interval: trailing7.filter(s => s.type === "long_interval").length,
-  };
-  const games7 = trailing7.filter(s => s.type === "game").length;
-
-  // Games consume weekly hard slots, lowest priority first.
-  let targetTab = T.tabata.weeklyTarget;
-  let targetLI = T.long_interval.weeklyTarget;
-  let offset = games7;
-  const cutTab = Math.min(targetTab, offset); targetTab -= cutTab; offset -= cutTab;
-  const cutLI = Math.min(targetLI, offset); targetLI -= cutLI; offset -= cutLI;
-
+  // Weekly conditioning targets, reduced by any games played (lowest priority first).
+  let targetTab = T.tabata.weeklyTarget, targetLI = T.long_interval.weeklyTarget, off = done.game;
+  const ct = Math.min(targetTab, off); targetTab -= ct; off -= ct;
+  const cl = Math.min(targetLI, off); targetLI -= cl; off -= cl;
   const owedLI = Math.max(0, targetLI - done.long_interval);
   const owedTab = Math.max(0, targetTab - done.tabata);
+  const owedLift = Math.max(0, T.lift.weeklyTarget - done.lift);
+  const canRampHard = band !== "restart" && band !== "fresh" && !(band === "ease" && daysSinceHard >= RECOVERY.reentryTabataAfterDays);
 
-  // Highest priority owed first (Long Interval is the marquee weekly session).
-  let pick = owedLI > 0 ? "long_interval" : owedTab > 0 ? "tabata" : null;
-  let rampReason = "";
+  // 1) Already trained hard today — don't stack a second hard day...
+  if (todaysHard.length) {
+    if (daysSinceHard === 1) flags.push("Two hard days in a row — keep tomorrow easy.");
+    // ...but a lift may pair with today's Tabata while you're already warm.
+    const didTabataToday = todays.some(s => s.type === "tabata");
+    const didLiftToday = todays.some(s => s.type === "lift");
+    if (RECOVERY.pairLiftWithConditioning && didTabataToday && !didLiftToday && owedLift > 0 && canRampHard) {
+      return mk("train", [{ type: "lift", code: liftCode }], `Tabata's done — pair Lift Day ${liftCode} with it while you're warm (${done.lift}/${T.lift.weeklyTarget} lifts this week).`);
+    }
+    return recoveryDay(`${T[todaysHard[0].type].label} already done today — let it absorb.`);
+  }
 
-  // Layoff ramp — never throw the hardest session at a returning athlete.
+  // 2) Overtraining guard — too many hard days lately overrides weekly targets.
+  if (hardDays7 >= RECOVERY.overtrainingHardDays) {
+    return recoveryDay(`${hardDays7} hard days in the last 7 — ease off the intensity, targets can wait.`);
+  }
+
+  // 3) Spacing — keep hard days apart (games/brutal sessions need longer).
+  if (lastHard && daysSinceHard < requiredGapAfter(lastHard)) {
+    const why = lastHard.type === "game"
+      ? `Hard game ${agoWord(daysSinceHard)} still counts as load.`
+      : `Hard ${T[lastHard.type].short} ${agoWord(daysSinceHard)} — space the hard days out.`;
+    return recoveryDay(why);
+  }
+
+  // ── Eligible hard day. Layoff ramp first: ease a returning athlete in. ──
   if (band === "restart" || band === "fresh") {
-    pick = "tabata";
-    rampReason = band === "fresh"
+    return mk("train", [{ type: "tabata" }], band === "fresh"
       ? "First session in — start with a Tabata to set a baseline."
-      : `It's been ${daysSinceLast} days off — restart with a single Tabata. Expect a session or two to feel normal again.`;
-  } else if (band === "ease" && pick === "long_interval" && daysSinceLast >= RECOVERY.reentryTabataAfterDays) {
-    pick = "tabata";
-    rampReason = `${daysSinceLast} days since your last session — ease back with a Tabata before the Long Interval.`;
+      : `It's been ${daysSinceHard} days since real training — restart with a single Tabata. Give it a session or two to feel normal.`);
+  }
+  if (band === "ease" && daysSinceHard >= RECOVERY.reentryTabataAfterDays) {
+    return mk("train", [{ type: "tabata" }], `${daysSinceHard} days off the hard stuff — ease back with a Tabata before more.`);
   }
 
-  if (!pick) {
-    if (games7 > 0) return rest("Your game this week already covers the hard load — rest or keep it light.");
-    return rest(`Weekly targets met (${T.tabata.weeklyTarget} Tabata + ${T.long_interval.weeklyTarget} Long Interval) — take a well-earned rest day.`);
-  }
+  // Pick the conditioning primary by priority (Long Interval is the marquee).
+  const primary = owedLI > 0 ? "long_interval" : owedTab > 0 ? "tabata" : null;
 
-  let reason;
-  if (rampReason) reason = rampReason;
-  else if (pick === "long_interval") reason = `Long Interval owed this week (${done.long_interval}/${T.long_interval.weeklyTarget}) and you're recovered — go get it.`;
-  else {
-    const gameNote = games7 > 0 ? ` (a game already covered some load)` : "";
-    reason = `Tabata owed this week (${done.tabata}/${T.tabata.weeklyTarget})${gameNote} and you're recovered — quick and hard.`;
+  if (primary === "long_interval") {
+    return mk("train", [{ type: "long_interval" }], `Long Interval owed (${done.long_interval}/${targetLI}) and you're recovered — the week's marquee session.`);
   }
-  return train(pick, reason);
+  if (primary === "tabata") {
+    // Pair a lift onto the Tabata day (never onto the brutal Long Interval).
+    if (RECOVERY.pairLiftWithConditioning && owedLift > 0) {
+      return mk("train", [{ type: "tabata" }, { type: "lift", code: liftCode }],
+        `Tabata + Lift Day ${liftCode} — pair them today, then recover tomorrow (Tabata ${done.tabata}/${targetTab}, lifts ${done.lift}/${T.lift.weeklyTarget}).`);
+    }
+    return mk("train", [{ type: "tabata" }], `Tabata owed (${done.tabata}/${targetTab}) and you're recovered — quick and hard.`);
+  }
+  // No conditioning owed — get a lift in on its own if one's still owed.
+  if (owedLift > 0) {
+    return mk("train", [{ type: "lift", code: liftCode }], `Lift Day ${liftCode} owed (${done.lift}/${T.lift.weeklyTarget}) and you're recovered — go move some weight.`);
+  }
+  // Everything's met → recovery day.
+  if (done.game > 0) return recoveryDay("A game this week already covers your hard load.");
+  return recoveryDay("Weekly targets met (2 Tabata · 1 Long Interval · 2 lifts).");
 }
 
 // Forward-simulated tentative plan. Each recommended session is added to the
@@ -456,10 +530,10 @@ function buildPlan(allSessions, fromDate, nDays) {
     const day = addDays(fromDate, i);
     const r = recommend(work, day);
     out.push({ date: day, ...r });
-    if (r.action === "train" && r.type) {
-      const def = RECOVERY.TYPES[r.type];
-      work.push({ type: r.type, date: day, rpe: def.defaultRPE, duration: def.defaultDurationMin, planned: true });
-    }
+    (r.items || []).forEach(it => {
+      const def = RECOVERY.TYPES[it.type];
+      work.push({ type: it.type, code: it.code, date: day, rpe: def.defaultRPE, duration: def.defaultDurationMin, planned: true });
+    });
   }
   return out;
 }
@@ -474,6 +548,8 @@ function trailingSummary(allSessions, refDate, windowDays) {
       tabata: t.filter(s => s.type === "tabata").length,
       long_interval: t.filter(s => s.type === "long_interval").length,
       game: t.filter(s => s.type === "game").length,
+      lift: t.filter(s => s.type === "lift").length,
+      walk: t.filter(s => s.type === "walk").length,
     },
   };
 }
@@ -2962,9 +3038,9 @@ function toLocalInput(d) {
 /* ════════════════════════════════════════════════════════════
    TODAY CARD — the recovery engine's recommendation, front & center
    ════════════════════════════════════════════════════════════ */
-function TodayCard({ sessions, onOpenLogger }) {
+function TodayCard({ cardioSessions, workouts, onOpenLogger, onChooseLift, onGoWalk }) {
   const [showOverride, setShowOverride] = useState(false);
-  const engine = normalizeSessions(sessions);
+  const engine = normalizeAll(cardioSessions, workouts);
   const today = startOfDay(new Date());
   const plan = buildPlan(engine, today, RECOVERY.planDays);
   const rec = plan[0];
@@ -2972,11 +3048,24 @@ function TodayCard({ sessions, onOpenLogger }) {
   const s30 = trailingSummary(engine, today, 30);
   const { streak, layoff } = streakInfo(engine, today);
 
-  const trained = rec.action === "train";
-  const recDef = trained ? RECOVERY.TYPES[rec.type] : null;
-  const recColor = trained ? C[recDef.colorKey] : C.dim;
-  const headline = trained ? recDef.label : "Rest";
-  const headEmoji = trained ? recDef.emoji : "🛌";
+  // Short label for one scheduled item (lifts show their A/B/C day).
+  const itemLabel = (it) => it.type === "lift" ? `Lift ${it.code || "A"}` : RECOVERY.TYPES[it.type].short;
+  const itemsOf = (p) => (p.action === "train" ? (p.items || []) : []);
+
+  const items = itemsOf(rec);
+  const trained = items.length > 0;
+  const primDef = trained ? RECOVERY.TYPES[items[0].type] : null;
+  const recColor = trained ? C[primDef.colorKey] : C.dim;
+  const headEmoji = trained ? items.map(it => RECOVERY.TYPES[it.type].emoji).join(" ") : "🛌";
+  const headline = trained ? items.map(itemLabel).join(" + ") : "Rest";
+
+  // Tap a scheduled item → take the right action (log sheet, or jump to the tab).
+  const actOn = (it, warn) => {
+    if (it.type === "lift") onChooseLift(it.code || "A");
+    else if (it.type === "walk") onGoWalk();
+    else onOpenLogger(warn ? { prefillType: it.type, warn } : { prefillType: it.type });
+  };
+  const actLabel = (it) => it.type === "lift" ? `🏋️ Lift Day ${it.code || "A"}` : it.type === "walk" ? "🚶 Log a walk" : `${RECOVERY.TYPES[it.type].emoji} ${RECOVERY.TYPES[it.type].short}`;
 
   const bandNote = {
     restart: layoff != null ? `Restart · ${layoff}d layoff` : "Restart",
@@ -2993,8 +3082,8 @@ function TodayCard({ sessions, onOpenLogger }) {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
-        <span style={{ fontSize: 34, lineHeight: 1 }}>{headEmoji}</span>
-        <h2 className="h-display" style={{ fontSize: 34, margin: 0, color: recColor, letterSpacing: "-0.04em", lineHeight: 1 }}>{headline}</h2>
+        <span style={{ fontSize: 30, lineHeight: 1 }}>{headEmoji}</span>
+        <h2 className="h-display" style={{ fontSize: 32, margin: 0, color: recColor, letterSpacing: "-0.04em", lineHeight: 1 }}>{headline}</h2>
       </div>
       <p className="h-serif" style={{ fontSize: 17, color: C.cream, margin: "10px 0 0", lineHeight: 1.45 }}>{rec.reason}</p>
 
@@ -3002,11 +3091,15 @@ function TodayCard({ sessions, onOpenLogger }) {
         <div key={i} style={{ marginTop: 10, fontSize: 12, color: C.red, fontFamily: FONT_MONO, display: "flex", gap: 6, alignItems: "center" }}>⚠ {f}</div>
       ))}
 
-      {/* Primary action */}
+      {/* Primary action(s) — one button per scheduled item (e.g. Tabata + Lift) */}
       {trained ? (
-        <Btn color={recColor} full size="lg" style={{ marginTop: 16 }} onClick={() => onOpenLogger({ prefillType: rec.type })}>
-          Log {recDef.label}
-        </Btn>
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          {items.map((it, i) => (
+            <Btn key={i} color={C[RECOVERY.TYPES[it.type].colorKey]} full={items.length === 1} size="lg" style={{ flex: 1 }} onClick={() => actOn(it)}>
+              {actLabel(it)}
+            </Btn>
+          ))}
+        </div>
       ) : (
         <>
           <Btn color={C.dim} ghost full style={{ marginTop: 16 }} onClick={() => setShowOverride(v => !v)}>
@@ -3015,10 +3108,10 @@ function TodayCard({ sessions, onOpenLogger }) {
           {showOverride && (
             <div className="ease-up" style={{ marginTop: 12, padding: 14, borderRadius: 12, background: `${C.amber}12`, border: `1px solid ${C.amber}40` }}>
               <div style={{ fontSize: 12, color: C.amber, fontFamily: FONT_MONO, marginBottom: 10, lineHeight: 1.5 }}>⚠ Today's a recovery day. Pushing through cuts into recovery — go lighter than usual.</div>
-              <div style={{ display: "flex", gap: 8 }}>
-                {["tabata", "long_interval"].map(tk => {
-                  const d = RECOVERY.TYPES[tk];
-                  return <Btn key={tk} color={C[d.colorKey]} style={{ flex: 1 }} onClick={() => onOpenLogger({ prefillType: tk, warn: "Recovery day — logging this as an override." })}>{d.emoji} {d.short}</Btn>;
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[{ type: "tabata" }, { type: "long_interval" }, { type: "lift", code: nextLiftCode(engine, today) }, { type: "walk" }].map((it, i) => {
+                  const d = RECOVERY.TYPES[it.type];
+                  return <Btn key={i} color={C[d.colorKey]} size="sm" style={{ flex: "1 1 40%" }} onClick={() => actOn(it, "Recovery day — logging this as an override.")}>{actLabel(it)}</Btn>;
                 })}
               </div>
             </div>
@@ -3031,13 +3124,15 @@ function TodayCard({ sessions, onOpenLogger }) {
         <Eyebrow>Coming up</Eyebrow>
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
           {plan.slice(1).map((p, i) => {
-            const def = p.action === "train" ? RECOVERY.TYPES[p.type] : null;
-            const col = def ? C[def.colorKey] : C.dim;
+            const its = itemsOf(p);
+            const col = its.length ? C[RECOVERY.TYPES[its[0].type].colorKey] : C.dim;
+            const emoji = its.length ? its.map(it => RECOVERY.TYPES[it.type].emoji).join("") : "🛌";
+            const lbl = its.length ? its.map(itemLabel).join(" + ") : "Rest";
             return (
-              <div key={i} style={{ flex: 1, padding: "10px 8px", borderRadius: 12, background: C.raised, border: `1px solid ${C.line}`, textAlign: "center" }}>
+              <div key={i} style={{ flex: 1, padding: "10px 6px", borderRadius: 12, background: C.raised, border: `1px solid ${C.line}`, textAlign: "center" }}>
                 <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.06em" }}>{p.date.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()}</div>
-                <div style={{ fontSize: 18, marginTop: 6 }}>{def ? def.emoji : "🛌"}</div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: col, marginTop: 4 }}>{def ? def.short : "Rest"}</div>
+                <div style={{ fontSize: 17, marginTop: 6 }}>{emoji}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: col, marginTop: 4, lineHeight: 1.2 }}>{lbl}</div>
               </div>
             );
           })}
@@ -3054,10 +3149,10 @@ function TodayCard({ sessions, onOpenLogger }) {
               <span className="num-tab h-display" style={{ fontSize: 24, fontWeight: 700, color: C.bone, letterSpacing: "-0.03em" }}>{s.count}</span>
               <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO }}>· {s.hard} hard</span>
             </div>
-            <div style={{ display: "flex", gap: 10, marginTop: 8, fontSize: 11, fontFamily: FONT_MONO, color: C.dim }}>
-              <span title="Tabata">{RECOVERY.TYPES.tabata.emoji} {s.byType.tabata}</span>
-              <span title="Long Interval">{RECOVERY.TYPES.long_interval.emoji} {s.byType.long_interval}</span>
-              <span title="Game">{RECOVERY.TYPES.game.emoji} {s.byType.game}</span>
+            <div style={{ display: "flex", gap: 8, marginTop: 8, fontSize: 11, fontFamily: FONT_MONO, color: C.dim, flexWrap: "wrap" }}>
+              {["tabata", "long_interval", "lift", "walk", "game"].map(k => (
+                <span key={k} title={RECOVERY.TYPES[k].label}>{RECOVERY.TYPES[k].emoji} {s.byType[k]}</span>
+              ))}
             </div>
           </div>
         ))}
@@ -3170,7 +3265,7 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
 /* ════════════════════════════════════════════════════════════
    HOME — consistency-first home screen
    ════════════════════════════════════════════════════════════ */
-function HomeTab({ bodyStats, history, cardioSessions, proteinLog, vitaminD3Log, creatineLog, onGoTab, onOpenLogger, theme, onToggleTheme }) {
+function HomeTab({ bodyStats, history, cardioSessions, proteinLog, vitaminD3Log, creatineLog, onGoTab, onOpenLogger, onChooseLift, onGoWalk, theme, onToggleTheme }) {
   const today = todayKey();
   const dateStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
@@ -3257,7 +3352,7 @@ function HomeTab({ bodyStats, history, cardioSessions, proteinLog, vitaminD3Log,
 
       {/* ── TODAY — recovery engine recommendation, front & center ── */}
       <div className="ease-up-1" style={{ marginBottom: 18 }}>
-        <TodayCard sessions={cardioSessions} onOpenLogger={onOpenLogger} />
+        <TodayCard cardioSessions={cardioSessions} workouts={history} onOpenLogger={onOpenLogger} onChooseLift={onChooseLift} onGoWalk={onGoWalk} />
       </div>
 
       {/* ── DAILY RINGS — close them every day ── */}
@@ -3892,6 +3987,13 @@ export default function App() {
             creatineLog={creatineLog}
             onGoTab={setTab}
             onOpenLogger={(opts) => setLoggerState({ open: true, ...opts })}
+            onChooseLift={(code) => {
+              const idx = SESSIONS.findIndex(s => s.code === code);
+              if (idx !== -1) setActiveSession(idx);
+              setTab("workout");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            onGoWalk={() => { setTab("workout"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
             theme={theme}
             onToggleTheme={toggleTheme}
           />
