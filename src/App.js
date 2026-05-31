@@ -328,6 +328,23 @@ const RECOVERY = {
 // Lifts log via the gym session card; walks via the walk logger.
 const CONDITIONING_TYPES = ["tabata", "long_interval", "game"];
 
+/* ── "What's happening in your body" — plain-language recovery science that
+   rides along with each recommendation. Motivating, accurate, not a textbook. ── */
+const SCI = {
+  liRecover: "A hard interval burns through your muscles' stored fuel (glycogen) and leaves microscopic tears in the fibers. Today your body refills that fuel, patches the fibers back stronger, and quietly upgrades your heart and mitochondria. That repair IS the fitness gain — resting now is what locks it in.",
+  tabataRecover: "That all-out effort flooded your muscles with metabolites and taxed your nervous system. A lighter day clears them out and lets the adaptation set in, so your next hard effort actually feels easier.",
+  liftRecover: "Your muscles are still rebuilding from that lift — the 'make me stronger' signal (protein synthesis) stays switched on for a day or two. Give them the day and they come back denser and more powerful.",
+  overtrain: "Stacking hard days piles up fatigue faster than your body can clear it — stress hormones like cortisol stay elevated and performance dips. A true rest day resets your nervous system so your next session is sharp, not flat.",
+  walk: "An easy walk pumps fresh blood through tired muscles — flushing out waste and delivering nutrients — and nudges you into 'rest-and-digest' mode. It actually speeds recovery more than sitting still, with zero added stress.",
+  targetsMet: "You've banked the week's hard work. More isn't better here — you get fitter between sessions, not during them. The recovery is part of the plan, not a break from it.",
+  gameCovered: "A full game is a huge fuel-burning, high-impact load — it counts as a hard session. Let your legs bounce back before the next push.",
+  liDo: "Long intervals push your aerobic ceiling: sustained hard effort grows your heart's pumping power and builds more mitochondria — the tiny engines in your cells. It's the single biggest fitness driver of your week.",
+  tabata: "Short, all-out bursts drive up your VO₂ max and train your body to clear lactate fast. Just four minutes also sparks an 'afterburn' (EPOC) that keeps your metabolism elevated for hours.",
+  tabataLift: "Two adaptations at once: the lift signals your muscles to build, the Tabata sharpens your engine. Pairing them onto one hard day keeps tomorrow free to recover both.",
+  lift: "Lifting creates tiny tears and a 'come back stronger' signal — muscle-building stays elevated for 24–48 hours. Add a little each time and you get denser, more powerful, more explosive off the floor.",
+  restart: "After time off, aerobic fitness fades first (detraining). A single Tabata wakes the system back up without overwhelming it — give it a session or two and muscle memory snaps your old capacity back fast.",
+};
+
 /* ── Recovery engine — pure functions over a normalized session list ──
    A "session" is { id, type, date(Date), rpe, duration, planned? }.
    `recommend()` returns { action:'rest'|'train', type, reason, band, flags[] }. */
@@ -428,15 +445,18 @@ function recommend(allSessions, refDate) {
   else if (daysSinceHard <= RECOVERY.LAYOFF.easeMax) band = "ease";
   else band = "restart";
 
-  const mk = (action, items, reason) => ({ action, items, type: items[0] ? items[0].type : null, reason, band, flags, daysSinceLast, daysSinceHard });
-  const rest = (reason) => mk("rest", [], reason);
+  const mk = (action, items, reason, science = "") => ({ action, items, type: items[0] ? items[0].type : null, reason, science, band, flags, daysSinceLast, daysSinceHard });
+  const rest = (reason, science) => mk("rest", [], reason, science);
 
   const walkOwed = done.walk < T.walk.weeklyTarget && !todays.some(s => s.type === "walk");
 
   // On a non-hard day, an owed walk is the active-recovery pick; else rest.
-  const recoveryDay = (why) => walkOwed
-    ? mk("train", [{ type: "walk" }], `${why} An easy walk is ideal active recovery (${done.walk}/${T.walk.weeklyTarget} this week).`)
-    : rest(`${why} You're recovered and on track — take it easy.`);
+  const recoveryDay = (why, restSci) => walkOwed
+    ? mk("train", [{ type: "walk" }], `${why} An easy walk is ideal active recovery (${done.walk}/${T.walk.weeklyTarget} this week).`, SCI.walk)
+    : rest(`${why} You're recovered and on track — take it easy.`, restSci);
+
+  // Which "still recovering" note fits the last hard session?
+  const recoverSci = (type) => type === "long_interval" ? SCI.liRecover : type === "lift" ? SCI.liftRecover : type === "game" ? SCI.gameCovered : SCI.tabataRecover;
 
   // Weekly conditioning targets, reduced by any games played (lowest priority first).
   let targetTab = T.tabata.weeklyTarget, targetLI = T.long_interval.weeklyTarget, off = done.game;
@@ -454,14 +474,14 @@ function recommend(allSessions, refDate) {
     const didTabataToday = todays.some(s => s.type === "tabata");
     const didLiftToday = todays.some(s => s.type === "lift");
     if (RECOVERY.pairLiftWithConditioning && didTabataToday && !didLiftToday && owedLift > 0 && canRampHard) {
-      return mk("train", [{ type: "lift" }], `Tabata's done — pair a Lift with it while you're warm (${done.lift}/${T.lift.weeklyTarget} lifts this week).`);
+      return mk("train", [{ type: "lift" }], `Tabata's done — pair a Lift with it while you're warm (${done.lift}/${T.lift.weeklyTarget} lifts this week).`, SCI.lift);
     }
-    return recoveryDay(`${T[todaysHard[0].type].label} already done today — let it absorb.`);
+    return recoveryDay(`${T[todaysHard[0].type].label} already done today — let it absorb.`, recoverSci(todaysHard[0].type));
   }
 
   // 2) Overtraining guard — too many hard days lately overrides weekly targets.
   if (hardDays7 >= RECOVERY.overtrainingHardDays) {
-    return recoveryDay(`${hardDays7} hard days in the last 7 — ease off the intensity, targets can wait.`);
+    return recoveryDay(`${hardDays7} hard days in the last 7 — ease off the intensity, targets can wait.`, SCI.overtrain);
   }
 
   // 3) Spacing — keep hard days apart (games/brutal sessions need longer).
@@ -469,40 +489,40 @@ function recommend(allSessions, refDate) {
     const why = lastHard.type === "game"
       ? `Hard game ${agoWord(daysSinceHard)} still counts as load.`
       : `Hard ${T[lastHard.type].short} ${agoWord(daysSinceHard)} — space the hard days out.`;
-    return recoveryDay(why);
+    return recoveryDay(why, recoverSci(lastHard.type));
   }
 
   // ── Eligible hard day. Layoff ramp first: ease a returning athlete in. ──
   if (band === "restart" || band === "fresh") {
     return mk("train", [{ type: "tabata" }], band === "fresh"
       ? "First session in — start with a Tabata to set a baseline."
-      : `It's been ${daysSinceHard} days since real training — restart with a single Tabata. Give it a session or two to feel normal.`);
+      : `It's been ${daysSinceHard} days since real training — restart with a single Tabata. Give it a session or two to feel normal.`, SCI.restart);
   }
   if (band === "ease" && daysSinceHard >= RECOVERY.reentryTabataAfterDays) {
-    return mk("train", [{ type: "tabata" }], `${daysSinceHard} days off the hard stuff — ease back with a Tabata before more.`);
+    return mk("train", [{ type: "tabata" }], `${daysSinceHard} days off the hard stuff — ease back with a Tabata before more.`, SCI.restart);
   }
 
   // Pick the conditioning primary by priority (Long Interval is the marquee).
   const primary = owedLI > 0 ? "long_interval" : owedTab > 0 ? "tabata" : null;
 
   if (primary === "long_interval") {
-    return mk("train", [{ type: "long_interval" }], `Long Interval owed (${done.long_interval}/${targetLI}) and you're recovered — the week's marquee session.`);
+    return mk("train", [{ type: "long_interval" }], `Long Interval owed (${done.long_interval}/${targetLI}) and you're recovered — the week's marquee session.`, SCI.liDo);
   }
   if (primary === "tabata") {
     // Pair a lift onto the Tabata day (never onto the brutal Long Interval).
     if (RECOVERY.pairLiftWithConditioning && owedLift > 0) {
       return mk("train", [{ type: "tabata" }, { type: "lift" }],
-        `Tabata + Lift — pair them today, then recover tomorrow (Tabata ${done.tabata}/${targetTab}, lifts ${done.lift}/${T.lift.weeklyTarget}).`);
+        `Tabata + Lift — pair them today, then recover tomorrow (Tabata ${done.tabata}/${targetTab}, lifts ${done.lift}/${T.lift.weeklyTarget}).`, SCI.tabataLift);
     }
-    return mk("train", [{ type: "tabata" }], `Tabata owed (${done.tabata}/${targetTab}) and you're recovered — quick and hard.`);
+    return mk("train", [{ type: "tabata" }], `Tabata owed (${done.tabata}/${targetTab}) and you're recovered — quick and hard.`, SCI.tabata);
   }
   // No conditioning owed — get a lift in on its own if one's still owed.
   if (owedLift > 0) {
-    return mk("train", [{ type: "lift" }], `Lift owed (${done.lift}/${T.lift.weeklyTarget}) and you're recovered — go move some weight.`);
+    return mk("train", [{ type: "lift" }], `Lift owed (${done.lift}/${T.lift.weeklyTarget}) and you're recovered — go move some weight.`, SCI.lift);
   }
   // Everything's met → recovery day.
-  if (done.game > 0) return recoveryDay("A game this week already covers your hard load.");
-  return recoveryDay("Weekly targets met (2 Tabata · 1 Long Interval · 2 lifts).");
+  if (done.game > 0) return recoveryDay("A game this week already covers your hard load.", SCI.gameCovered);
+  return recoveryDay("Weekly targets met (2 Tabata · 1 Long Interval · 2 lifts).", SCI.targetsMet);
 }
 
 // Forward-simulated tentative plan. Each recommended session is added to the
@@ -3141,6 +3161,7 @@ function toLocalInput(d) {
    ════════════════════════════════════════════════════════════ */
 function TodayCard({ cardioSessions, workouts, onOpenLogger, onChooseLift, onGoWalk }) {
   const [showOverride, setShowOverride] = useState(false);
+  const [showSci, setShowSci] = useState(true);
   const engine = normalizeAll(cardioSessions, workouts);
   const today = startOfDay(new Date());
   const plan = buildPlan(engine, today, 7);
@@ -3187,6 +3208,19 @@ function TodayCard({ cardioSessions, workouts, onOpenLogger, onChooseLift, onGoW
         <h2 className="h-display" style={{ fontSize: 32, margin: 0, color: recColor, letterSpacing: "-0.04em", lineHeight: 1 }}>{headline}</h2>
       </div>
       <p className="h-serif" style={{ fontSize: 17, color: C.cream, margin: "10px 0 0", lineHeight: 1.45 }}>{rec.reason}</p>
+
+      {/* What's happening in your body — recovery science, tap to collapse */}
+      {rec.science && (
+        <div style={{ marginTop: 12 }}>
+          <button onClick={() => setShowSci(v => !v)} className="btn" style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 10, color: C.electric, fontFamily: FONT_MONO, letterSpacing: "0.1em", fontWeight: 700 }}>🧬 WHAT'S HAPPENING</span>
+            <span style={{ fontSize: 9, color: C.dim }}>{showSci ? "▲" : "▼"}</span>
+          </button>
+          {showSci && (
+            <p className="h-serif" style={{ fontSize: 14.5, color: C.cream, margin: "8px 0 0", lineHeight: 1.55, padding: "12px 14px", background: C.raised, borderRadius: 12, border: `1px solid ${C.line}` }}>{rec.science}</p>
+          )}
+        </div>
+      )}
 
       {(rec.flags || []).map((f, i) => (
         <div key={i} style={{ marginTop: 10, fontSize: 12, color: C.red, fontFamily: FONT_MONO, display: "flex", gap: 6, alignItems: "center" }}>⚠ {f}</div>
