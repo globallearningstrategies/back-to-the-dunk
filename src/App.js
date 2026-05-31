@@ -3143,7 +3143,7 @@ function TodayCard({ cardioSessions, workouts, onOpenLogger, onChooseLift, onGoW
   const [showOverride, setShowOverride] = useState(false);
   const engine = normalizeAll(cardioSessions, workouts);
   const today = startOfDay(new Date());
-  const plan = buildPlan(engine, today, RECOVERY.planDays);
+  const plan = buildPlan(engine, today, 7);
   const rec = plan[0];
   const s7 = trailingSummary(engine, today, 7);
   const s30 = trailingSummary(engine, today, 30);
@@ -3222,18 +3222,20 @@ function TodayCard({ cardioSessions, workouts, onOpenLogger, onChooseLift, onGoW
 
       {/* Tentative next-days plan */}
       <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.line}` }}>
-        <Eyebrow>Coming up</Eyebrow>
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <Eyebrow>Coming up · this week</Eyebrow>
+        <div style={{ marginTop: 10 }}>
           {plan.slice(1).map((p, i) => {
             const its = itemsOf(p);
             const col = its.length ? C[RECOVERY.TYPES[its[0].type].colorKey] : C.dim;
-            const emoji = its.length ? its.map(it => RECOVERY.TYPES[it.type].emoji).join("") : "🛌";
+            const emoji = its.length ? its.map(it => RECOVERY.TYPES[it.type].emoji).join(" ") : "🛌";
             const lbl = its.length ? its.map(itemLabel).join(" + ") : "Rest";
+            const hasLift = its.some(it => it.type === "lift");
             return (
-              <div key={i} style={{ flex: 1, padding: "10px 6px", borderRadius: 12, background: C.raised, border: `1px solid ${C.line}`, textAlign: "center" }}>
-                <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.06em" }}>{p.date.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()}</div>
-                <div style={{ fontSize: 17, marginTop: 6 }}>{emoji}</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: col, marginTop: 4, lineHeight: 1.2 }}>{lbl}</div>
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: i < plan.length - 2 ? `1px solid ${C.line}` : "none" }}>
+                <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, width: 36, flexShrink: 0 }}>{p.date.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()}</span>
+                <span style={{ fontSize: 17, width: 48, flexShrink: 0 }}>{emoji}</span>
+                <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: col, letterSpacing: "-0.01em" }}>{lbl}</span>
+                {hasLift && <span style={{ fontSize: 9, color: C.amber, fontFamily: FONT_MONO, fontWeight: 700, border: `1px solid ${C.amber}55`, borderRadius: 6, padding: "2px 6px" }}>+ LIFT</span>}
               </div>
             );
           })}
@@ -3905,6 +3907,7 @@ export default function App() {
   const [celebration, setCelebration] = useState(null); // null or [{kind,title,subtitle,emoji}]
   const [walkState, setWalkState] = useState({ open: false }); // { open, editing? }
   const [liftEdit, setLiftEdit] = useState(null); // workout row being date-edited
+  const [liftDate, setLiftDate] = useState(toLocalInput(new Date())); // gym log date (retroactive)
   const [restEnabled, setRestEnabled] = useState(true);
   const [notifEnabled, setNotifEnabled] = useState(false);
 
@@ -4131,11 +4134,13 @@ export default function App() {
       };
     });
     const payload = { session_name: session.code+": "+session.name, color: session.color, total_volume: exVols.reduce((a,e)=>a+e.volume,0), exercises: exVols };
+    if (liftDate) payload.logged_at = new Date(liftDate).toISOString();
     const { data, error } = await supabase.from("workouts").insert([payload]).select();
     if (!error && data) {
-      setHistory(p => [data[0],...p]);
+      setHistory(p => sortByLogged([data[0],...p]));
       const nc = {...checked}; session.exercises.forEach(ex => delete nc[sk+"_"+ex.id]); setChecked(nc);
       const newVals = {...vals}; session.exercises.forEach(ex => delete newVals[sk+"_"+ex.id]); setVals(newVals);
+      setLiftDate(toLocalInput(new Date()));
       setConfetti(true);
       setRestTimer(null);
       showSave(true);
@@ -4504,7 +4509,12 @@ export default function App() {
                     onEditReps={(setIndex, currentReps) => openRepsEditor(ex.id, ex, setIndex, currentReps)}
                   />
                 ))}
-                <Btn color={session.color} onClick={logSession} disabled={!anyChecked} full size="lg" style={{ marginTop: 18 }}>
+                <div style={{ marginTop: 16 }}>
+                  <Eyebrow>Workout date</Eyebrow>
+                  <input type="datetime-local" value={liftDate} max={toLocalInput(new Date())} onChange={e => setLiftDate(e.target.value)}
+                    style={{ width: "100%", marginTop: 6, background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "11px 14px", fontSize: 14, outline: "none", fontFamily: FONT_DISPLAY, boxSizing: "border-box" }} />
+                </div>
+                <Btn color={session.color} onClick={logSession} disabled={!anyChecked} full size="lg" style={{ marginTop: 12 }}>
                   {anyChecked ? "End Workout & Log" : "Check an exercise to log"}
                 </Btn>
               </Surface>
