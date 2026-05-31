@@ -3368,18 +3368,20 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
    WALK LOGGER — treadmill walk with minutes / speed / incline,
    retroactive date+time. Saves a real entry (shows in the Log).
    ════════════════════════════════════════════════════════════ */
-function WalkLogger({ state, onClose, onSave }) {
-  const [when, setWhen] = useState(toLocalInput(new Date()));
-  const [duration, setDuration] = useState("");
-  const [speed, setSpeed] = useState("");
-  const [incline, setIncline] = useState("");
-  const [notes, setNotes] = useState("");
+function WalkLogger({ state, onClose, onSave, onDelete }) {
+  const editing = (state && state.editing) || null;
+  const ex = (editing && editing.exercises && editing.exercises[0]) || {};
+  const [when, setWhen] = useState(editing ? toLocalInput(editing.logged_at) : toLocalInput(new Date()));
+  const [duration, setDuration] = useState(ex.duration ? String(ex.duration) : "");
+  const [speed, setSpeed] = useState(ex.speed ? String(ex.speed) : "");
+  const [incline, setIncline] = useState(ex.incline ? String(ex.incline) : "");
+  const [notes, setNotes] = useState(ex.notes || "");
   const miles = duration && speed ? ((parseFloat(duration) / 60) * parseFloat(speed)).toFixed(2) : null;
   const canSave = duration || speed || incline;
 
   const save = () => {
     if (!canSave) return;
-    onSave({ when, duration, speed, incline, miles, notes });
+    onSave({ editingId: editing ? editing.id : undefined, when, duration, speed, incline, miles, notes });
   };
 
   const field = (label, unit, val, set, ph) => (
@@ -3400,7 +3402,7 @@ function WalkLogger({ state, onClose, onSave }) {
       }}>
         <div style={{ width: 38, height: 4, borderRadius: 999, background: C.faint, margin: "0 auto 16px" }} />
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
-          <h2 className="h-display" style={{ fontSize: 22, fontWeight: 700, color: C.bone, margin: 0, letterSpacing: "-0.03em" }}>🚶 Log a walk</h2>
+          <h2 className="h-display" style={{ fontSize: 22, fontWeight: 700, color: C.bone, margin: 0, letterSpacing: "-0.03em" }}>{editing ? "🚶 Edit walk" : "🚶 Log a walk"}</h2>
           <button onClick={onClose} className="btn" style={{ border: "none", background: "transparent", color: C.dim, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
         </div>
 
@@ -3438,7 +3440,38 @@ function WalkLogger({ state, onClose, onSave }) {
         <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. podcast walk, felt good"
           style={{ width: "100%", margin: "8px 0 18px", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
 
-        <Btn color={C.plum} full size="lg" onClick={save} disabled={!canSave}>{canSave ? "Log walk" : "Add minutes, speed or incline"}</Btn>
+        <Btn color={C.plum} full size="lg" onClick={save} disabled={!canSave}>{editing ? "Save changes" : (canSave ? "Log walk" : "Add minutes, speed or incline")}</Btn>
+        {editing && onDelete && (
+          <button onClick={() => onDelete(editing.id)} className="btn" style={{ width: "100%", marginTop: 10, padding: "12px", borderRadius: 12, border: `1px solid ${C.red}40`, background: "transparent", color: C.red, fontFamily: FONT_MONO, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Delete walk</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Lightweight date editor for a logged lift (the gym card logs "now"). ── */
+function LiftDateSheet({ row, onClose, onSave, onDelete }) {
+  const [when, setWhen] = useState(toLocalInput(row.logged_at));
+  return (
+    <div className="backdrop" style={{ alignItems: "flex-end", padding: 0 }} onClick={onClose}>
+      <div className="slide-up" onClick={e => e.stopPropagation()} style={{
+        width: "100%", maxWidth: 480, margin: "0 auto", background: C.panel,
+        borderRadius: "22px 22px 0 0", borderTop: `1px solid ${C.line}`,
+        padding: "10px 18px calc(24px + env(safe-area-inset-bottom))", maxHeight: "90vh", overflowY: "auto",
+      }}>
+        <div style={{ width: 38, height: 4, borderRadius: 999, background: C.faint, margin: "0 auto 16px" }} />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
+          <h2 className="h-display" style={{ fontSize: 22, fontWeight: 700, color: C.bone, margin: 0, letterSpacing: "-0.03em" }}>🏋️ Edit lift date</h2>
+          <button onClick={onClose} className="btn" style={{ border: "none", background: "transparent", color: C.dim, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+        </div>
+        <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO, marginBottom: 12 }}>{row.session_name}</div>
+        <Eyebrow>When</Eyebrow>
+        <input type="datetime-local" value={when} max={toLocalInput(new Date())} onChange={e => setWhen(e.target.value)}
+          style={{ width: "100%", margin: "8px 0 18px", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 15, outline: "none", fontFamily: FONT_DISPLAY, boxSizing: "border-box" }} />
+        <Btn color={C.rust} full size="lg" onClick={() => onSave(row.id, new Date(when).toISOString())}>Save date</Btn>
+        {onDelete && (
+          <button onClick={() => onDelete(row.id)} className="btn" style={{ width: "100%", marginTop: 10, padding: "12px", borderRadius: 12, border: `1px solid ${C.red}40`, background: "transparent", color: C.red, fontFamily: FONT_MONO, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Delete lift</button>
+        )}
       </div>
     </div>
   );
@@ -3870,7 +3903,8 @@ export default function App() {
   // Gamification
   const [awardsOpen, setAwardsOpen] = useState(false);
   const [celebration, setCelebration] = useState(null); // null or [{kind,title,subtitle,emoji}]
-  const [walkOpen, setWalkOpen] = useState(false);
+  const [walkState, setWalkState] = useState({ open: false }); // { open, editing? }
+  const [liftEdit, setLiftEdit] = useState(null); // workout row being date-edited
   const [restEnabled, setRestEnabled] = useState(true);
   const [notifEnabled, setNotifEnabled] = useState(false);
 
@@ -4147,18 +4181,30 @@ export default function App() {
     if (!error && data) { setHistory(p => [data[0],...p]); showSave(true); toast(`+${xpForType("walk")} XP 🚶`); } else showSave(false);
   };
 
-  // Walk logger (Home + quick-add): minutes/speed/incline, retroactive date.
+  // Walk logger (Home + quick-add + edit): minutes/speed/incline, any date.
   const sortByLogged = (rows) => [...rows].sort((a, b) => new Date(b.logged_at) - new Date(a.logged_at));
-  const logWalk = async ({ when, duration, speed, incline, miles, notes }) => {
+  const saveWalk = async ({ editingId, when, duration, speed, incline, miles, notes }) => {
     const label = [duration ? duration + " min" : null, speed ? speed + " mph" : null, incline ? incline + "% incline" : null, miles && miles > 0 ? miles + " mi" : null, notes || null].filter(Boolean).join(" · ");
-    const row = {
+    const payload = {
       session_name: "Treadmill Walk", color: C.plum, total_volume: 0,
-      exercises: [{ name: label, sets: 1, reps: "walk", weight: 0, volume: 0, duration: parseFloat(duration) || 0, speed: parseFloat(speed) || 0, incline: parseFloat(incline) || 0, miles: parseFloat(miles) || 0 }],
+      exercises: [{ name: label, sets: 1, reps: "walk", weight: 0, volume: 0, duration: parseFloat(duration) || 0, speed: parseFloat(speed) || 0, incline: parseFloat(incline) || 0, miles: parseFloat(miles) || 0, notes: notes || "" }],
     };
-    if (when) row.logged_at = new Date(when).toISOString();
-    const { data, error } = await supabase.from("workouts").insert([row]).select();
-    if (!error && data) { setHistory(p => sortByLogged([data[0], ...p])); setConfetti(true); showSave(true); toast(`+${xpForType("walk")} XP 🚶`); } else showSave(false);
-    setWalkOpen(false);
+    if (when) payload.logged_at = new Date(when).toISOString();
+    if (editingId != null) {
+      const { data, error } = await supabase.from("workouts").update(payload).eq("id", editingId).select();
+      if (!error && data) { setHistory(p => sortByLogged(p.map(r => r.id === editingId ? data[0] : r))); showSave(true); } else showSave(false);
+    } else {
+      const { data, error } = await supabase.from("workouts").insert([payload]).select();
+      if (!error && data) { setHistory(p => sortByLogged([data[0], ...p])); setConfetti(true); showSave(true); toast(`+${xpForType("walk")} XP 🚶`); } else showSave(false);
+    }
+    setWalkState({ open: false });
+  };
+
+  // Edit the date/time of a lift entry.
+  const saveLiftDate = async (id, whenISO) => {
+    const { data, error } = await supabase.from("workouts").update({ logged_at: whenISO }).eq("id", id).select();
+    if (!error && data) { setHistory(p => sortByLogged(p.map(r => r.id === id ? data[0] : r))); showSave(true); } else showSave(false);
+    setLiftEdit(null);
   };
 
   const deleteLog = async id => {
@@ -4321,7 +4367,7 @@ export default function App() {
             onOpenLogger={(opts) => setLoggerState({ open: true, ...opts })}
             onOpenAwards={() => setAwardsOpen(true)}
             onChooseLift={() => { setTab("workout"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-            onGoWalk={() => setWalkOpen(true)}
+            onGoWalk={() => setWalkState({ open: true })}
             theme={theme}
             onToggleTheme={toggleTheme}
           />
@@ -4496,7 +4542,7 @@ export default function App() {
             ...cardioSessions.map(s => ({ kind: "cardio", id: s.id, type: s.workout_type, date: new Date(s.completed_at), duration: s.duration_min, rpe: s.rpe, notes: s.notes, raw: s })),
             ...history.map(w => {
               const isWalk = w.session_name === "Treadmill Walk";
-              return { kind: "workout", id: w.id, type: isWalk ? "walk" : "lift", date: new Date(w.logged_at), title: isWalk ? "Walk" : "Lift", subtitle: (w.exercises && w.exercises[0] && w.exercises[0].name) || w.session_name, volume: w.total_volume || 0, exercises: w.exercises };
+              return { kind: "workout", id: w.id, type: isWalk ? "walk" : "lift", date: new Date(w.logged_at), title: isWalk ? "Walk" : "Lift", subtitle: (w.exercises && w.exercises[0] && w.exercises[0].name) || w.session_name, volume: w.total_volume || 0, exercises: w.exercises, raw: w };
             }),
           ].sort((a, b) => b.date - a.date);
           const weekCount = feed.filter(f => (Date.now() - f.date.getTime()) < 7 * 86400000).length;
@@ -4552,7 +4598,11 @@ export default function App() {
                         </div>
                       )}
                       {canExpand && <button onClick={() => setExpandedLog(p => ({ ...p, [f.kind + f.id]: !p[f.kind + f.id] }))} className="btn" style={{ background: "transparent", border: "none", color: C.dim, cursor: "pointer", fontSize: 13, padding: 6 }}>{expanded ? "▲" : "▼"}</button>}
-                      {f.kind === "cardio" && <button onClick={() => setLoggerState({ open: true, editing: f.raw })} className="btn" style={{ background: "transparent", border: "none", color: C.dim, cursor: "pointer", fontSize: 13, padding: 6 }}>✎</button>}
+                      <button onClick={() => {
+                        if (f.kind === "cardio") setLoggerState({ open: true, editing: f.raw });
+                        else if (f.type === "walk") setWalkState({ open: true, editing: f.raw });
+                        else setLiftEdit(f.raw);
+                      }} className="btn" style={{ background: "transparent", border: "none", color: C.dim, cursor: "pointer", fontSize: 13, padding: 6 }}>✎</button>
                       <button onClick={() => (f.kind === "cardio" ? deleteCardio(f.id) : deleteLog(f.id))} className="btn" style={{ background: "transparent", border: "none", color: C.mute, cursor: "pointer", fontSize: 14, padding: 6 }}>✕</button>
                     </div>
                   </div>
@@ -4917,7 +4967,7 @@ export default function App() {
                 {Object.values(RECOVERY.TYPES).map(t => (
                   <button key={t.key} className="btn" onClick={() => {
                     close();
-                    if (t.key === "walk") setWalkOpen(true);
+                    if (t.key === "walk") setWalkState({ open: true });
                     else if (t.key === "lift") { setTab("workout"); window.scrollTo({ top: 0 }); }
                     else setLoggerState({ open: true, prefillType: t.key });
                   }} style={{
@@ -4958,7 +5008,8 @@ export default function App() {
       )}
 
       {/* ── WALK LOGGER sheet ── */}
-      {walkOpen && <WalkLogger onClose={() => setWalkOpen(false)} onSave={logWalk} />}
+      {walkState.open && <WalkLogger state={walkState} onClose={() => setWalkState({ open: false })} onSave={saveWalk} onDelete={(id) => { setWalkState({ open: false }); deleteLog(id); }} />}
+      {liftEdit && <LiftDateSheet row={liftEdit} onClose={() => setLiftEdit(null)} onSave={saveLiftDate} onDelete={(id) => { setLiftEdit(null); deleteLog(id); }} />}
 
       {/* ── GAMIFICATION overlays ── */}
       {awardsOpen && <AchievementsSheet game={game} onClose={() => setAwardsOpen(false)} />}
