@@ -4490,53 +4490,31 @@ export default function App() {
         )}
 
         {/* ── HISTORY ── */}
-        {tab === "history" && (
+        {tab === "history" && (() => {
+          // One unified feed — every logged activity, newest first.
+          const feed = [
+            ...cardioSessions.map(s => ({ kind: "cardio", id: s.id, type: s.workout_type, date: new Date(s.completed_at), duration: s.duration_min, rpe: s.rpe, notes: s.notes, raw: s })),
+            ...history.map(w => {
+              const isWalk = w.session_name === "Treadmill Walk";
+              return { kind: "workout", id: w.id, type: isWalk ? "walk" : "lift", date: new Date(w.logged_at), title: isWalk ? "Walk" : "Lift", subtitle: (w.exercises && w.exercises[0] && w.exercises[0].name) || w.session_name, volume: w.total_volume || 0, exercises: w.exercises };
+            }),
+          ].sort((a, b) => b.date - a.date);
+          const weekCount = feed.filter(f => (Date.now() - f.date.getTime()) < 7 * 86400000).length;
+          return (
           <>
             <div className="ease-up"><PageTitle kicker="The work · is the win">Log</PageTitle></div>
 
-            <div className="ease-up-1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
-              <StatCard kicker="ALL" value={history.length} color={C.rust} />
-              <StatCard kicker="WEEK" value={thisWeek} color={C.amber} />
-              <StatCard kicker="LBS" value={fmtNum(totalLbs)} color={C.moss} />
+            <div className="ease-up-1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+              <StatCard kicker="ALL" value={feed.length} color={C.rust} sub="logged" />
+              <StatCard kicker="7-DAY" value={weekCount} color={C.amber} sub="sessions" />
+              <StatCard kicker="LBS" value={fmtNum(totalLbs)} color={C.moss} sub="lifted" />
             </div>
 
-            {/* ── Conditioning sessions — engine-managed, editable ── */}
-            <div className="ease-up-1" style={{ marginBottom: 16 }}>
-              <Surface>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <Eyebrow color={C.moss}>Conditioning · Tabata · Long Int · Games</Eyebrow>
-                  <button onClick={() => setLoggerState({ open: true })} className="btn" style={{ background: "transparent", border: "none", color: C.electric, fontFamily: FONT_MONO, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}>+ Log</button>
-                </div>
-                {cardioSessions.length === 0 ? (
-                  <div style={{ fontSize: 13, color: C.dim, marginTop: 10, fontFamily: FONT_MONO }}>No conditioning logged yet.</div>
-                ) : (
-                  <div style={{ marginTop: 8 }}>
-                    {cardioSessions.slice(0, 40).map((s, i) => {
-                      const def = RECOVERY.TYPES[s.workout_type] || {};
-                      const col = C[def.colorKey] || C.dim;
-                      return (
-                        <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: i < Math.min(cardioSessions.length, 40) - 1 ? `1px solid ${C.line}` : "none" }}>
-                          <span style={{ fontSize: 20 }}>{def.emoji || "•"}</span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: C.bone, letterSpacing: "-0.01em" }}>{def.label || s.workout_type}</div>
-                            <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>
-                              {new Date(s.completed_at).toLocaleDateString("en-CA", { month: "short", day: "numeric" })} · {daysAgo(s.completed_at)}
-                              {s.duration_min != null ? ` · ${s.duration_min}m` : ""}{s.rpe != null ? ` · RPE ${s.rpe}` : ""}
-                            </div>
-                            {s.notes && <div style={{ fontSize: 11, color: C.mute, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.notes}</div>}
-                          </div>
-                          <span style={{ width: 8, height: 8, borderRadius: 999, background: col, flexShrink: 0 }} />
-                          <button onClick={() => setLoggerState({ open: true, editing: s })} className="btn" style={{ background: "transparent", border: "none", color: C.dim, cursor: "pointer", fontSize: 13, padding: 6 }}>✎</button>
-                          <button onClick={() => deleteCardio(s.id)} className="btn" style={{ background: "transparent", border: "none", color: C.mute, cursor: "pointer", fontSize: 14, padding: 6 }}>✕</button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </Surface>
+            <div className="ease-up-1" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+              <button onClick={() => setQuickAddOpen(true)} className="btn" style={{ background: C.rust, border: "none", color: "#fff", borderRadius: 10, padding: "8px 14px", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>+ Log a workout</button>
             </div>
 
-            {history.length === 0 && cardioSessions.length === 0 && (
+            {feed.length === 0 && (
               <Surface style={{ textAlign: "center", padding: 48 }}>
                 <div style={{ fontSize: 36, marginBottom: 12 }}>💪</div>
                 <p className="h-serif" style={{ fontSize: 18, color: C.cream, margin: 0 }}>The page is blank.</p>
@@ -4544,41 +4522,46 @@ export default function App() {
               </Surface>
             )}
 
-            {history.map((h, i) => {
-              const prev = history[i+1];
-              const gap = prev ? Math.floor((new Date(h.logged_at)-new Date(prev.logged_at))/86400000) : null;
-              const expanded = expandedLog[h.id];
-              const color = h.color || C.rust;
+            {feed.map((f) => {
+              const def = RECOVERY.TYPES[f.type] || {};
+              const col = C[def.colorKey] || C.rust;
+              const title = f.kind === "cardio" ? (def.label || f.type) : f.title;
+              const detail = f.kind === "cardio"
+                ? [f.duration != null ? `${f.duration} min` : null, f.rpe != null ? `RPE ${f.rpe}` : null].filter(Boolean).join(" · ")
+                : f.subtitle;
+              const canExpand = f.kind === "workout" && f.type === "lift" && f.exercises && f.exercises.length;
+              const expanded = expandedLog[f.kind + f.id];
               return (
-                <Surface key={h.id} accent={color}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                <Surface key={f.kind + f.id} accent={col} padding={14}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span style={{ fontSize: 26 }}>{def.emoji || "•"}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-                        <Pill color={color}>{daysAgo(h.logged_at)}</Pill>
-                        {gap !== null && <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO }}>{gap}d rest</span>}
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span className="h-display" style={{ fontSize: 16, fontWeight: 700, color: C.bone, letterSpacing: "-0.01em" }}>{title}</span>
+                        <Pill color={col}>{daysAgo(f.date)}</Pill>
                       </div>
-                      <div className="h-display" style={{ fontSize: 18, fontWeight: 700, color: C.bone, letterSpacing: "-0.02em" }}>{h.session_name}</div>
-                      <div style={{ fontSize: 11, color: C.dim, marginTop: 4, fontFamily: FONT_MONO }}>{new Date(h.logged_at).toLocaleDateString("en-CA")}</div>
+                      {detail && <div style={{ fontSize: 11, color: C.dim, marginTop: 3, fontFamily: FONT_MONO, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</div>}
+                      {f.notes && <div style={{ fontSize: 11, color: C.mute, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.notes}</div>}
+                      <div style={{ fontSize: 10, color: C.mute, marginTop: 3, fontFamily: FONT_MONO }}>{f.date.toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric" })}</div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {h.total_volume > 0 && (
-                        <div style={{ textAlign: "right" }}>
-                          <div className="num-tab" style={{ color, fontSize: 17, fontWeight: 700, letterSpacing: "-0.02em" }}>{fmtNum(h.total_volume)}</div>
-                          <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO }}>LBS</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                      {f.volume > 0 && (
+                        <div style={{ textAlign: "right", marginRight: 2 }}>
+                          <div className="num-tab" style={{ color: col, fontSize: 15, fontWeight: 700 }}>{fmtNum(f.volume)}</div>
+                          <div style={{ fontSize: 8, color: C.dim, fontFamily: FONT_MONO }}>LBS</div>
                         </div>
                       )}
-                      <button onClick={() => setExpandedLog(p => ({...p, [h.id]: !p[h.id]}))} className="btn" style={{ background: "transparent", border: "none", color: C.dim, cursor: "pointer", fontSize: 14, padding: 6 }}>{expanded ? "▲" : "▼"}</button>
-                      <button onClick={() => deleteLog(h.id)} className="btn" style={{ background: "transparent", border: "none", color: C.mute, cursor: "pointer", fontSize: 14, padding: 6 }}>✕</button>
+                      {canExpand && <button onClick={() => setExpandedLog(p => ({ ...p, [f.kind + f.id]: !p[f.kind + f.id] }))} className="btn" style={{ background: "transparent", border: "none", color: C.dim, cursor: "pointer", fontSize: 13, padding: 6 }}>{expanded ? "▲" : "▼"}</button>}
+                      {f.kind === "cardio" && <button onClick={() => setLoggerState({ open: true, editing: f.raw })} className="btn" style={{ background: "transparent", border: "none", color: C.dim, cursor: "pointer", fontSize: 13, padding: 6 }}>✎</button>}
+                      <button onClick={() => (f.kind === "cardio" ? deleteCardio(f.id) : deleteLog(f.id))} className="btn" style={{ background: "transparent", border: "none", color: C.mute, cursor: "pointer", fontSize: 14, padding: 6 }}>✕</button>
                     </div>
                   </div>
-                  {expanded && (
-                    <div className="ease-up" style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
-                      {(h.exercises||[]).map((ex, j) => (
-                        <div key={j} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13, borderBottom: j < h.exercises.length-1 ? `1px solid ${C.line}` : "none" }}>
+                  {canExpand && expanded && (
+                    <div className="ease-up" style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
+                      {f.exercises.map((ex, j) => (
+                        <div key={j} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13, borderBottom: j < f.exercises.length - 1 ? `1px solid ${C.line}` : "none" }}>
                           <span style={{ color: C.cream }}>{ex.name}</span>
-                          <span className="num-tab" style={{ color: C.dim, fontFamily: FONT_MONO, fontSize: 12 }}>
-                            {ex.sets}×{ex.reps}{ex.weight > 0 ? ` @ ${ex.weight}` : ""}{ex.volume > 0 ? ` = ${fmtNum(ex.volume)}` : ""}
-                          </span>
+                          <span className="num-tab" style={{ color: C.dim, fontFamily: FONT_MONO, fontSize: 12 }}>{ex.sets}×{ex.reps}{ex.weight > 0 ? ` @ ${ex.weight}` : ""}{ex.volume > 0 ? ` = ${fmtNum(ex.volume)}` : ""}</span>
                         </div>
                       ))}
                     </div>
@@ -4587,7 +4570,8 @@ export default function App() {
               );
             })}
           </>
-        )}
+          );
+        })()}
 
         {/* ── STATS ── */}
         {tab === "stats" && <StatsTab history={history} weightLog={weightLog} cardioSessions={cardioSessions} />}
