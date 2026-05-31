@@ -216,35 +216,16 @@ const injectStyles = (force) => {
    DATA
    ════════════════════════════════════════════════════════════ */
 
+// Single strength routine — the engine schedules "Lift" twice a week.
 const SESSIONS = [
   {
-    id: "A", code: "A", name: "Strength & Power", location: "Gym", color: C.rust,
+    id: "lift", code: "L", name: "Strength & Power", location: "Gym", color: C.rust,
     exercises: [
       { id: "a1", name: "Barbell Squat",      sets: 4, reps: 6,  barbell: true,    note: "Full depth" },
       { id: "a2", name: "Bench Press",        sets: 4, reps: 8,  barbell: true,    note: "Controlled descent" },
       { id: "a3", name: "Romanian Deadlift",  sets: 3, reps: 8,  barbell: true,    note: "Hinge, don't squat" },
       { id: "a4", name: "Box Jump",           sets: 4, reps: 5,  bodyweight: true, note: "Max height" },
       { id: "a5", name: "Calf Raise",         sets: 4, reps: 20,                   note: "Slow & controlled" },
-    ]
-  },
-  {
-    id: "B", code: "B", name: "Conditioning & Cardio", location: "Cardio", color: C.amber,
-    exercises: [
-      { id: "b1", name: "Jump Rope",          sets: 4, reps: "60s",     timed: true,    note: "Light, fast feet" },
-      { id: "b2", name: "Kettlebell Swing",   sets: 4, reps: 15,                        note: "Hinge, snap the hips" },
-      { id: "b3", name: "Burpees",            sets: 3, reps: 12,        bodyweight: true, note: "Full extension" },
-      { id: "b4", name: "Mountain Climbers",  sets: 3, reps: "40s",     timed: true,    note: "Drive the knees" },
-      { id: "b5", name: "Incline Walk / Row", sets: 1, reps: "20min",   noWeight: true, note: "Steady-state cardio" },
-    ]
-  },
-  {
-    id: "C", code: "C", name: "Full Body Circuit", location: "Gym", color: C.moss,
-    exercises: [
-      { id: "c1", name: "Dumbbell Row",     sets: 3, reps: 12,    note: "Chest-supported" },
-      { id: "c2", name: "Goblet Squat",     sets: 3, reps: 15,    note: "Pause at bottom" },
-      { id: "c3", name: "Overhead Press",   sets: 3, reps: 10,    barbell: true, note: "Strict form" },
-      { id: "c4", name: "Step-Up",          sets: 3, reps: 12,    note: "Each leg" },
-      { id: "c5", name: "Wall Sit",         sets: 3, reps: "45s", timed: true,   note: "Quads parallel" },
     ]
   }
 ];
@@ -304,7 +285,6 @@ const RECOVERY = {
     },
   },
   // Strength day rotation.
-  LIFT_ROTATION: ["A", "B", "C"],
   // A lift may share a single hard day with a Tabata (never with the brutal
   // Long Interval), so other days stay free for walks and true rest.
   pairLiftWithConditioning: true,
@@ -370,26 +350,15 @@ function normalizeAll(cardioRows, workoutRows) {
         rpe: RECOVERY.TYPES.walk.defaultRPE,
         duration: (w.exercises && w.exercises[0] && w.exercises[0].duration) || RECOVERY.TYPES.walk.defaultDurationMin,
       });
-    } else {
-      const m = name.match(/^([ABC])[:.\s]/);
-      if (m) out.push({
-        id: "w" + w.id, type: "lift", code: m[1], date: new Date(w.logged_at),
+    } else if (name) {
+      // Any other logged workout is a strength session.
+      out.push({
+        id: "w" + w.id, type: "lift", date: new Date(w.logged_at),
         rpe: RECOVERY.TYPES.lift.defaultRPE, duration: RECOVERY.TYPES.lift.defaultDurationMin,
       });
     }
   });
   return out;
-}
-
-// Next strength day (A → B → C) based on the most recent lift on/before refDate.
-function nextLiftCode(allSessions, refDate) {
-  const rot = RECOVERY.LIFT_ROTATION;
-  const lifts = allSessions
-    .filter(s => s.type === "lift" && s.code && dayGap(refDate, s.date) >= 0)
-    .sort((a, b) => b.date - a.date);
-  if (!lifts.length) return rot[0];
-  const idx = rot.indexOf(lifts[0].code);
-  return idx === -1 ? rot[0] : rot[(idx + 1) % rot.length];
 }
 
 // Sessions falling within the trailing `windowDays` ending on refDate (inclusive).
@@ -446,7 +415,6 @@ function recommend(allSessions, refDate) {
   const rest = (reason) => mk("rest", [], reason);
 
   const walkOwed = done.walk < T.walk.weeklyTarget && !todays.some(s => s.type === "walk");
-  const liftCode = nextLiftCode(allSessions, ref);
 
   // On a non-hard day, an owed walk is the active-recovery pick; else rest.
   const recoveryDay = (why) => walkOwed
@@ -469,7 +437,7 @@ function recommend(allSessions, refDate) {
     const didTabataToday = todays.some(s => s.type === "tabata");
     const didLiftToday = todays.some(s => s.type === "lift");
     if (RECOVERY.pairLiftWithConditioning && didTabataToday && !didLiftToday && owedLift > 0 && canRampHard) {
-      return mk("train", [{ type: "lift", code: liftCode }], `Tabata's done — pair Lift Day ${liftCode} with it while you're warm (${done.lift}/${T.lift.weeklyTarget} lifts this week).`);
+      return mk("train", [{ type: "lift" }], `Tabata's done — pair a Lift with it while you're warm (${done.lift}/${T.lift.weeklyTarget} lifts this week).`);
     }
     return recoveryDay(`${T[todaysHard[0].type].label} already done today — let it absorb.`);
   }
@@ -506,14 +474,14 @@ function recommend(allSessions, refDate) {
   if (primary === "tabata") {
     // Pair a lift onto the Tabata day (never onto the brutal Long Interval).
     if (RECOVERY.pairLiftWithConditioning && owedLift > 0) {
-      return mk("train", [{ type: "tabata" }, { type: "lift", code: liftCode }],
-        `Tabata + Lift Day ${liftCode} — pair them today, then recover tomorrow (Tabata ${done.tabata}/${targetTab}, lifts ${done.lift}/${T.lift.weeklyTarget}).`);
+      return mk("train", [{ type: "tabata" }, { type: "lift" }],
+        `Tabata + Lift — pair them today, then recover tomorrow (Tabata ${done.tabata}/${targetTab}, lifts ${done.lift}/${T.lift.weeklyTarget}).`);
     }
     return mk("train", [{ type: "tabata" }], `Tabata owed (${done.tabata}/${targetTab}) and you're recovered — quick and hard.`);
   }
   // No conditioning owed — get a lift in on its own if one's still owed.
   if (owedLift > 0) {
-    return mk("train", [{ type: "lift", code: liftCode }], `Lift Day ${liftCode} owed (${done.lift}/${T.lift.weeklyTarget}) and you're recovered — go move some weight.`);
+    return mk("train", [{ type: "lift" }], `Lift owed (${done.lift}/${T.lift.weeklyTarget}) and you're recovered — go move some weight.`);
   }
   // Everything's met → recovery day.
   if (done.game > 0) return recoveryDay("A game this week already covers your hard load.");
@@ -2054,10 +2022,10 @@ function TabataTimer({ onLog, loggedToday }) {
     <Surface accent={C.moss} style={{ background: C.panel }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
         <div>
-          <Pill color={loggedToday ? C.moss : C.amber}>{loggedToday ? "✓ Done today" : "Daily · 4-min Tabata"}</Pill>
+          <Pill color={loggedToday ? C.moss : C.amber}>{loggedToday ? "✓ Done today" : "4-min Tabata"}</Pill>
           <h2 className="h-display" style={{ fontSize: 26, margin: "10px 0 4px", color: C.bone }}>Tabata Timer</h2>
           <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>{TABATA_CONFIG.rounds} rounds · {TABATA_CONFIG.sprintSec}s ON / {TABATA_CONFIG.restSec}s OFF · 4 min</div>
-          <div style={{ fontSize: 11, color: C.mute, marginTop: 4, fontFamily: FONT_MONO }}>all-out effort · any movement</div>
+          <div style={{ fontSize: 11, color: C.mute, marginTop: 4, fontFamily: FONT_MONO }}>run it when the plan calls for it</div>
         </div>
         {phase === "idle" && countdown === null && <Btn color={C.moss} onClick={start}>Start</Btn>}
       </div>
@@ -2196,7 +2164,7 @@ function StatCard({ kicker, value, unit, color, big, sub }) {
 
 /* ── Stats Tab ── */
 function StatsTab({ history, weightLog, cardioSessions }) {
-  const gymSessions = history.filter(h => h.session_name?.startsWith("DAY") || h.session_name?.startsWith("A:") || h.session_name?.startsWith("B:") || h.session_name?.startsWith("C:") || /^[ABC] /.test(h.session_name||""));
+  const gymSessions = history.filter(h => h.session_name && h.session_name !== "Treadmill Walk");
   const treadmillSessions = history.filter(h => h.session_name === "Treadmill Walk");
   // Conditioning now lives in cardio_sessions (engine-managed).
   const tabataSessions = cardioSessions.filter(s => s.workout_type === "tabata");
@@ -3049,7 +3017,7 @@ function TodayCard({ cardioSessions, workouts, onOpenLogger, onChooseLift, onGoW
   const { streak, layoff } = streakInfo(engine, today);
 
   // Short label for one scheduled item (lifts show their A/B/C day).
-  const itemLabel = (it) => it.type === "lift" ? `Lift ${it.code || "A"}` : RECOVERY.TYPES[it.type].short;
+  const itemLabel = (it) => RECOVERY.TYPES[it.type].short;
   const itemsOf = (p) => (p.action === "train" ? (p.items || []) : []);
 
   const items = itemsOf(rec);
@@ -3061,11 +3029,11 @@ function TodayCard({ cardioSessions, workouts, onOpenLogger, onChooseLift, onGoW
 
   // Tap a scheduled item → take the right action (log sheet, or jump to the tab).
   const actOn = (it, warn) => {
-    if (it.type === "lift") onChooseLift(it.code || "A");
+    if (it.type === "lift") onChooseLift();
     else if (it.type === "walk") onGoWalk();
     else onOpenLogger(warn ? { prefillType: it.type, warn } : { prefillType: it.type });
   };
-  const actLabel = (it) => it.type === "lift" ? `🏋️ Lift Day ${it.code || "A"}` : it.type === "walk" ? "🚶 Log a walk" : `${RECOVERY.TYPES[it.type].emoji} ${RECOVERY.TYPES[it.type].short}`;
+  const actLabel = (it) => it.type === "lift" ? "🏋️ Lift" : it.type === "walk" ? "🚶 Log a walk" : `${RECOVERY.TYPES[it.type].emoji} ${RECOVERY.TYPES[it.type].short}`;
 
   const bandNote = {
     restart: layoff != null ? `Restart · ${layoff}d layoff` : "Restart",
@@ -3109,7 +3077,7 @@ function TodayCard({ cardioSessions, workouts, onOpenLogger, onChooseLift, onGoW
             <div className="ease-up" style={{ marginTop: 12, padding: 14, borderRadius: 12, background: `${C.amber}12`, border: `1px solid ${C.amber}40` }}>
               <div style={{ fontSize: 12, color: C.amber, fontFamily: FONT_MONO, marginBottom: 10, lineHeight: 1.5 }}>⚠ Today's a recovery day. Pushing through cuts into recovery — go lighter than usual.</div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {[{ type: "tabata" }, { type: "long_interval" }, { type: "lift", code: nextLiftCode(engine, today) }, { type: "walk" }].map((it, i) => {
+                {[{ type: "tabata" }, { type: "long_interval" }, { type: "lift" }, { type: "walk" }].map((it, i) => {
                   const d = RECOVERY.TYPES[it.type];
                   return <Btn key={i} color={C[d.colorKey]} size="sm" style={{ flex: "1 1 40%" }} onClick={() => actOn(it, "Recovery day — logging this as an override.")}>{actLabel(it)}</Btn>;
                 })}
@@ -3551,7 +3519,6 @@ export default function App() {
   const [authSession, setAuthSession] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [activeSession, setActiveSession] = useState(0);
-  const [activeSessionInit, setActiveSessionInit] = useState(false);
   const [checked, setChecked] = useState({});
   const [vals, setVals] = useState({});
   const [history, setHistory] = useState([]);
@@ -3642,21 +3609,6 @@ export default function App() {
   }, [authSession, loadData]);
 
   const signOut = async () => { await supabase.auth.signOut(); setHistory([]); setWeightLog([]); setCardioSessions([]); };
-
-  // Smart day suggestion: rotate A→B→C based on last gym session
-  useEffect(() => {
-    if (activeSessionInit || history.length === 0) return;
-    const lastGym = history.find(h => h.session_name && /^[ABC]:/.test(h.session_name));
-    if (lastGym) {
-      const lastCode = lastGym.session_name[0];
-      const idx = SESSIONS.findIndex(s => s.code === lastCode);
-      if (idx !== -1) {
-        const nextIdx = (idx + 1) % SESSIONS.length;
-        setActiveSession(nextIdx);
-      }
-    }
-    setActiveSessionInit(true);
-  }, [history, activeSessionInit]);
 
   // Pre-fill each exercise with last session's weight (editable). Only logs
   // exercises the user actually checks off, so seeding is safe. Never clobbers
@@ -3876,7 +3828,7 @@ export default function App() {
 
   const thisWeek = history.filter(h => (Date.now()-new Date(h.logged_at)) < 7*86400000).length;
   const totalLbs = history.reduce((a,h) => a+(h.total_volume||0), 0);
-  const lastGym = history.find(h => h.session_name && /^[ABC]:/.test(h.session_name));
+  const lastGym = history.find(h => h.session_name && h.session_name !== "Treadmill Walk");
   const restDay = lastGym && Math.floor((Date.now()-new Date(lastGym.logged_at))/86400000) < 1;
 
   // Did today's 4-minute tabata get logged?
@@ -3987,12 +3939,7 @@ export default function App() {
             creatineLog={creatineLog}
             onGoTab={setTab}
             onOpenLogger={(opts) => setLoggerState({ open: true, ...opts })}
-            onChooseLift={(code) => {
-              const idx = SESSIONS.findIndex(s => s.code === code);
-              if (idx !== -1) setActiveSession(idx);
-              setTab("workout");
-              window.scrollTo({ top: 0, behavior: "smooth" });
-            }}
+            onChooseLift={() => { setTab("workout"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
             onGoWalk={() => { setTab("workout"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
             theme={theme}
             onToggleTheme={toggleTheme}
@@ -4083,40 +4030,23 @@ export default function App() {
             {/* Status banners */}
             <div className="ease-up-3" style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr", marginBottom: 14 }}>
               <Surface accent={restDay ? C.faint : session.color} padding={14} style={{ marginBottom: 0 }}>
-                <Eyebrow color={restDay ? C.dim : session.color}>Gym · Next</Eyebrow>
+                <Eyebrow color={restDay ? C.dim : session.color}>Lift</Eyebrow>
                 <div style={{ marginTop: 8, fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em", color: C.bone }}>
-                  {restDay ? "Recover" : `${session.code} — ${session.location}`}
+                  {restDay ? "Recover" : session.name}
                 </div>
                 <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>
                   {restDay ? `Last: ${daysAgo(lastGym.logged_at)}` : "Ready when you are"}
                 </div>
               </Surface>
               <Surface accent={tabataToday ? C.moss : C.amber} padding={14} style={{ marginBottom: 0 }}>
-                <Eyebrow color={tabataToday ? C.moss : C.amber}>Tabata · Today</Eyebrow>
+                <Eyebrow color={tabataToday ? C.moss : C.amber}>Tabata</Eyebrow>
                 <div style={{ marginTop: 8, fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em", color: C.bone }}>
-                  {tabataToday ? "✓ Done" : "🔥 4-min Tabata"}
+                  {tabataToday ? "✓ Done today" : "🔥 4-min Tabata"}
                 </div>
                 <div style={{ fontSize: 11, color: tabataToday ? C.moss : C.dim, marginTop: 2, fontFamily: FONT_MONO }}>
-                  {tabataToday ? "Logged today" : "Every day · 4 min"}
+                  {tabataToday ? "Logged today" : "2×/week · per the plan"}
                 </div>
               </Surface>
-            </div>
-
-            {/* Day selector */}
-            <div className="ease-up-4" style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-              {SESSIONS.map((s, i) => (
-                <button key={s.id} onClick={() => setActiveSession(i)} className="btn"
-                  style={{
-                    flex: 1, padding: "14px 0",
-                    background: activeSession === i ? s.color : "transparent",
-                    border: `1px solid ${activeSession === i ? s.color : C.line}`,
-                    color: activeSession === i ? C.ink : C.cream,
-                    borderRadius: 12, cursor: "pointer",
-                    fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em",
-                  }}>
-                  Day {s.code}
-                </button>
-              ))}
             </div>
 
             <div className="ease-up-4">
@@ -4428,13 +4358,6 @@ export default function App() {
                     ) : (
                       <Btn color={C.electric} size="sm" onClick={enableNotifications}>Enable</Btn>
                     )}
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
-                    <div>
-                      <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>Smart day suggest</div>
-                      <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Auto-rotate A → B → C</div>
-                    </div>
-                    <span style={{ fontSize: 11, color: C.moss, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>● ON</span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: `1px solid ${C.line}` }}>
                     <div style={{ minWidth: 0 }}>
