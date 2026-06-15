@@ -351,6 +351,7 @@ const SCI = {
 
 function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
 function addDays(d, n) { const x = startOfDay(d); x.setDate(x.getDate() + n); return x; }
+function startOfWeek(d) { const x = startOfDay(d); x.setDate(x.getDate() - x.getDay()); return x; } // Sunday
 // Whole calendar days from b to a (a - b). Positive when a is later.
 function dayGap(a, b) { return Math.round((startOfDay(a) - startOfDay(b)) / 86400000); }
 function isHardType(type) { return !!(RECOVERY.TYPES[type] && RECOVERY.TYPES[type].hard); }
@@ -587,11 +588,6 @@ function sessionXP(s) {
   const bonus = (s.rpe && s.type !== "walk") ? Math.max(0, s.rpe - 5) * 5 : 0;
   return base + bonus;
 }
-// Default XP for a freshly logged session (used for the "+XP" pop).
-function xpForType(type) {
-  const def = RECOVERY.TYPES[type];
-  return sessionXP({ type, rpe: def ? def.defaultRPE : 0 });
-}
 
 // Level curve: each level costs a bit more than the last — fast early wins,
 // satisfying long climb.
@@ -629,8 +625,8 @@ const ACHIEVEMENTS = [
   { id: "early",    emoji: "🌅", name: "Early Bird",      desc: "Train before 7am",            goal: 1,   val: s => (s.earlyBird ? 1 : 0) },
   { id: "night",    emoji: "🌙", name: "Night Owl",       desc: "Train after 9pm",             goal: 1,   val: s => (s.nightOwl ? 1 : 0) },
   { id: "comeback", emoji: "🔄", name: "Comeback Kid",    desc: "Train after a 7+ day break",  goal: 1,   val: s => (s.comeback ? 1 : 0) },
-  { id: "lvl10",    emoji: "⭐", name: "Double Digits",   desc: "Reach level 10",              goal: 10,  val: s => s.level },
-  { id: "lvl25",    emoji: "🌟", name: "Elite",           desc: "Reach level 25",              goal: 25,  val: s => s.level },
+  { id: "days30",   emoji: "📅", name: "Regular",         desc: "Train on 30 different days",   goal: 30,  val: s => s.activeDays },
+  { id: "days100",  emoji: "🗓️", name: "Lifestyle",       desc: "Train on 100 different days",  goal: 100, val: s => s.activeDays },
   { id: "lost5",    emoji: "📉", name: "Down 5",          desc: "Drop 5 lbs",                  goal: 5,   val: s => s.weightLost },
   { id: "lost15",   emoji: "🎯", name: "Down 15",         desc: "Drop 15 lbs",                 goal: 15,  val: s => s.weightLost },
   { id: "lost25",   emoji: "👑", name: "Goal Weight",     desc: "Drop 25 lbs — the dunk awaits", goal: 25, val: s => s.weightLost },
@@ -671,6 +667,7 @@ function computeGameState(history, cardioSessions, weightLog) {
     nightOwl: all.some(s => s.date.getHours() >= 21),
     comeback,
     weightLost: Math.max(0, startW - curW),
+    activeDays: dayTimes.length,
     level: lvl.level,
   };
 
@@ -3516,40 +3513,94 @@ function LiftDateSheet({ row, onClose, onSave, onDelete }) {
 /* ════════════════════════════════════════════════════════════
    GAMIFICATION UI — level hero, achievement grid, celebrations
    ════════════════════════════════════════════════════════════ */
-function LevelHero({ game, streak, onOpenAwards }) {
-  const pct = Math.round(game.progress * 100);
-  const toNext = Math.max(0, game.span - game.into);
-  const xp = useCountUp(game.totalXP, 700);
+// Consistency hero — concrete proof of the work: streak, totals, and a bar
+// graph of workouts completed per week. (Replaces the abstract XP/level card.)
+function ProgressHero({ game, cardioSessions, workouts, onOpenAwards }) {
+  const all = normalizeAll(cardioSessions, workouts);
+  const today = startOfDay(new Date());
+  const WEEKS = 10;
+  const wkStart = startOfWeek(today);
+  const weeks = [];
+  for (let i = WEEKS - 1; i >= 0; i--) {
+    const ws = addDays(wkStart, -7 * i).getTime();
+    const we = addDays(wkStart, -7 * i + 7).getTime();
+    weeks.push({ ws, count: all.filter(s => { const t = s.date.getTime(); return t >= ws && t < we; }).length });
+  }
+  const maxCount = Math.max(4, ...weeks.map(w => w.count));
+  const thisWeek = weeks[weeks.length - 1].count;
+  const streak = game.stats.currentStreak;
+  const total = game.stats.totalSessions;
+
+  // This week vs targets, by type (trailing 7 days).
+  const t7 = trailingSummary(all, today, 7).byType;
+  const targets = [
+    { type: "tabata", done: t7.tabata, goal: RECOVERY.TYPES.tabata.weeklyTarget },
+    { type: "long_interval", done: t7.long_interval, goal: RECOVERY.TYPES.long_interval.weeklyTarget },
+    { type: "lift", done: t7.lift, goal: RECOVERY.TYPES.lift.weeklyTarget },
+    { type: "walk", done: t7.walk, goal: RECOVERY.TYPES.walk.weeklyTarget },
+  ];
+
+  const stat = (label, value, color) => (
+    <div style={{ flex: 1 }}>
+      <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 800, color, letterSpacing: "-0.03em", lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, marginTop: 4, letterSpacing: "0.06em" }}>{label}</div>
+    </div>
+  );
+
   return (
-    <Surface accent={C.rust} padding={20} onClick={onOpenAwards} className="card-tap">
-      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        {/* Level medallion */}
-        <div style={{ position: "relative", flexShrink: 0 }}>
-          <div style={{ width: 64, height: 64, borderRadius: 18, background: `linear-gradient(135deg, ${C.rust}, ${C.amber})`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", boxShadow: `0 6px 18px ${C.rust}44` }}>
-            <span style={{ fontSize: 9, color: "#fff", fontFamily: FONT_MONO, letterSpacing: "0.1em", opacity: 0.85, marginBottom: -2 }}>LVL</span>
-            <span className="num-tab h-display" style={{ fontSize: 30, fontWeight: 800, color: "#fff", lineHeight: 1 }}>{game.level}</span>
-          </div>
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <div className="h-display" style={{ fontSize: 20, fontWeight: 800, color: C.bone, letterSpacing: "-0.03em" }}>{game.rank}</div>
-            {streak > 0 && <span style={{ fontSize: 12, color: C.rust, fontFamily: FONT_MONO, fontWeight: 700 }}>🔥 {streak}d</span>}
-          </div>
-          <div style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, marginTop: 2 }}>{Math.round(xp).toLocaleString()} XP · {toNext} to level {game.level + 1}</div>
-          {/* XP bar */}
-          <div style={{ marginTop: 8, height: 10, borderRadius: 999, background: C.raised, border: `1px solid ${C.line}`, overflow: "hidden" }}>
-            <div style={{ width: pct + "%", height: "100%", background: `linear-gradient(90deg, ${C.rust}, ${C.amber})`, borderRadius: 999, transition: "width 0.8s cubic-bezier(0.22,1,0.36,1)" }} />
-          </div>
+    <Surface accent={C.rust} padding={20}>
+      {/* Headline stats */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {stat("DAY STREAK", streak > 0 ? `🔥 ${streak}` : "0", streak > 0 ? C.rust : C.dim)}
+        {stat("THIS WEEK", thisWeek, thisWeek > 0 ? C.moss : C.dim)}
+        {stat("TOTAL DONE", total, C.bone)}
+      </div>
+
+      {/* Workouts-per-week bar graph */}
+      <Eyebrow>Workouts · last {WEEKS} weeks</Eyebrow>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 64, marginTop: 10 }}>
+        {weeks.map((w, i) => {
+          const isNow = i === weeks.length - 1;
+          const h = Math.max(4, Math.round((w.count / maxCount) * 56));
+          return (
+            <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%" }} title={`${w.count} workouts`}>
+              <div style={{ fontSize: 9, color: w.count ? C.cream : "transparent", fontFamily: FONT_MONO, marginBottom: 3 }}>{w.count}</div>
+              <div style={{ width: "100%", height: h, borderRadius: "4px 4px 2px 2px", background: w.count ? (isNow ? `linear-gradient(180deg, ${C.rustHi}, ${C.rust})` : `${C.rust}99`) : C.raised, border: `1px solid ${w.count ? "transparent" : C.line}`, transition: "height 0.6s cubic-bezier(0.22,1,0.36,1)" }} />
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 9, color: C.mute, fontFamily: FONT_MONO }}>
+        <span>{WEEKS} WEEKS AGO</span><span>THIS WEEK</span>
+      </div>
+
+      {/* This week vs plan */}
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
+        <Eyebrow>This week's plan</Eyebrow>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          {targets.map(t => {
+            const def = RECOVERY.TYPES[t.type];
+            const met = t.done >= t.goal;
+            return (
+              <div key={t.type} style={{ flex: 1, textAlign: "center", padding: "8px 4px", borderRadius: 10, background: met ? `${C[def.colorKey]}18` : C.raised, border: `1px solid ${met ? C[def.colorKey] : C.line}` }}>
+                <div style={{ fontSize: 16 }}>{def.emoji}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: met ? C[def.colorKey] : C.cream, fontFamily: FONT_MONO, marginTop: 3 }}>{Math.min(t.done, t.goal)}/{t.goal}</div>
+              </div>
+            );
+          })}
         </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
+
+      {/* Badges link */}
+      <button onClick={onOpenAwards} className="btn" style={{ width: "100%", marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}`, background: "transparent", border: "none", borderTopLeftRadius: 0, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ display: "flex", gap: 4 }}>
-          {game.achievements.slice(0, 6).map(a => (
-            <span key={a.id} style={{ fontSize: 17, filter: a.unlocked ? "none" : "grayscale(1)", opacity: a.unlocked ? 1 : 0.3 }}>{a.emoji}</span>
+          {game.achievements.filter(a => a.unlocked).slice(0, 6).map(a => (
+            <span key={a.id} style={{ fontSize: 17 }}>{a.emoji}</span>
           ))}
+          {game.unlockedCount === 0 && <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO }}>No badges yet</span>}
         </div>
         <span style={{ fontSize: 11, color: C.electric, fontFamily: FONT_MONO, fontWeight: 700 }}>{game.unlockedCount}/{game.achievements.length} badges →</span>
-      </div>
+      </button>
     </Surface>
   );
 }
@@ -3719,7 +3770,7 @@ function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, proteinL
 
       {/* ── LEVEL / XP / BADGES — progression spine ── */}
       <div className="ease-up-1" style={{ marginBottom: 14 }}>
-        <LevelHero game={game} streak={game.stats.currentStreak} onOpenAwards={onOpenAwards} />
+        <ProgressHero game={game} cardioSessions={cardioSessions} workouts={history} onOpenAwards={onOpenAwards} />
       </div>
 
       {/* ── TODAY — recovery engine recommendation, front & center ── */}
@@ -3993,9 +4044,6 @@ export default function App() {
     const currentBadges = game.achievements.filter(a => a.unlocked).map(a => a.id);
     if (!seen) { saveGameSeen({ level: game.level, badges: currentBadges }); return; }
     const queue = [];
-    if (game.level > seen.level) {
-      queue.push({ kind: "level", title: `Level ${game.level}`, subtitle: `You're a ${game.rank} now. Keep stacking.`, emoji: "⬆️" });
-    }
     game.achievements
       .filter(a => a.unlocked && !seen.badges.includes(a.id))
       .forEach(a => queue.push({ kind: "badge", title: a.name, subtitle: a.desc, emoji: a.emoji }));
@@ -4178,7 +4226,7 @@ export default function App() {
       setConfetti(true);
       setRestTimer(null);
       showSave(true);
-      toast(`+${xpForType("lift")} XP 🏋️`);
+      toast("🏋️ Lift logged — strong work");
     } else showSave(false);
   };
 
@@ -4187,7 +4235,7 @@ export default function App() {
   const logTabata = async () => {
     const def = RECOVERY.TYPES.tabata;
     const { data, error } = await supabase.from("cardio_sessions").insert([{ workout_type: "tabata", completed_at: new Date().toISOString(), duration_min: def.defaultDurationMin, rpe: def.defaultRPE }]).select();
-    if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); showSave(true); toast(`+${xpForType("tabata")} XP 🔥`); } else showSave(false);
+    if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); showSave(true); toast("🔥 Tabata logged — nice"); } else showSave(false);
   };
 
   // Create or update a conditioning session (Tabata / Long Interval / Game).
@@ -4198,7 +4246,7 @@ export default function App() {
       if (!error && data) { setCardioSessions(p => sortCardio(p.map(r => r.id === id ? data[0] : r))); showSave(true); } else showSave(false);
     } else {
       const { data, error } = await supabase.from("cardio_sessions").insert([row]).select();
-      if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); setConfetti(true); showSave(true); toast(`+${sessionXP({ type, rpe })} XP ${RECOVERY.TYPES[type].emoji}`); } else showSave(false);
+      if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); setConfetti(true); showSave(true); toast(`${RECOVERY.TYPES[type].emoji} ${RECOVERY.TYPES[type].label} logged — nice`); } else showSave(false);
     }
     setLoggerState({ open: false });
   };
@@ -4217,7 +4265,7 @@ export default function App() {
   const logTreadmill = async ({ duration, speed, incline, miles, notes }) => {
     const label = [duration?duration+" min":null, speed?speed+" mph":null, incline?incline+"% incline":null, miles?miles+" mi":null, notes||null].filter(Boolean).join(" · ");
     const { data, error } = await supabase.from("workouts").insert([{ session_name: "Treadmill Walk", color: C.plum, total_volume: 0, exercises: [{ name: label, sets: 1, reps: "walk", weight: 0, volume: 0, duration, speed, incline, miles }] }]).select();
-    if (!error && data) { setHistory(p => [data[0],...p]); showSave(true); toast(`+${xpForType("walk")} XP 🚶`); } else showSave(false);
+    if (!error && data) { setHistory(p => [data[0],...p]); showSave(true); toast("🚶 Walk logged — keep it rolling"); } else showSave(false);
   };
 
   // Walk logger (Home + quick-add + edit): minutes/speed/incline, any date.
@@ -4234,7 +4282,7 @@ export default function App() {
       if (!error && data) { setHistory(p => sortByLogged(p.map(r => r.id === editingId ? data[0] : r))); showSave(true); } else showSave(false);
     } else {
       const { data, error } = await supabase.from("workouts").insert([payload]).select();
-      if (!error && data) { setHistory(p => sortByLogged([data[0], ...p])); setConfetti(true); showSave(true); toast(`+${xpForType("walk")} XP 🚶`); } else showSave(false);
+      if (!error && data) { setHistory(p => sortByLogged([data[0], ...p])); setConfetti(true); showSave(true); toast("🚶 Walk logged — keep it rolling"); } else showSave(false);
     }
     setWalkState({ open: false });
   };
