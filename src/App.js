@@ -2254,45 +2254,6 @@ function TabataTimer({ onLog, loggedToday }) {
 }
 
 /* ── Treadmill ── */
-function TreadmillLogger({ onLog }) {
-  const [duration, setDuration] = useState("");
-  const [speed, setSpeed] = useState("");
-  const [incline, setIncline] = useState("");
-  const [notes, setNotes] = useState("");
-  const [done, setDone] = useState(false);
-  const canLog = duration || speed || incline;
-  const miles = duration && speed ? ((parseFloat(duration) / 60) * parseFloat(speed)).toFixed(2) : null;
-
-  const handleLog = () => {
-    if (!canLog) return;
-    onLog({ duration: parseFloat(duration) || 0, speed: parseFloat(speed) || 0, incline: parseFloat(incline) || 0, miles: parseFloat(miles) || 0, notes });
-    setDuration(""); setSpeed(""); setIncline(""); setNotes("");
-    setDone(true); setTimeout(() => setDone(false), 2500);
-  };
-
-  return (
-    <Surface accent={C.plum}>
-      <Pill color={C.plum}>Anytime · Treadmill</Pill>
-      <h2 className="h-display" style={{ fontSize: 24, margin: "10px 0 16px", color: C.bone }}>Walk Logger</h2>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
-        {[["Duration", "min", duration, setDuration, "45"],["Speed", "mph", speed, setSpeed, "3.5"],["Incline", "%", incline, setIncline, "8"]].map(([label, unit, val, set, ph]) => (
-          <div key={label}>
-            <div style={{ textAlign: "center" }}><Eyebrow>{label} ({unit})</Eyebrow></div>
-            <div style={{ height: 5 }} />
-            <NumIn value={val} onChange={set} placeholder={ph} decimal={true} step="0.1" />
-          </div>
-        ))}
-      </div>
-      {miles && <div style={{ textAlign: "center", color: C.plum, fontSize: 13, marginBottom: 12, fontFamily: FONT_SERIF, fontStyle: "italic" }}>≈ {miles} miles</div>}
-      <input
-        type="text" placeholder="Notes (optional)" value={notes} onChange={e => setNotes(e.target.value)}
-        style={{ background: C.raised, border: `1px solid ${C.line}`, borderRadius: 10, color: C.bone, padding: "10px 14px", fontSize: 13, width: "100%", marginBottom: 12, outline: "none" }}
-      />
-      <Btn color={C.plum} onClick={handleLog} disabled={!canLog} full>{done ? "✓ Logged" : "Log Walk"}</Btn>
-    </Surface>
-  );
-}
-
 /* ── Stat Cards ── */
 function StatCard({ kicker, value, unit, color, big, sub }) {
   return (
@@ -4410,11 +4371,6 @@ export default function App() {
     }});
   };
 
-  const logTreadmill = async ({ duration, speed, incline, miles, notes }) => {
-    const label = [duration?duration+" min":null, speed?speed+" mph":null, incline?incline+"% incline":null, miles?miles+" mi":null, notes||null].filter(Boolean).join(" · ");
-    const { data, error } = await supabase.from("workouts").insert([{ session_name: "Treadmill Walk", color: C.plum, total_volume: 0, exercises: [{ name: label, sets: 1, reps: "walk", weight: 0, volume: 0, duration, speed, incline, miles }] }]).select();
-    if (!error && data) { setHistory(p => [data[0],...p]); showSave(true); toast("🚶 Walk logged — keep it rolling"); } else showSave(false);
-  };
 
   // Walk logger (Home + quick-add + edit): minutes/speed/incline, any date.
   const sortByLogged = (rows) => [...rows].sort((a, b) => new Date(b.logged_at) - new Date(a.logged_at));
@@ -4689,7 +4645,18 @@ export default function App() {
             </div>
 
             <div className="ease-up-1"><TabataTimer onLog={logTabata} loggedToday={tabataToday} /></div>
-            <div className="ease-up-2"><TreadmillLogger onLog={logTreadmill} /></div>
+            <div className="ease-up-2">
+              <Surface accent={C.plum}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <Pill color={C.plum}>Anytime · Recovery</Pill>
+                    <h2 className="h-display" style={{ fontSize: 22, margin: "10px 0 2px", color: C.bone }}>Walk</h2>
+                    <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>minutes · speed · incline</div>
+                  </div>
+                  <Btn color={C.plum} onClick={() => setWalkState({ open: true })}>Log a walk</Btn>
+                </div>
+              </Surface>
+            </div>
 
             {/* Status banners */}
             <div className="ease-up-3" style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr", marginBottom: 14 }}>
