@@ -343,6 +343,9 @@ const SCI = {
   tabataLift: "Two adaptations at once: the lift signals your muscles to build, the Tabata sharpens your engine. Pairing them onto one hard day keeps tomorrow free to recover both.",
   lift: "Lifting creates tiny tears and a 'come back stronger' signal — muscle-building stays elevated for 24–48 hours. Add a little each time and you get denser, more powerful, more explosive off the floor.",
   restart: "After time off, aerobic fitness fades first (detraining). A single Tabata wakes the system back up without overwhelming it — give it a session or two and muscle memory snaps your old capacity back fast.",
+  gameDo: "Game night is your hard session — full-court running is a big conditioning and impact load. Empty the tank on the court; the engine counts it as this week's hard work and recovers you around it.",
+  preGame: "Game tomorrow — keep your legs fresh today. Show up with full glycogen stores and springy legs, not sore ones. A short walk is fine; save the intensity for the court.",
+  shabbat: "It's Shabbat — your built-in rest day. Recovery is when the adaptations actually happen, so a full day off is a feature, not a gap. An easy walk is perfectly in keeping if you're already out.",
 };
 
 /* ── Recovery engine — pure functions over a normalized session list ──
@@ -413,7 +416,7 @@ function requiredGapAfter(s) {
 // do today: 0, 1, or 2 things) plus a one-line reason. `type` mirrors items[0]
 // for convenient display. A day can pair a Tabata with a lift; walks fill
 // recovery days as active recovery.
-function recommend(allSessions, refDate) {
+function recommend(allSessions, refDate, constraints = {}) {
   const ref = startOfDay(refDate);
   const T = RECOVERY.TYPES;
   const flags = [];
@@ -468,6 +471,14 @@ function recommend(allSessions, refDate) {
   const owedLift = Math.max(0, T.lift.weeklyTarget - done.lift);
   const canRampHard = band !== "restart" && band !== "fresh" && !(band === "ease" && daysSinceHard >= RECOVERY.reentryTabataAfterDays);
 
+  // Fixed weekly schedule (Shabbat, game night) — these override training.
+  const dow = ref.getDay();
+  const gameOn = (d) => constraints.gameDow != null && d.getDay() === constraints.gameDow
+    && constraints.skipGameWeekStart !== startOfWeek(d).getTime();
+  const isShabbat = (constraints.restDows || []).includes(dow);
+  const gameToday = gameOn(ref) && !todays.some(s => s.type === "game");
+  const gameTomorrow = gameOn(addDays(ref, 1));
+
   // 1) Already trained hard today — don't stack a second hard day...
   if (todaysHard.length) {
     if (daysSinceHard === 1) flags.push("Two hard days in a row — keep tomorrow easy.");
@@ -478,6 +489,18 @@ function recommend(allSessions, refDate) {
       return mk("train", [{ type: "lift" }], `Tabata's done — pair a Lift with it while you're warm (${done.lift}/${T.lift.weeklyTarget} lifts this week).`, SCI.lift);
     }
     return recoveryDay(`${T[todaysHard[0].type].label} already done today — let it absorb.`, recoverSci(todaysHard[0].type));
+  }
+
+  // Fixed events first — they override the training plan.
+  if (gameToday) {
+    if (daysSinceHard === 1) flags.push("Game lands on a hard day — take it a touch easier out there.");
+    return mk("train", [{ type: "game" }], "Game night 🏀 — that's your hard session. Leave it all on the court.", SCI.gameDo);
+  }
+  if (isShabbat) {
+    return recoveryDay("It's Shabbat — your scheduled rest day, no hard training.", SCI.shabbat);
+  }
+  if (gameTomorrow) {
+    return recoveryDay("Game tomorrow — keep your legs fresh today.", SCI.preGame);
   }
 
   // 2) Overtraining guard — too many hard days lately overrides weekly targets.
@@ -529,12 +552,12 @@ function recommend(allSessions, refDate) {
 // Forward-simulated tentative plan. Each recommended session is added to the
 // working set so spacing and weekly targets carry into the following days —
 // which naturally drops a lower-priority session when there's no room to space.
-function buildPlan(allSessions, fromDate, nDays) {
+function buildPlan(allSessions, fromDate, nDays, constraints = {}) {
   const work = allSessions.slice();
   const out = [];
   for (let i = 0; i < nDays; i++) {
     const day = addDays(fromDate, i);
-    const r = recommend(work, day);
+    const r = recommend(work, day, constraints);
     out.push({ date: day, ...r });
     (r.items || []).forEach(it => {
       const def = RECOVERY.TYPES[it.type];
@@ -688,6 +711,13 @@ function computeGameState(history, cardioSessions, weightLog) {
 const LS_GAME = "bttd_game_seen";
 function loadGameSeen() { try { return JSON.parse(localStorage.getItem(LS_GAME)) || null; } catch (e) { return null; } }
 function saveGameSeen(v) { try { localStorage.setItem(LS_GAME, JSON.stringify(v)); } catch (e) {} }
+
+// Fixed weekly schedule: Shabbat (no hard training Sat) + recurring game night.
+const LS_SCHEDULE = "bttd_schedule";
+const DEFAULT_SCHEDULE = { shabbat: true, gameNight: true, gameDow: 4, skipGameWeek: null };
+function loadSchedule() { try { return { ...DEFAULT_SCHEDULE, ...(JSON.parse(localStorage.getItem(LS_SCHEDULE)) || {}) }; } catch (e) { return { ...DEFAULT_SCHEDULE }; } }
+function saveSchedule(s) { try { localStorage.setItem(LS_SCHEDULE, JSON.stringify(s)); } catch (e) {} }
+const DOW_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const PHASES = [
   { weeks: "01—04", color: C.rust,     weight: "225 → 218", focus: "Build the habit. Nail form. Ease in.",         goals: ["2× gym/week", "1× cardio/week", "Sleep 7+ hrs", "Cut late-night eating"] },
@@ -3246,12 +3276,12 @@ function toLocalInput(d) {
 /* ════════════════════════════════════════════════════════════
    TODAY CARD — the recovery engine's recommendation, front & center
    ════════════════════════════════════════════════════════════ */
-function TodayCard({ cardioSessions, workouts, onOpenLogger, onChooseLift, onGoWalk }) {
+function TodayCard({ cardioSessions, workouts, constraints, onOpenLogger, onChooseLift, onGoWalk }) {
   const [showOverride, setShowOverride] = useState(false);
   const [showSci, setShowSci] = useState(true);
   const engine = normalizeAll(cardioSessions, workouts);
   const today = startOfDay(new Date());
-  const plan = buildPlan(engine, today, 7);
+  const plan = buildPlan(engine, today, 7, constraints);
   const rec = plan[0];
   const s7 = trailingSummary(engine, today, 7);
   const s30 = trailingSummary(engine, today, 30);
@@ -3792,7 +3822,7 @@ function CelebrationOverlay({ queue, onClose }) {
 /* ════════════════════════════════════════════════════════════
    HOME — consistency-first home screen
    ════════════════════════════════════════════════════════════ */
-function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, proteinLog, vitaminD3Log, creatineLog, onGoTab, onOpenLogger, onOpenAwards, onChooseLift, onGoWalk, theme, onToggleTheme }) {
+function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, constraints, proteinLog, vitaminD3Log, creatineLog, onGoTab, onOpenLogger, onOpenAwards, onChooseLift, onGoWalk, theme, onToggleTheme }) {
   const today = todayKey();
   const dateStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
@@ -3884,7 +3914,7 @@ function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, proteinL
 
       {/* ── TODAY — recovery engine recommendation, front & center ── */}
       <div className="ease-up-2" style={{ marginBottom: 18 }}>
-        <TodayCard cardioSessions={cardioSessions} workouts={history} onOpenLogger={onOpenLogger} onChooseLift={onChooseLift} onGoWalk={onGoWalk} />
+        <TodayCard cardioSessions={cardioSessions} workouts={history} constraints={constraints} onOpenLogger={onOpenLogger} onChooseLift={onChooseLift} onGoWalk={onGoWalk} />
       </div>
 
       {/* ── DAILY RINGS — close them every day ── */}
@@ -4144,6 +4174,15 @@ export default function App() {
 
   // Gamification state, derived purely from logged data.
   const game = useMemo(() => computeGameState(history, cardioSessions, weightLog), [history, cardioSessions, weightLog]);
+
+  // Fixed weekly schedule (Shabbat / game night) → engine constraints.
+  const [schedule, setSchedule] = useState(loadSchedule);
+  const updateSchedule = (next) => { setSchedule(next); saveSchedule(next); };
+  const constraints = useMemo(() => ({
+    restDows: schedule.shabbat ? [6] : [],
+    gameDow: schedule.gameNight ? schedule.gameDow : null,
+    skipGameWeekStart: schedule.skipGameWeek,
+  }), [schedule]);
 
   // Celebrate genuinely new levels / badges. First run for a given browser sets
   // a silent baseline (so a returning player isn't bombarded with old unlocks).
@@ -4553,6 +4592,7 @@ export default function App() {
             cardioSessions={cardioSessions}
             weightLog={weightLog}
             game={game}
+            constraints={constraints}
             proteinLog={proteinLog}
             vitaminD3Log={vitaminD3Log}
             creatineLog={creatineLog}
@@ -4946,6 +4986,59 @@ export default function App() {
         {tab === "goals" && (
           <>
             <div className="ease-up"><PageTitle kicker="Consistency · compounds">The Plan</PageTitle></div>
+
+            {/* Weekly schedule — Shabbat + game night the engine plans around */}
+            {(() => {
+              const wkNow = startOfWeek(new Date()).getTime();
+              const playingThisWeek = schedule.skipGameWeek !== wkNow;
+              const Switch = ({ on, onToggle }) => (
+                <button onClick={onToggle} className="btn" style={{ width: 50, height: 28, borderRadius: 14, border: "none", background: on ? C.moss : C.faint, position: "relative", cursor: "pointer", padding: 0, flexShrink: 0, transition: "background 0.2s" }}>
+                  <div style={{ width: 22, height: 22, borderRadius: 999, background: "#fff", position: "absolute", top: 3, left: on ? 25 : 3, transition: "left 0.2s cubic-bezier(0.22,1,0.36,1)", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+                </button>
+              );
+              return (
+                <div className="ease-up-1">
+                  <Surface accent={C.electric}>
+                    <Eyebrow color={C.electric}>Weekly schedule</Eyebrow>
+                    {/* Shabbat */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0 10px", borderBottom: `1px solid ${C.line}` }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>🕯️ Shabbat (Saturday)</div>
+                        <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>No hard training — rest or an easy walk</div>
+                      </div>
+                      <Switch on={schedule.shabbat} onToggle={() => updateSchedule({ ...schedule, shabbat: !schedule.shabbat })} />
+                    </div>
+                    {/* Game night */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0 10px", borderBottom: schedule.gameNight ? `1px solid ${C.line}` : "none" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>🏀 Game night</div>
+                        <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>League night — the engine plans around it</div>
+                      </div>
+                      <Switch on={schedule.gameNight} onToggle={() => updateSchedule({ ...schedule, gameNight: !schedule.gameNight })} />
+                    </div>
+                    {schedule.gameNight && (
+                      <>
+                        <div style={{ display: "flex", gap: 5, marginTop: 12 }}>
+                          {DOW_NAMES.map((d, i) => (
+                            <button key={i} onClick={() => updateSchedule({ ...schedule, gameDow: i })} className="btn" style={{
+                              flex: 1, padding: "8px 0", borderRadius: 9, cursor: "pointer", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 11,
+                              border: `1px solid ${schedule.gameDow === i ? C.rust : C.line}`, background: schedule.gameDow === i ? `${C.rust}18` : C.raised, color: schedule.gameDow === i ? C.rust : C.dim,
+                            }}>{d}</button>
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>Playing this week?</div>
+                            <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>{playingThisWeek ? `Game on ${DOW_NAMES[schedule.gameDow]} night` : "Off this week — no game planned"}</div>
+                          </div>
+                          <Switch on={playingThisWeek} onToggle={() => updateSchedule({ ...schedule, skipGameWeek: playingThisWeek ? wkNow : null })} />
+                        </div>
+                      </>
+                    )}
+                  </Surface>
+                </div>
+              );
+            })()}
 
             {/* Quick Settings */}
             <div className="ease-up-1">
