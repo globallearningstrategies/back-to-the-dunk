@@ -2312,8 +2312,74 @@ function StatCard({ kicker, value, unit, color, big, sub }) {
   );
 }
 
+/* ── Consistency calendar — GitHub-style year heatmap of every active day ── */
+function ConsistencyCalendar({ sessions }) {
+  const today = startOfDay(new Date());
+  const countMap = new Map();
+  sessions.forEach(s => { const t = startOfDay(s.date).getTime(); countMap.set(t, (countMap.get(t) || 0) + 1); });
+
+  const COLS = 53;
+  const end = addDays(startOfWeek(today), 7);     // exclusive upper bound (next Sunday)
+  const start = addDays(end, -7 * COLS);
+  const columns = [];
+  let activeCount = 0;
+  for (let w = 0; w < COLS; w++) {
+    const colStart = addDays(start, w * 7);
+    const days = [];
+    for (let d = 0; d < 7; d++) {
+      const day = addDays(colStart, d);
+      if (day.getTime() > today.getTime()) { days.push(null); continue; }
+      const ts = day.getTime();
+      const count = countMap.get(ts) || 0;
+      if (count > 0) activeCount++;
+      days.push({ ts, count, isToday: ts === today.getTime() });
+    }
+    columns.push({ month: colStart.getMonth(), label: colStart.toLocaleDateString("en-US", { month: "short" }), days });
+  }
+  const color = (c) => c <= 0 ? C.raised : c === 1 ? `${C.rust}66` : c === 2 ? `${C.rust}AA` : C.rustHi;
+  const CELL = 12, GAP = 3;
+
+  return (
+    <Surface accent={C.rust}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <Eyebrow color={C.rust}>Consistency · last 12 months</Eyebrow>
+        <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO }}>{activeCount} active days</span>
+      </div>
+      <div style={{ overflowX: "auto", marginTop: 12, paddingBottom: 4 }}>
+        <div style={{ minWidth: "min-content" }}>
+          {/* Month labels */}
+          <div style={{ display: "flex", gap: GAP, marginBottom: 4 }}>
+            {columns.map((col, ci) => {
+              const show = ci === 0 ? false : col.month !== columns[ci - 1].month;
+              return <div key={ci} style={{ width: CELL, fontSize: 8, color: C.mute, fontFamily: FONT_MONO, overflow: "visible", whiteSpace: "nowrap" }}>{show ? col.label : ""}</div>;
+            })}
+          </div>
+          {/* 7 rows × 53 week-columns */}
+          <div style={{ display: "flex", gap: GAP }}>
+            {columns.map((col, ci) => (
+              <div key={ci} style={{ display: "flex", flexDirection: "column", gap: GAP }}>
+                {col.days.map((cell, di) => cell === null
+                  ? <div key={di} style={{ width: CELL, height: CELL }} />
+                  : <div key={di} title={`${new Date(cell.ts).toLocaleDateString("en-CA")} · ${cell.count} workout${cell.count === 1 ? "" : "s"}`}
+                      style={{ width: CELL, height: CELL, borderRadius: 2, background: color(cell.count), boxShadow: cell.isToday ? `0 0 0 1.5px ${C.bone}` : "none" }} />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginTop: 10, fontSize: 9, color: C.mute, fontFamily: FONT_MONO }}>
+        <span>Less</span>
+        {[0, 1, 2, 3].map(c => <span key={c} style={{ width: 11, height: 11, borderRadius: 2, background: color(c), display: "inline-block" }} />)}
+        <span>More</span>
+      </div>
+    </Surface>
+  );
+}
+
 /* ── Stats Tab ── */
 function StatsTab({ history, weightLog, cardioSessions }) {
+  const allActivity = normalizeAll(cardioSessions, history);
   const gymSessions = history.filter(h => h.session_name && h.session_name !== "Treadmill Walk");
   const treadmillSessions = history.filter(h => h.session_name === "Treadmill Walk");
   // Conditioning now lives in cardio_sessions (engine-managed).
@@ -2353,6 +2419,12 @@ function StatsTab({ history, weightLog, cardioSessions }) {
           <p className="h-serif" style={{ fontSize: 18, color: C.cream, margin: 0 }}>The numbers will come.</p>
           <div style={{ fontSize: 12, color: C.dim, marginTop: 8, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>LOG A SESSION TO SEE YOUR STATS</div>
         </Surface>
+      )}
+
+      {allActivity.length > 0 && (
+        <div className="ease-up-1" style={{ marginBottom: 12 }}>
+          <ConsistencyCalendar sessions={allActivity} />
+        </div>
       )}
 
       <div className="ease-up-1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
@@ -3515,18 +3587,26 @@ function LiftDateSheet({ row, onClose, onSave, onDelete }) {
    ════════════════════════════════════════════════════════════ */
 // Consistency hero — concrete proof of the work: streak, totals, and a bar
 // graph of workouts completed per week. (Replaces the abstract XP/level card.)
-function ProgressHero({ game, cardioSessions, workouts, onOpenAwards }) {
+function ProgressHero({ game, cardioSessions, workouts, onOpenAwards, onGoTab }) {
+  const [mode, setMode] = useState("weeks");
   const all = normalizeAll(cardioSessions, workouts);
   const today = startOfDay(new Date());
-  const WEEKS = 10;
   const wkStart = startOfWeek(today);
+
   const weeks = [];
-  for (let i = WEEKS - 1; i >= 0; i--) {
+  for (let i = 9; i >= 0; i--) {
     const ws = addDays(wkStart, -7 * i).getTime();
     const we = addDays(wkStart, -7 * i + 7).getTime();
-    weeks.push({ ws, count: all.filter(s => { const t = s.date.getTime(); return t >= ws && t < we; }).length });
+    weeks.push({ count: all.filter(s => { const t = s.date.getTime(); return t >= ws && t < we; }).length, label: "" });
   }
-  const maxCount = Math.max(4, ...weeks.map(w => w.count));
+  const months = [];
+  for (let i = 7; i >= 0; i--) {
+    const ms = new Date(today.getFullYear(), today.getMonth() - i, 1).getTime();
+    const me = new Date(today.getFullYear(), today.getMonth() - i + 1, 1).getTime();
+    months.push({ count: all.filter(s => { const t = s.date.getTime(); return t >= ms && t < me; }).length, label: new Date(ms).toLocaleDateString("en-US", { month: "short" }).slice(0, 3) });
+  }
+  const bars = mode === "weeks" ? weeks : months;
+  const maxCount = Math.max(4, ...bars.map(b => b.count));
   const thisWeek = weeks[weeks.length - 1].count;
   const streak = game.stats.currentStreak;
   const total = game.stats.totalSessions;
@@ -3546,6 +3626,9 @@ function ProgressHero({ game, cardioSessions, workouts, onOpenAwards }) {
       <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, marginTop: 4, letterSpacing: "0.06em" }}>{label}</div>
     </div>
   );
+  const tab = (m, txt) => (
+    <button onClick={() => setMode(m)} className="btn" style={{ padding: "4px 10px", borderRadius: 8, border: "none", cursor: "pointer", background: mode === m ? C.panel : "transparent", color: mode === m ? C.bone : C.dim, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 11, boxShadow: mode === m ? `0 1px 2px ${C.bone}14` : "none" }}>{txt}</button>
+  );
 
   return (
     <Surface accent={C.rust} padding={20}>
@@ -3556,22 +3639,30 @@ function ProgressHero({ game, cardioSessions, workouts, onOpenAwards }) {
         {stat("TOTAL DONE", total, C.bone)}
       </div>
 
-      {/* Workouts-per-week bar graph */}
-      <Eyebrow>Workouts · last {WEEKS} weeks</Eyebrow>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 64, marginTop: 10 }}>
-        {weeks.map((w, i) => {
-          const isNow = i === weeks.length - 1;
-          const h = Math.max(4, Math.round((w.count / maxCount) * 56));
-          return (
-            <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%" }} title={`${w.count} workouts`}>
-              <div style={{ fontSize: 9, color: w.count ? C.cream : "transparent", fontFamily: FONT_MONO, marginBottom: 3 }}>{w.count}</div>
-              <div style={{ width: "100%", height: h, borderRadius: "4px 4px 2px 2px", background: w.count ? (isNow ? `linear-gradient(180deg, ${C.rustHi}, ${C.rust})` : `${C.rust}99`) : C.raised, border: `1px solid ${w.count ? "transparent" : C.line}`, transition: "height 0.6s cubic-bezier(0.22,1,0.36,1)" }} />
-            </div>
-          );
-        })}
+      {/* Workouts bar graph — weeks / months toggle, tap for full history */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Eyebrow>Workouts done</Eyebrow>
+        <div style={{ display: "flex", gap: 2, background: C.raised, borderRadius: 10, padding: 2, border: `1px solid ${C.line}` }}>
+          {tab("weeks", "Weeks")}{tab("months", "Months")}
+        </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 9, color: C.mute, fontFamily: FONT_MONO }}>
-        <span>{WEEKS} WEEKS AGO</span><span>THIS WEEK</span>
+      <div onClick={() => onGoTab && onGoTab("stats")} className="card-tap" style={{ cursor: "pointer", marginTop: 10 }}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: mode === "weeks" ? 5 : 8, height: 64 }}>
+          {bars.map((b, i) => {
+            const isNow = i === bars.length - 1;
+            const h = Math.max(4, Math.round((b.count / maxCount) * 56));
+            return (
+              <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%" }} title={`${b.count} workouts`}>
+                <div style={{ fontSize: 9, color: b.count ? C.cream : "transparent", fontFamily: FONT_MONO, marginBottom: 3 }}>{b.count}</div>
+                <div style={{ width: "100%", height: h, borderRadius: "4px 4px 2px 2px", background: b.count ? (isNow ? `linear-gradient(180deg, ${C.rustHi}, ${C.rust})` : `${C.rust}99`) : C.raised, border: `1px solid ${b.count ? "transparent" : C.line}`, transition: "height 0.6s cubic-bezier(0.22,1,0.36,1)" }} />
+                {mode === "months" && <div style={{ fontSize: 8, color: C.mute, fontFamily: FONT_MONO, marginTop: 4 }}>{b.label}</div>}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 9, color: C.mute, fontFamily: FONT_MONO }}>
+          {mode === "weeks" ? <><span>10 WEEKS AGO</span><span>THIS WEEK · tap for full history →</span></> : <span style={{ marginLeft: "auto" }}>tap for full history →</span>}
+        </div>
       </div>
 
       {/* This week vs plan */}
@@ -3770,7 +3861,7 @@ function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, proteinL
 
       {/* ── LEVEL / XP / BADGES — progression spine ── */}
       <div className="ease-up-1" style={{ marginBottom: 14 }}>
-        <ProgressHero game={game} cardioSessions={cardioSessions} workouts={history} onOpenAwards={onOpenAwards} />
+        <ProgressHero game={game} cardioSessions={cardioSessions} workouts={history} onOpenAwards={onOpenAwards} onGoTab={onGoTab} />
       </div>
 
       {/* ── TODAY — recovery engine recommendation, front & center ── */}
