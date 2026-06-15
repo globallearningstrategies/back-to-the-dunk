@@ -2377,7 +2377,60 @@ function ConsistencyCalendar({ sessions }) {
   );
 }
 
-/* ── Stats Tab ── */
+/* ── Monthly recap — shareable summary of the current month ── */
+function MonthlyRecap({ sessions, weightLog }) {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const monthName = now.toLocaleDateString("en-US", { month: "long" });
+  const ms = sessions.filter(s => s.date.getTime() >= monthStart);
+  const count = ms.length;
+  const activeDays = new Set(ms.map(s => startOfDay(s.date).getTime())).size;
+  const byType = { tabata: 0, long_interval: 0, game: 0, lift: 0, walk: 0 };
+  ms.forEach(s => { if (byType[s.type] != null) byType[s.type]++; });
+
+  const sortedW = [...(weightLog || [])].sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at));
+  let wDelta = null;
+  const monthW = sortedW.filter(w => new Date(w.logged_at).getTime() >= monthStart);
+  if (monthW.length) {
+    const before = sortedW.filter(w => new Date(w.logged_at).getTime() < monthStart);
+    const baseline = before.length ? before[before.length - 1].weight : monthW[0].weight;
+    wDelta = +(monthW[monthW.length - 1].weight - baseline).toFixed(1);
+  }
+  const wStr = wDelta != null && wDelta !== 0 ? `${wDelta < 0 ? "−" : "+"}${Math.abs(wDelta)} lb` : null;
+  const shareText = `${monthName} on The Work — ${count} workout${count === 1 ? "" : "s"}, ${activeDays} active day${activeDays === 1 ? "" : "s"}${wStr ? `, ${wStr}` : ""} 💪`;
+  const share = () => {
+    if (navigator.share) navigator.share({ text: shareText }).catch(() => {});
+    else { try { navigator.clipboard.writeText(shareText); toast("Copied to clipboard"); } catch (e) { toast(shareText); } }
+  };
+
+  const big = (value, label, color) => (
+    <div style={{ flex: 1 }}>
+      <div className="num-tab h-display" style={{ fontSize: 30, fontWeight: 800, color, letterSpacing: "-0.03em", lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, marginTop: 5, letterSpacing: "0.06em" }}>{label}</div>
+    </div>
+  );
+
+  return (
+    <Surface accent={C.amber} padding={20}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <Eyebrow color={C.amber}>{monthName} · this month</Eyebrow>
+        <button onClick={share} className="btn" style={{ background: `${C.amber}18`, border: `1px solid ${C.amber}55`, color: C.amber, borderRadius: 9, padding: "5px 12px", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Share ↗</button>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+        {big(count, "WORKOUTS", C.bone)}
+        {big(activeDays, "ACTIVE DAYS", C.moss)}
+        {big(wStr || "—", "WEIGHT", wDelta < 0 ? C.moss : wDelta > 0 ? C.red : C.dim)}
+      </div>
+      <div style={{ display: "flex", gap: 10, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}`, fontSize: 12, fontFamily: FONT_MONO, color: C.dim, flexWrap: "wrap" }}>
+        {["tabata", "long_interval", "lift", "walk", "game"].map(k => (
+          <span key={k} title={RECOVERY.TYPES[k].label}>{RECOVERY.TYPES[k].emoji} {byType[k]}</span>
+        ))}
+      </div>
+    </Surface>
+  );
+}
+
+/* ── Progress Tab ── */
 function StatsTab({ history, weightLog, cardioSessions }) {
   const allActivity = normalizeAll(cardioSessions, history);
   const gymSessions = history.filter(h => h.session_name && h.session_name !== "Treadmill Walk");
@@ -2411,7 +2464,7 @@ function StatsTab({ history, weightLog, cardioSessions }) {
 
   return (
     <>
-      <PageTitle kicker="Numbers · don't lie">Stats</PageTitle>
+      <PageTitle kicker="Proof · of the work">Progress</PageTitle>
 
       {gymSessions.length === 0 && cardioSessions.length === 0 && treadmillSessions.length === 0 && (
         <Surface style={{ textAlign: "center", padding: 40 }}>
@@ -2422,9 +2475,33 @@ function StatsTab({ history, weightLog, cardioSessions }) {
       )}
 
       {allActivity.length > 0 && (
-        <div className="ease-up-1" style={{ marginBottom: 12 }}>
-          <ConsistencyCalendar sessions={allActivity} />
-        </div>
+        <>
+          <div className="ease-up-1" style={{ marginBottom: 12 }}>
+            <MonthlyRecap sessions={allActivity} weightLog={weightLog} />
+          </div>
+          <div className="ease-up-2" style={{ marginBottom: 12 }}>
+            <ConsistencyCalendar sessions={allActivity} />
+          </div>
+          <div className="ease-up-2" style={{ marginBottom: 12 }}>
+            <Surface accent={C.moss}>
+              <Eyebrow color={C.moss}>Weight goal · 225 → 200</Eyebrow>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 14 }}>
+                <div>
+                  <div className="num-tab h-display" style={{ fontSize: 30, fontWeight: 700, color: C.moss, letterSpacing: "-0.04em", lineHeight: 1 }}>{lost > 0 ? "−" + lost.toFixed(1) : "0"}</div>
+                  <div style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, marginTop: 6 }}>LOST</div>
+                </div>
+                <div>
+                  <div className="num-tab h-display" style={{ fontSize: 30, fontWeight: 700, color: C.bone, letterSpacing: "-0.04em", lineHeight: 1 }}>{curW}</div>
+                  <div style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, marginTop: 6 }}>CURRENT</div>
+                </div>
+                <div>
+                  <div className="num-tab h-display" style={{ fontSize: 30, fontWeight: 700, color: C.amber, letterSpacing: "-0.04em", lineHeight: 1 }}>{(curW - goalW).toFixed(1)}</div>
+                  <div style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, marginTop: 6 }}>TO GOAL</div>
+                </div>
+              </div>
+            </Surface>
+          </div>
+        </>
       )}
 
       <div className="ease-up-1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
@@ -2486,26 +2563,6 @@ function StatsTab({ history, weightLog, cardioSessions }) {
       <div className="ease-up-3" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
         <StatCard kicker="MILES" value={totalMiles.toFixed(1)} color={C.plum} />
         <StatCard kicker="TIME" value={totalMin >= 60 ? (totalMin/60).toFixed(1) : totalMin} unit={totalMin >= 60 ? "hrs" : "min"} color={C.plum} />
-      </div>
-
-      <div className="ease-up-4">
-        <Surface accent={C.moss}>
-          <Eyebrow color={C.moss}>Weight Progress</Eyebrow>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 14 }}>
-            <div>
-              <div className="num-tab h-display" style={{ fontSize: 30, fontWeight: 700, color: C.moss, letterSpacing: "-0.04em", lineHeight: 1 }}>{lost > 0 ? "−"+lost.toFixed(1) : "0"}</div>
-              <div style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, marginTop: 6 }}>LOST</div>
-            </div>
-            <div>
-              <div className="num-tab h-display" style={{ fontSize: 30, fontWeight: 700, color: C.bone, letterSpacing: "-0.04em", lineHeight: 1 }}>{curW}</div>
-              <div style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, marginTop: 6 }}>CURRENT</div>
-            </div>
-            <div>
-              <div className="num-tab h-display" style={{ fontSize: 30, fontWeight: 700, color: C.amber, letterSpacing: "-0.04em", lineHeight: 1 }}>{(curW-goalW).toFixed(1)}</div>
-              <div style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, marginTop: 6 }}>TO GOAL</div>
-            </div>
-          </div>
-        </Surface>
       </div>
 
       {Object.keys(pbs).length > 0 && (
@@ -4444,7 +4501,7 @@ export default function App() {
   ];
   const SUB_LABELS = {
     home: "Today", workout: "Train", history: "Log", goals: "Plan",
-    stats: "Stats", weight: "Weight", nutrition: "Fuel",
+    stats: "Progress", weight: "Weight", nutrition: "Fuel",
   };
   const groupOf = (id) => (GROUPS.find(g => g.tabs.includes(id)) || GROUPS[0]);
   const activeGroup = groupOf(tab);
