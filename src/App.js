@@ -4447,8 +4447,9 @@ export default function App() {
     setHistory(p => p.filter(h => h.id !== id));
     await supabase.from("workouts").delete().eq("id", id);
     if (row) toast("Workout deleted", { actionLabel: "UNDO", onAction: async () => {
-      const { data } = await supabase.from("workouts").insert([row]).select();
-      if (data) setHistory(p => [...p, data[0]].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+      const rest = { ...row }; delete rest.id; // id is GENERATED ALWAYS — let the DB assign a new one
+      const { data } = await supabase.from("workouts").insert([rest]).select();
+      if (data) setHistory(p => sortByLogged([...p, data[0]]));
     }});
   };
   const logWeight = async () => {
@@ -4468,8 +4469,9 @@ export default function App() {
     setWeightLog(p => p.filter(e => e.id !== id));
     await supabase.from("weight_log").delete().eq("id", id);
     if (row) toast("Weight entry deleted", { actionLabel: "UNDO", onAction: async () => {
-      const { data } = await supabase.from("weight_log").insert([row]).select();
-      if (data) setWeightLog(p => [...p, data[0]].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+      const rest = { ...row }; delete rest.id; // id is GENERATED ALWAYS
+      const { data } = await supabase.from("weight_log").insert([rest]).select();
+      if (data) setWeightLog(p => [...p, data[0]].sort((a, b) => new Date(b.logged_at) - new Date(a.logged_at)));
     }});
   };
 
