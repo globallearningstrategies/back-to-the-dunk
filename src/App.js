@@ -359,6 +359,21 @@ function startOfWeek(d) { const x = startOfDay(d); x.setDate(x.getDate() - x.get
 function dayGap(a, b) { return Math.round((startOfDay(a) - startOfDay(b)) / 86400000); }
 function isHardType(type) { return !!(RECOVERY.TYPES[type] && RECOVERY.TYPES[type].hard); }
 function agoWord(days) { return days === 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`; }
+// Minutes → "45m" / "1h 30m" / "2h".
+function fmtDur(min) {
+  if (min == null) return "—";
+  const m = Math.round(min);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60), r = m % 60;
+  return r ? `${h}h ${r}m` : `${h}h`;
+}
+// Compact form for tight chart labels: "45m" / "1.5h".
+function fmtDurShort(min) {
+  const m = Math.round(min || 0);
+  if (m < 60) return `${m}m`;
+  const h = m / 60;
+  return `${(Math.round(h * 10) / 10).toString().replace(/\.0$/, "")}h`;
+}
 
 // Map raw cardio_sessions rows → normalized engine sessions.
 function normalizeSessions(rows) {
@@ -573,6 +588,7 @@ function trailingSummary(allSessions, refDate, windowDays) {
   return {
     count: t.length,
     hard: t.filter(s => isHardType(s.type)).length,
+    minutes: t.reduce((a, s) => a + (s.duration || 0), 0),
     byType: {
       tabata: t.filter(s => s.type === "tabata").length,
       long_interval: t.filter(s => s.type === "long_interval").length,
@@ -2474,6 +2490,9 @@ function StatsTab({ history, weightLog, cardioSessions }) {
             <ConsistencyCalendar sessions={allActivity} />
           </div>
           <div className="ease-up-2" style={{ marginBottom: 12 }}>
+            <TimeTrainedCard cardioSessions={cardioSessions} workouts={history} />
+          </div>
+          <div className="ease-up-2" style={{ marginBottom: 12 }}>
             <Surface accent={C.moss}>
               <Eyebrow color={C.moss}>Weight goal · 225 → 200</Eyebrow>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 14 }}>
@@ -3284,6 +3303,7 @@ function TodayCard({ cardioSessions, workouts, constraints, onOpenLogger, onChoo
   const plan = buildPlan(engine, today, 7, constraints);
   const rec = plan[0];
   const s7 = trailingSummary(engine, today, 7);
+  const s14 = trailingSummary(engine, today, 14);
   const s30 = trailingSummary(engine, today, 30);
   const { streak, layoff } = streakInfo(engine, today);
 
@@ -3395,15 +3415,16 @@ function TodayCard({ cardioSessions, workouts, constraints, onOpenLogger, onChoo
       </div>
 
       {/* Trailing summaries */}
-      <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.line}`, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        {[["7-DAY", s7], ["30-DAY", s30]].map(([lbl, s]) => (
-          <div key={lbl} style={{ background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, padding: "12px 14px" }}>
+      <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.line}`, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+        {[["7-DAY", s7], ["14-DAY", s14], ["30-DAY", s30]].map(([lbl, s]) => (
+          <div key={lbl} style={{ background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, padding: "12px 12px" }}>
             <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em" }}>{lbl}</div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 6 }}>
               <span className="num-tab h-display" style={{ fontSize: 24, fontWeight: 700, color: C.bone, letterSpacing: "-0.03em" }}>{s.count}</span>
               <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO }}>· {s.hard} hard</span>
             </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 8, fontSize: 11, fontFamily: FONT_MONO, color: C.dim, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 10, color: C.electric, fontFamily: FONT_MONO, marginTop: 5 }}>⏱ {fmtDur(s.minutes)}</div>
+            <div style={{ display: "flex", gap: 6, marginTop: 7, fontSize: 11, fontFamily: FONT_MONO, color: C.dim, flexWrap: "wrap" }}>
               {["tabata", "long_interval", "lift", "walk", "game"].map(k => (
                 <span key={k} title={RECOVERY.TYPES[k].label}>{RECOVERY.TYPES[k].emoji} {s.byType[k]}</span>
               ))}
@@ -3820,6 +3841,80 @@ function CelebrationOverlay({ queue, onClose }) {
 }
 
 /* ════════════════════════════════════════════════════════════
+   TIME TRAINED — minutes per week, with a weekly average to
+   compare against. Four 4-min Tabatas and three 40-min sessions
+   are very different weeks; this card shows the difference.
+   ════════════════════════════════════════════════════════════ */
+function TimeTrainedCard({ cardioSessions, workouts }) {
+  const all = normalizeAll(cardioSessions, workouts);
+  const today = startOfDay(new Date());
+  const wkStart = startOfWeek(today);
+
+  // Last 8 calendar weeks (Sun–Sat), oldest first; last entry is this week.
+  const WEEKS = 8;
+  const weeks = [];
+  for (let i = WEEKS - 1; i >= 0; i--) {
+    const ws = addDays(wkStart, -7 * i);
+    const we = addDays(ws, 7);
+    const mins = all.reduce((a, s) => (s.date >= ws && s.date < we ? a + (s.duration || 0) : a), 0);
+    weeks.push({ ws, mins, isNow: i === 0 });
+  }
+  const thisWeekMin = weeks[weeks.length - 1].mins;
+
+  // Weekly average over completed weeks since training began (zero weeks
+  // count — a week off should pull the average down), current week excluded.
+  const firstT = all.length ? Math.min(...all.map(s => s.date.getTime())) : null;
+  const done = firstT == null ? [] : weeks.slice(0, -1).filter(w => w.ws.getTime() >= startOfWeek(new Date(firstT)).getTime());
+  const avgMin = done.length ? done.reduce((a, w) => a + w.mins, 0) / done.length : null;
+
+  const diff = avgMin != null ? thisWeekMin - avgMin : null;
+  const maxMin = Math.max(30, ...weeks.map(w => w.mins), avgMin || 0);
+  const CHART_H = 64;
+
+  return (
+    <Surface accent={C.electric}>
+      <Eyebrow color={C.electric}>Time trained · per week</Eyebrow>
+      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+        <div style={{ flex: 1 }}>
+          <div className="num-tab h-display" style={{ fontSize: 30, fontWeight: 800, color: thisWeekMin > 0 ? C.electric : C.dim, letterSpacing: "-0.03em", lineHeight: 1 }}>{fmtDur(thisWeekMin)}</div>
+          <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, marginTop: 4, letterSpacing: "0.06em" }}>THIS WEEK</div>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div className="num-tab h-display" style={{ fontSize: 30, fontWeight: 800, color: C.bone, letterSpacing: "-0.03em", lineHeight: 1 }}>{avgMin != null ? fmtDur(avgMin) : "—"}</div>
+          <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, marginTop: 4, letterSpacing: "0.06em" }}>WEEKLY AVG</div>
+        </div>
+      </div>
+      {diff != null && Math.round(Math.abs(diff)) >= 1 && (
+        <div style={{ fontSize: 11, color: diff > 0 ? C.moss : C.amber, fontFamily: FONT_MONO, marginTop: 8, fontWeight: 600 }}>
+          {diff > 0 ? "▲" : "▼"} {fmtDur(Math.abs(diff))} {diff > 0 ? "ahead of" : "behind"} your average week
+        </div>
+      )}
+
+      {/* Weekly bars with the average as a dashed reference line */}
+      <div style={{ position: "relative", marginTop: 16 }}>
+        {avgMin != null && avgMin > 0 && (
+          <div style={{ position: "absolute", left: 0, right: 0, bottom: Math.round((avgMin / maxMin) * CHART_H), borderTop: `1px dashed ${C.dim}88`, pointerEvents: "none" }} title={`Average: ${fmtDur(avgMin)}/week`} />
+        )}
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: CHART_H + 14 }}>
+          {weeks.map((w, i) => {
+            const h = Math.max(4, Math.round((w.mins / maxMin) * CHART_H));
+            return (
+              <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%" }} title={`Week of ${w.ws.toLocaleDateString("en-US", { month: "short", day: "numeric" })}: ${fmtDur(w.mins)}`}>
+                <div style={{ fontSize: 8.5, color: w.mins ? C.cream : "transparent", fontFamily: FONT_MONO, marginBottom: 3, whiteSpace: "nowrap" }}>{fmtDurShort(w.mins)}</div>
+                <div style={{ width: "100%", height: h, borderRadius: "4px 4px 2px 2px", background: w.mins ? (w.isNow ? `linear-gradient(180deg, ${C.electric}, ${C.electric}99)` : `${C.electric}66`) : C.raised, border: `1px solid ${w.mins ? "transparent" : C.line}`, transition: "height 0.6s cubic-bezier(0.22,1,0.36,1)" }} />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 9, color: C.mute, fontFamily: FONT_MONO }}>
+        <span>8 WEEKS AGO</span><span>THIS WEEK</span>
+      </div>
+    </Surface>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
    HOME — consistency-first home screen
    ════════════════════════════════════════════════════════════ */
 function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, constraints, proteinLog, vitaminD3Log, creatineLog, onGoTab, onOpenLogger, onOpenAwards, onChooseLift, onGoWalk, theme, onToggleTheme }) {
@@ -3849,10 +3944,22 @@ function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, constrai
     ...history.map(h => new Date(h.logged_at).toDateString()),
     ...cardioSessions.map(s => new Date(s.completed_at).toDateString()),
   ]);
+  // What was actually done each day, so the strip can show it.
+  const dayTypes = new Map();
+  normalizeAll(cardioSessions, history).forEach(s => {
+    const k = s.date.toDateString();
+    if (!dayTypes.has(k)) dayTypes.set(k, []);
+    dayTypes.get(k).push(s.type);
+  });
   const strip = [];
   for (let i = 13; i >= 0; i--) {
     const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
-    strip.push({ key: d.toDateString(), active: activeDays.has(d.toDateString()), isToday: i === 0 });
+    const types = [...new Set(dayTypes.get(d.toDateString()) || [])];
+    strip.push({
+      key: d.toDateString(), active: activeDays.has(d.toDateString()), isToday: i === 0,
+      emojis: types.map(t => RECOVERY.TYPES[t] && RECOVERY.TYPES[t].emoji).filter(Boolean),
+      label: types.map(t => RECOVERY.TYPES[t] && RECOVERY.TYPES[t].label).filter(Boolean).join(" + "),
+    });
   }
   const last7 = strip.slice(-7).filter(d => d.active).length;
   const last14 = strip.filter(d => d.active).length;
@@ -3970,16 +4077,23 @@ function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, constrai
             </div>
           </div>
 
-          {/* Activity strip */}
+          {/* Activity strip — each day shows what was done, not just that it was */}
           <div style={{ display: "flex", gap: 4, marginTop: 16 }}>
             {strip.map((d, i) => (
-              <div key={i} title={d.key} style={{
-                flex: 1, height: 26, borderRadius: 5,
+              <div key={i} title={d.label ? `${d.key} · ${d.label}` : d.key} style={{
+                flex: 1, height: 30, borderRadius: 5,
                 background: d.active ? momentumColor : C.raised,
                 border: `1px solid ${d.active ? momentumColor : C.line}`,
                 outline: d.isToday ? `1.5px solid ${C.bone}` : "none", outlineOffset: 1,
                 transition: "background 0.3s",
-              }} />
+                display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+              }}>
+                {d.emojis.length > 0 && (
+                  <span style={{ fontSize: d.emojis.length > 1 ? 8.5 : 12, lineHeight: 1, letterSpacing: "-1px" }}>
+                    {d.emojis.slice(0, 2).join("")}
+                  </span>
+                )}
+              </div>
             ))}
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 9, color: C.mute, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>
@@ -3993,6 +4107,11 @@ function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, constrai
             )}
           </div>
         </Surface>
+      </div>
+
+      {/* ── TIME TRAINED — weekly minutes vs your average ── */}
+      <div className="ease-up-3">
+        <TimeTrainedCard cardioSessions={cardioSessions} workouts={history} />
       </div>
 
       {/* ── DAILY HYPE ── */}
@@ -4794,14 +4913,14 @@ export default function App() {
               return { kind: "workout", id: w.id, type: isWalk ? "walk" : "lift", date: new Date(w.logged_at), title: isWalk ? "Walk" : "Lift", subtitle: (w.exercises && w.exercises[0] && w.exercises[0].name) || w.session_name, volume: w.total_volume || 0, exercises: w.exercises, raw: w };
             }),
           ].sort((a, b) => b.date - a.date);
-          const weekCount = feed.filter(f => (Date.now() - f.date.getTime()) < 7 * 86400000).length;
+          const twoWeekCount = feed.filter(f => (Date.now() - f.date.getTime()) < 14 * 86400000).length;
           return (
           <>
             <div className="ease-up"><PageTitle kicker="The work · is the win">Log</PageTitle></div>
 
             <div className="ease-up-1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
               <StatCard kicker="ALL" value={feed.length} color={C.rust} sub="logged" />
-              <StatCard kicker="7-DAY" value={weekCount} color={C.amber} sub="sessions" />
+              <StatCard kicker="14-DAY" value={twoWeekCount} color={C.amber} sub="sessions" />
               <StatCard kicker="LBS" value={fmtNum(totalLbs)} color={C.moss} sub="lifted" />
             </div>
 
@@ -5321,3 +5440,4 @@ export default function App() {
     </div>
   );
 }
+
