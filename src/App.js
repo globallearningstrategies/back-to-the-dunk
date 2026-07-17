@@ -28,6 +28,7 @@ const LIGHT = {
   moss:     "#65A30D",
   electric: "#0891B2",
   plum:     "#9333EA",
+  pink:     "#DB2777",
   red:      "#DC2626",
   backdrop: "rgba(10, 9, 8, 0.6)",
 };
@@ -50,6 +51,7 @@ const DARK = {
   moss:     "#84CC16",
   electric: "#22D3EE",
   plum:     "#A855F7",
+  pink:     "#F472B6",
   red:      "#EF4444",
   backdrop: "rgba(0, 0, 0, 0.7)",
 };
@@ -288,6 +290,14 @@ const RECOVERY = {
       weeklyTarget: 2,   // rotates A → B → C
       blurb: "Strength · A/B/C",
     },
+    cross_training: {
+      key: "cross_training", label: "Cross Training", short: "Cross", emoji: "🤸", colorKey: "pink",
+      defaultDurationMin: 40, defaultRPE: 8,
+      hard: true,        // weights, squats, conditioning — a full hard session
+      scheduled: false,  // class runs on its own schedule; logged, never recommended
+      weeklyTarget: 0,
+      blurb: "40-min class · weights + squats",
+    },
     walk: {
       key: "walk", label: "Treadmill Walk", short: "Walk", emoji: "🚶", colorKey: "plum",
       defaultDurationMin: 40, defaultRPE: 3,
@@ -326,7 +336,7 @@ const RECOVERY = {
 
 // Types logged through the conditioning sheet (stored in cardio_sessions).
 // Lifts log via the gym session card; walks via the walk logger.
-const CONDITIONING_TYPES = ["tabata", "long_interval", "game"];
+const CONDITIONING_TYPES = ["tabata", "long_interval", "game", "cross_training"];
 
 /* ── "What's happening in your body" — plain-language recovery science that
    rides along with each recommendation. Motivating, accurate, not a textbook. ── */
@@ -455,6 +465,7 @@ function recommend(allSessions, refDate, constraints = {}) {
     lift: t7.filter(s => s.type === "lift").length,
     walk: t7.filter(s => s.type === "walk").length,
     game: t7.filter(s => s.type === "game").length,
+    cross_training: t7.filter(s => s.type === "cross_training").length,
   };
 
   // Ramp band is driven by hard-training recency (walks don't count).
@@ -475,7 +486,7 @@ function recommend(allSessions, refDate, constraints = {}) {
     : rest(`${why} You're recovered and on track — take it easy.`, restSci);
 
   // Which "still recovering" note fits the last hard session?
-  const recoverSci = (type) => type === "long_interval" ? SCI.liRecover : type === "lift" ? SCI.liftRecover : type === "game" ? SCI.gameCovered : SCI.tabataRecover;
+  const recoverSci = (type) => type === "long_interval" ? SCI.liRecover : type === "lift" || type === "cross_training" ? SCI.liftRecover : type === "game" ? SCI.gameCovered : SCI.tabataRecover;
 
   // Weekly conditioning targets, reduced by any games played (lowest priority first).
   let targetTab = T.tabata.weeklyTarget, targetLI = T.long_interval.weeklyTarget, off = done.game;
@@ -483,7 +494,8 @@ function recommend(allSessions, refDate, constraints = {}) {
   const cl = Math.min(targetLI, off); targetLI -= cl; off -= cl;
   const owedLI = Math.max(0, targetLI - done.long_interval);
   const owedTab = Math.max(0, targetTab - done.tabata);
-  const owedLift = Math.max(0, T.lift.weeklyTarget - done.lift);
+  // A cross-training class is weights + squats — it fills a lift slot for the week.
+  const owedLift = Math.max(0, T.lift.weeklyTarget - done.lift - done.cross_training);
   const canRampHard = band !== "restart" && band !== "fresh" && !(band === "ease" && daysSinceHard >= RECOVERY.reentryTabataAfterDays);
 
   // Fixed weekly schedule (Shabbat, game night) — these override training.
@@ -595,6 +607,7 @@ function trailingSummary(allSessions, refDate, windowDays) {
       game: t.filter(s => s.type === "game").length,
       lift: t.filter(s => s.type === "lift").length,
       walk: t.filter(s => s.type === "walk").length,
+      cross_training: t.filter(s => s.type === "cross_training").length,
     },
   };
 }
@@ -620,7 +633,7 @@ function streakInfo(allSessions, refDate) {
    GAMIFICATION — XP, levels, ranks, achievements. All derived from
    logged data (no extra storage), so it can never drift out of sync.
    ════════════════════════════════════════════════════════════ */
-const XP_BASE = { tabata: 40, long_interval: 90, game: 120, lift: 70, walk: 20 };
+const XP_BASE = { tabata: 40, long_interval: 90, game: 120, lift: 70, walk: 20, cross_training: 80 };
 // Effort bonus: harder-felt sessions (higher RPE) are worth more.
 function sessionXP(s) {
   const base = XP_BASE[s.type] || 0;
@@ -661,6 +674,7 @@ const ACHIEVEMENTS = [
   { id: "game1",    emoji: "🏀", name: "Baller",          desc: "Play a game",                 goal: 1,   val: s => s.byType.game },
   { id: "game10",   emoji: "🔟", name: "Run It Back",     desc: "10 games played",             goal: 10,  val: s => s.byType.game },
   { id: "walk20",   emoji: "🚶", name: "Active Recovery", desc: "20 recovery walks",           goal: 20,  val: s => s.byType.walk },
+  { id: "cross10",  emoji: "🤸", name: "Class Act",       desc: "10 cross training classes",   goal: 10,  val: s => s.byType.cross_training },
   { id: "early",    emoji: "🌅", name: "Early Bird",      desc: "Train before 7am",            goal: 1,   val: s => (s.earlyBird ? 1 : 0) },
   { id: "night",    emoji: "🌙", name: "Night Owl",       desc: "Train after 9pm",             goal: 1,   val: s => (s.nightOwl ? 1 : 0) },
   { id: "comeback", emoji: "🔄", name: "Comeback Kid",    desc: "Train after a 7+ day break",  goal: 1,   val: s => (s.comeback ? 1 : 0) },
@@ -700,6 +714,7 @@ function computeGameState(history, cardioSessions, weightLog) {
       game: all.filter(s => s.type === "game").length,
       lift: all.filter(s => s.type === "lift").length,
       walk: all.filter(s => s.type === "walk").length,
+      cross_training: all.filter(s => s.type === "cross_training").length,
     },
     bestStreak: best, currentStreak: streak,
     earlyBird: all.some(s => s.date.getHours() < 7),
@@ -2392,7 +2407,7 @@ function MonthlyRecap({ sessions, weightLog }) {
   const ms = sessions.filter(s => s.date.getTime() >= monthStart);
   const count = ms.length;
   const activeDays = new Set(ms.map(s => startOfDay(s.date).getTime())).size;
-  const byType = { tabata: 0, long_interval: 0, game: 0, lift: 0, walk: 0 };
+  const byType = { tabata: 0, long_interval: 0, game: 0, lift: 0, walk: 0, cross_training: 0 };
   ms.forEach(s => { if (byType[s.type] != null) byType[s.type]++; });
 
   const sortedW = [...(weightLog || [])].sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at));
@@ -2429,7 +2444,7 @@ function MonthlyRecap({ sessions, weightLog }) {
         {big(wStr || "—", "WEIGHT", wDelta < 0 ? C.moss : wDelta > 0 ? C.red : C.dim)}
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}`, fontSize: 12, fontFamily: FONT_MONO, color: C.dim, flexWrap: "wrap" }}>
-        {["tabata", "long_interval", "lift", "walk", "game"].map(k => (
+        {["tabata", "long_interval", "lift", "cross_training", "walk", "game"].map(k => (
           <span key={k} title={RECOVERY.TYPES[k].label}>{RECOVERY.TYPES[k].emoji} {byType[k]}</span>
         ))}
       </div>
@@ -2446,6 +2461,7 @@ function StatsTab({ history, weightLog, cardioSessions }) {
   const tabataSessions = cardioSessions.filter(s => s.workout_type === "tabata");
   const longIntervalSessions = cardioSessions.filter(s => s.workout_type === "long_interval");
   const gameSessions = cardioSessions.filter(s => s.workout_type === "game");
+  const crossSessions = cardioSessions.filter(s => s.workout_type === "cross_training");
 
   const totalVolume = gymSessions.reduce((a, h) => a + (h.total_volume || 0), 0);
   const thisWeekVol = gymSessions.filter(h => (Date.now() - new Date(h.logged_at)) < 7*86400000).reduce((a,h) => a+(h.total_volume||0),0);
@@ -2519,8 +2535,9 @@ function StatsTab({ history, weightLog, cardioSessions }) {
         <StatCard kicker="LONG INT" value={longIntervalSessions.length} color={C.electric} sub="sessions" />
         <StatCard kicker="GAMES" value={gameSessions.length} color={C.rust} sub="played" />
       </div>
-      <div className="ease-up-1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+      <div className="ease-up-1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
         <StatCard kicker="GYM" value={gymSessions.length} color={C.amber} sub="lift sessions" />
+        <StatCard kicker="CROSS" value={crossSessions.length} color={C.pink} sub="classes" />
         <StatCard kicker="WALKS" value={treadmillSessions.length} color={C.plum} sub="treadmill" />
       </div>
 
@@ -3381,7 +3398,7 @@ function TodayCard({ cardioSessions, workouts, constraints, onOpenLogger, onChoo
             <div className="ease-up" style={{ marginTop: 12, padding: 14, borderRadius: 12, background: `${C.amber}12`, border: `1px solid ${C.amber}40` }}>
               <div style={{ fontSize: 12, color: C.amber, fontFamily: FONT_MONO, marginBottom: 10, lineHeight: 1.5 }}>⚠ Today's a recovery day. Pushing through cuts into recovery — go lighter than usual.</div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {[{ type: "tabata" }, { type: "long_interval" }, { type: "lift" }, { type: "walk" }].map((it, i) => {
+                {[{ type: "tabata" }, { type: "long_interval" }, { type: "lift" }, { type: "cross_training" }, { type: "walk" }].map((it, i) => {
                   const d = RECOVERY.TYPES[it.type];
                   return <Btn key={i} color={C[d.colorKey]} size="sm" style={{ flex: "1 1 40%" }} onClick={() => actOn(it, "Recovery day — logging this as an override.")}>{actLabel(it)}</Btn>;
                 })}
@@ -3425,7 +3442,7 @@ function TodayCard({ cardioSessions, workouts, constraints, onOpenLogger, onChoo
             </div>
             <div style={{ fontSize: 10, color: C.electric, fontFamily: FONT_MONO, marginTop: 5 }}>⏱ {fmtDur(s.minutes)}</div>
             <div style={{ display: "flex", gap: 6, marginTop: 7, fontSize: 11, fontFamily: FONT_MONO, color: C.dim, flexWrap: "wrap" }}>
-              {["tabata", "long_interval", "lift", "walk", "game"].map(k => (
+              {["tabata", "long_interval", "lift", "cross_training", "walk", "game"].map(k => (
                 <span key={k} title={RECOVERY.TYPES[k].label}>{RECOVERY.TYPES[k].emoji} {s.byType[k]}</span>
               ))}
             </div>
@@ -3685,7 +3702,8 @@ function ProgressHero({ game, cardioSessions, workouts, onOpenAwards, onGoTab })
   const targets = [
     { type: "tabata", done: t7.tabata, goal: RECOVERY.TYPES.tabata.weeklyTarget },
     { type: "long_interval", done: t7.long_interval, goal: RECOVERY.TYPES.long_interval.weeklyTarget },
-    { type: "lift", done: t7.lift, goal: RECOVERY.TYPES.lift.weeklyTarget },
+    // Cross-training classes are weights + squats — they fill lift slots, matching the engine.
+    { type: "lift", done: t7.lift + t7.cross_training, goal: RECOVERY.TYPES.lift.weeklyTarget },
     { type: "walk", done: t7.walk, goal: RECOVERY.TYPES.walk.weeklyTarget },
   ];
 
@@ -5440,4 +5458,5 @@ export default function App() {
     </div>
   );
 }
+
 
