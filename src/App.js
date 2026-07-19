@@ -354,6 +354,7 @@ const SCI = {
   lift: "Lifting creates tiny tears and a 'come back stronger' signal — muscle-building stays elevated for 24–48 hours. Add a little each time and you get denser, more powerful, more explosive off the floor.",
   restart: "After time off, aerobic fitness fades first (detraining). A single Tabata wakes the system back up without overwhelming it — give it a session or two and muscle memory snaps your old capacity back fast.",
   gameDo: "Game night is your hard session — full-court running is a big conditioning and impact load. Empty the tank on the court; the engine counts it as this week's hard work and recovers you around it.",
+  crossDo: "Class day — 40 minutes of weights, squats, and conditioning hits strength and engine at once. It's a full hard session: the engine counts it toward this week's lifting and recovers you around it.",
   preGame: "Game tomorrow — keep your legs fresh today. Show up with full glycogen stores and springy legs, not sore ones. A short walk is fine; save the intensity for the court.",
   shabbat: "It's Shabbat — your built-in rest day. Recovery is when the adaptations actually happen, so a full day off is a feature, not a gap. An easy walk is perfectly in keeping if you're already out.",
 };
@@ -505,6 +506,7 @@ function recommend(allSessions, refDate, constraints = {}) {
   const isShabbat = (constraints.restDows || []).includes(dow);
   const gameToday = gameOn(ref) && !todays.some(s => s.type === "game");
   const gameTomorrow = gameOn(addDays(ref, 1));
+  const classToday = (constraints.classDows || []).includes(dow) && !todays.some(s => s.type === "cross_training");
 
   // 1) Already trained hard today — don't stack a second hard day...
   if (todaysHard.length) {
@@ -525,6 +527,10 @@ function recommend(allSessions, refDate, constraints = {}) {
   }
   if (isShabbat) {
     return recoveryDay("It's Shabbat — your scheduled rest day, no hard training.", SCI.shabbat);
+  }
+  if (classToday) {
+    if (daysSinceHard === 1) flags.push("Class lands the day after a hard session — pace yourself in there.");
+    return mk("train", [{ type: "cross_training" }], "Class day 🤸 — cross training is today's hard session.", SCI.crossDo);
   }
   if (gameTomorrow) {
     return recoveryDay("Game tomorrow — keep your legs fresh today.", SCI.preGame);
@@ -627,6 +633,49 @@ function streakInfo(allSessions, refDate) {
     if (days.has(addDays(refDate, -i).getTime())) { layoff = i; break; }
   }
   return { streak, layoff };
+}
+
+// Least-squares weight trend → weekly rate + projected date of hitting `goal`.
+// Prefers the trailing 60 days so an old plateau doesn't drown out current pace.
+function weightProjection(weightLog, goal = 200) {
+  const pts = [...(weightLog || [])]
+    .map(w => ({ t: new Date(w.logged_at).getTime(), w: Number(w.weight) }))
+    .filter(p => p.w > 0)
+    .sort((a, b) => a.t - b.t);
+  const cutoff = Date.now() - 60 * 86400000;
+  const recent = pts.filter(p => p.t >= cutoff);
+  const use = recent.length >= 3 ? recent : pts;
+  if (use.length < 3) return null;
+  if ((use[use.length - 1].t - use[0].t) / 86400000 < 14) return null; // too little spread to trust a slope
+  const n = use.length;
+  const mt = use.reduce((a, p) => a + p.t, 0) / n;
+  const mw = use.reduce((a, p) => a + p.w, 0) / n;
+  let num = 0, den = 0;
+  use.forEach(p => { num += (p.t - mt) * (p.w - mw); den += (p.t - mt) * (p.t - mt); });
+  if (!den) return null;
+  const perDay = (num / den) * 86400000;
+  const weekly = perDay * 7;
+  const cur = use[use.length - 1].w;
+  if (cur <= goal) return { weekly, done: true };
+  if (weekly >= -0.1) return { weekly, stalled: true };
+  const days = (cur - goal) / -perDay;
+  if (days > 550) return { weekly, stalled: true }; // over ~18 months out isn't a projection, it's noise
+  return { weekly, eta: new Date(Date.now() + days * 86400000) };
+}
+
+// Fatigue signal: recent hard sessions vs each type's own RPE baseline.
+// Fires only when the same work has genuinely been *feeling* harder.
+function fatigueSignal(allSessions, refDate) {
+  const recent = sessionsInTrailing(allSessions, refDate, 10).filter(s => isHardType(s.type) && !s.planned);
+  if (recent.length < 3) return null;
+  const deltas = [];
+  for (const s of recent) {
+    const base = allSessions.filter(b => b.type === s.type && !b.planned && dayGap(s.date, b.date) > 0 && dayGap(s.date, b.date) <= 60);
+    if (base.length >= 2) deltas.push(s.rpe - base.reduce((a, b) => a + b.rpe, 0) / base.length);
+  }
+  if (deltas.length < 3) return null;
+  const avg = deltas.reduce((a, b) => a + b, 0) / deltas.length;
+  return avg >= 0.7 ? { delta: avg, n: deltas.length } : null;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -745,7 +794,7 @@ function saveGameSeen(v) { try { localStorage.setItem(LS_GAME, JSON.stringify(v)
 
 // Fixed weekly schedule: Shabbat (no hard training Sat) + recurring game night.
 const LS_SCHEDULE = "bttd_schedule";
-const DEFAULT_SCHEDULE = { shabbat: true, gameNight: true, gameDow: 4, skipGameWeek: null };
+const DEFAULT_SCHEDULE = { shabbat: true, gameNight: true, gameDow: 4, skipGameWeek: null, crossClass: false, classDows: [] };
 function loadSchedule() { try { return { ...DEFAULT_SCHEDULE, ...(JSON.parse(localStorage.getItem(LS_SCHEDULE)) || {}) }; } catch (e) { return { ...DEFAULT_SCHEDULE }; } }
 function saveSchedule(s) { try { localStorage.setItem(LS_SCHEDULE, JSON.stringify(s)); } catch (e) {} }
 const DOW_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -1328,6 +1377,25 @@ function loadVitaminD3Log() {
 }
 function saveVitaminD3Log(log) {
   try { localStorage.setItem(LS_VITAMIN_D3, JSON.stringify(log)); } catch(e) {}
+}
+
+/* Post-game legs check-in: { [cardioSessionId]: "gassed"|"okay"|"strong" }.
+   Local like the protein log — a self-report about how the game felt. */
+const LS_GAME_LEGS = "bttd_game_legs_v1";
+const LEGS_OPTIONS = [
+  { key: "gassed", emoji: "💨", label: "Gassed", colorKey: "red" },
+  { key: "okay",   emoji: "😮‍💨", label: "Okay",   colorKey: "amber" },
+  { key: "strong", emoji: "💪", label: "Strong", colorKey: "moss" },
+];
+function loadLegsLog() {
+  try {
+    const raw = localStorage.getItem(LS_GAME_LEGS);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return {};
+}
+function saveLegsLog(log) {
+  try { localStorage.setItem(LS_GAME_LEGS, JSON.stringify(log)); } catch(e) {}
 }
 
 function loadCreatineLog() {
@@ -2452,8 +2520,125 @@ function MonthlyRecap({ sessions, weightLog }) {
   );
 }
 
+/* ── Weekly recap — the Sunday-night ritual version of the monthly one. ── */
+function WeeklyRecap({ sessions, weightLog, prev = false }) {
+  // prev=true recaps the week that just ended (weeks run Sun → Sat).
+  const thisWk = startOfWeek(new Date());
+  const wkStart = prev ? addDays(thisWk, -7) : thisWk;
+  const wkEnd = prev ? thisWk : null;
+  const ws = sessions.filter(s => s.date >= wkStart && (!wkEnd || s.date < wkEnd));
+  const count = ws.length;
+  const minutes = ws.reduce((a, s) => a + (s.duration || 0), 0);
+  const activeDays = new Set(ws.map(s => startOfDay(s.date).getTime())).size;
+  const byType = { tabata: 0, long_interval: 0, game: 0, lift: 0, walk: 0, cross_training: 0 };
+  ws.forEach(s => { if (byType[s.type] != null) byType[s.type]++; });
+
+  const sortedW = [...(weightLog || [])].sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at));
+  let wDelta = null;
+  const weekW = sortedW.filter(w => new Date(w.logged_at) >= wkStart && (!wkEnd || new Date(w.logged_at) < wkEnd));
+  if (weekW.length) {
+    const before = sortedW.filter(w => new Date(w.logged_at) < wkStart);
+    const baseline = before.length ? before[before.length - 1].weight : weekW[0].weight;
+    wDelta = +(weekW[weekW.length - 1].weight - baseline).toFixed(1);
+  }
+  const wStr = wDelta != null && wDelta !== 0 ? `${wDelta < 0 ? "−" : "+"}${Math.abs(wDelta)} lb` : null;
+  const shareText = `${prev ? "Last week" : "This week"} on The Work — ${count} workout${count === 1 ? "" : "s"} · ${fmtDur(minutes)} trained${wStr ? ` · ${wStr}` : ""} 💪`;
+  const share = () => {
+    if (navigator.share) navigator.share({ text: shareText }).catch(() => {});
+    else { try { navigator.clipboard.writeText(shareText); toast("Copied to clipboard"); } catch (e) { toast(shareText); } }
+  };
+
+  const big = (value, label, color) => (
+    <div style={{ flex: 1 }}>
+      <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 800, color, letterSpacing: "-0.03em", lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, marginTop: 5, letterSpacing: "0.06em" }}>{label}</div>
+    </div>
+  );
+
+  return (
+    <Surface accent={C.moss} padding={20}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <Eyebrow color={C.moss}>{prev ? "Last week · the recap" : "This week"}</Eyebrow>
+        <button onClick={share} className="btn" style={{ background: `${C.moss}18`, border: `1px solid ${C.moss}55`, color: C.moss, borderRadius: 9, padding: "5px 12px", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Share ↗</button>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+        {big(count, "WORKOUTS", C.bone)}
+        {big(fmtDur(minutes), "TRAINED", C.electric)}
+        {big(wStr || "—", "WEIGHT", wDelta < 0 ? C.moss : wDelta > 0 ? C.red : C.dim)}
+      </div>
+      <div style={{ display: "flex", gap: 10, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}`, fontSize: 12, fontFamily: FONT_MONO, color: C.dim, flexWrap: "wrap" }}>
+        {["tabata", "long_interval", "lift", "cross_training", "walk", "game"].map(k => (
+          <span key={k} title={RECOVERY.TYPES[k].label}>{RECOVERY.TYPES[k].emoji} {byType[k]}</span>
+        ))}
+      </div>
+    </Surface>
+  );
+}
+
+/* ── Strength progression — top-set weight per session, per exercise. ── */
+function StrengthProgress({ gymSessions }) {
+  // Per-exercise top-set weight per session, oldest first.
+  const byName = {};
+  [...gymSessions].sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at)).forEach(h => {
+    (h.exercises || []).forEach(ex => {
+      if (!(ex.weight > 0)) return;
+      if (!byName[ex.name]) byName[ex.name] = [];
+      const arr = byName[ex.name];
+      const last = arr[arr.length - 1];
+      if (last && last.key === h.id) last.w = Math.max(last.w, ex.weight);
+      else arr.push({ key: h.id, t: new Date(h.logged_at), w: ex.weight });
+    });
+  });
+  const names = Object.keys(byName).filter(n => byName[n].length >= 2)
+    .sort((a, b) => byName[b].length - byName[a].length).slice(0, 4);
+  const [sel, setSel] = useState(null);
+  if (!names.length) return null;
+  const active = sel && names.includes(sel) ? sel : names[0];
+  const pts = byName[active].slice(-10);
+  const pr = Math.max(...byName[active].map(p => p.w));
+  const first = pts[0].w, latest = pts[pts.length - 1].w, gain = latest - first;
+  const mn = Math.min(...pts.map(p => p.w));
+  const span = Math.max(1, pr - mn);
+
+  return (
+    <Surface accent={C.amber}>
+      <Eyebrow color={C.amber}>Strength · top set over time</Eyebrow>
+      <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+        {names.map(n => (
+          <button key={n} onClick={() => setSel(n)} className="btn" style={{
+            padding: "6px 12px", borderRadius: 999, cursor: "pointer", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 12,
+            border: `1px solid ${n === active ? C.amber : C.line}`, background: n === active ? `${C.amber}18` : C.raised, color: n === active ? C.amber : C.dim,
+          }}>{n}</button>
+        ))}
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 14 }}>
+        <span className="num-tab h-display" style={{ fontSize: 30, fontWeight: 800, color: C.bone, letterSpacing: "-0.03em", lineHeight: 1 }}>{latest}<span style={{ fontSize: 13, color: C.dim, fontWeight: 500 }}> lbs</span></span>
+        {gain !== 0 && (
+          <span style={{ fontSize: 12, color: gain > 0 ? C.moss : C.red, fontFamily: FONT_MONO, fontWeight: 600 }}>
+            {gain > 0 ? "▲" : "▼"} {Math.abs(gain)} lbs over {pts.length} sessions
+          </span>
+        )}
+      </div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 84, marginTop: 12 }}>
+        {pts.map((p, i) => {
+          const isPRBar = p.w === pr;
+          const h = 12 + Math.round(((p.w - mn) / span) * 54);
+          return (
+            <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%" }} title={`${p.t.toLocaleDateString("en-US", { month: "short", day: "numeric" })}: ${p.w} lbs`}>
+              <div style={{ fontSize: 8.5, color: isPRBar ? C.moss : C.cream, fontFamily: FONT_MONO, marginBottom: 3, fontWeight: isPRBar ? 700 : 400 }}>{p.w}</div>
+              <div style={{ width: "100%", height: h, borderRadius: "4px 4px 2px 2px", background: isPRBar ? `linear-gradient(180deg, ${C.moss}, ${C.moss}99)` : `${C.amber}66`, transition: "height 0.6s cubic-bezier(0.22,1,0.36,1)" }} />
+              <div style={{ fontSize: 7.5, color: C.mute, fontFamily: FONT_MONO, marginTop: 3, whiteSpace: "nowrap" }}>{p.t.toLocaleDateString("en-US", { month: "numeric", day: "numeric" })}</div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginTop: 8 }}>Green bar = personal record. Heaviest set of each session.</div>
+    </Surface>
+  );
+}
+
 /* ── Progress Tab ── */
-function StatsTab({ history, weightLog, cardioSessions }) {
+function StatsTab({ history, weightLog, cardioSessions, legsLog = {} }) {
   const allActivity = normalizeAll(cardioSessions, history);
   const gymSessions = history.filter(h => h.session_name && h.session_name !== "Treadmill Walk");
   const treadmillSessions = history.filter(h => h.session_name === "Treadmill Walk");
@@ -2500,6 +2685,9 @@ function StatsTab({ history, weightLog, cardioSessions }) {
       {allActivity.length > 0 && (
         <>
           <div className="ease-up-1" style={{ marginBottom: 12 }}>
+            <WeeklyRecap sessions={allActivity} weightLog={weightLog} />
+          </div>
+          <div className="ease-up-1" style={{ marginBottom: 12 }}>
             <MonthlyRecap sessions={allActivity} weightLog={weightLog} />
           </div>
           <div className="ease-up-2" style={{ marginBottom: 12 }}>
@@ -2540,6 +2728,50 @@ function StatsTab({ history, weightLog, cardioSessions }) {
         <StatCard kicker="CROSS" value={crossSessions.length} color={C.pink} sub="classes" />
         <StatCard kicker="WALKS" value={treadmillSessions.length} color={C.plum} sub="treadmill" />
       </div>
+
+      {/* Game shape — fourth-quarter legs over the season */}
+      {gameSessions.length > 0 && (() => {
+        const games = [...gameSessions].sort((a, b) => new Date(a.completed_at) - new Date(b.completed_at)).slice(-10);
+        const checked = games.filter(g => legsLog[g.id]);
+        const score = { gassed: 0, okay: 1, strong: 2 };
+        let verdict = null;
+        if (checked.length >= 4) {
+          const half = Math.floor(checked.length / 2);
+          const avg = (arr) => arr.reduce((a, g) => a + score[legsLog[g.id]], 0) / arr.length;
+          const diff = avg(checked.slice(half)) - avg(checked.slice(0, half));
+          verdict = diff > 0.3 ? { txt: "Legs are lasting longer late in games — conditioning is showing up where it counts.", col: C.moss }
+            : diff < -0.3 ? { txt: "Late-game legs are trending down — worth watching your recovery.", col: C.amber }
+            : { txt: "Late-game legs holding steady.", col: C.dim };
+        }
+        return (
+          <div className="ease-up-2" style={{ marginBottom: 12 }}>
+            <Surface accent={C.rust}>
+              <Eyebrow color={C.rust}>Game shape · fourth-quarter legs</Eyebrow>
+              <div style={{ display: "flex", gap: 5, marginTop: 14 }}>
+                {games.map(g => {
+                  const legs = legsLog[g.id];
+                  const opt = LEGS_OPTIONS.find(o => o.key === legs);
+                  return (
+                    <div key={g.id} style={{ flex: 1, textAlign: "center" }} title={new Date(g.completed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) + (opt ? ` · ${opt.label}` : " · no check-in")}>
+                      <div style={{
+                        height: 40, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
+                        background: opt ? `${C[opt.colorKey]}18` : C.raised, border: `1px solid ${opt ? C[opt.colorKey] : C.line}`,
+                      }}>{opt ? opt.emoji : <span style={{ color: C.mute, fontSize: 11 }}>—</span>}</div>
+                      <div style={{ fontSize: 7.5, color: C.mute, fontFamily: FONT_MONO, marginTop: 4, whiteSpace: "nowrap" }}>{new Date(g.completed_at).toLocaleDateString("en-US", { month: "numeric", day: "numeric" })}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ display: "flex", gap: 12, marginTop: 12, fontSize: 10, fontFamily: FONT_MONO, color: C.dim, flexWrap: "wrap" }}>
+                {LEGS_OPTIONS.map(o => <span key={o.key}>{o.emoji} {o.label}</span>)}
+              </div>
+              {verdict
+                ? <p className="h-serif" style={{ fontSize: 14.5, color: verdict.col, margin: "12px 0 0", lineHeight: 1.4 }}>{verdict.txt}</p>
+                : <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginTop: 10 }}>Log "fourth-quarter legs" when you log a game — the trend shows up here.</div>}
+            </Surface>
+          </div>
+        );
+      })()}
 
       <div className="ease-up-2">
         <Surface accent={C.rust}>
@@ -2586,6 +2818,12 @@ function StatsTab({ history, weightLog, cardioSessions }) {
           )}
         </Surface>
       </div>
+
+      {gymSessions.length > 0 && (
+        <div className="ease-up-2" style={{ marginBottom: 12 }}>
+          <StrengthProgress gymSessions={gymSessions} />
+        </div>
+      )}
 
       <div className="ease-up-3" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
         <StatCard kicker="MILES" value={totalMiles.toFixed(1)} color={C.plum} />
@@ -3380,6 +3618,17 @@ function TodayCard({ cardioSessions, workouts, constraints, onOpenLogger, onChoo
         <div key={i} style={{ marginTop: 10, fontSize: 12, color: C.red, fontFamily: FONT_MONO, display: "flex", gap: 6, alignItems: "center" }}>⚠ {f}</div>
       ))}
 
+      {/* Fatigue guard — the same work has been feeling harder lately */}
+      {(() => {
+        const fat = fatigueSignal(engine, today);
+        if (!fat) return null;
+        return (
+          <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 10, background: `${C.amber}12`, border: `1px solid ${C.amber}40`, fontSize: 12, color: C.amber, fontFamily: FONT_MONO, lineHeight: 1.5 }}>
+            ⚠ Your last {fat.n} hard sessions felt about +{fat.delta.toFixed(1)} RPE harder than your usual. Fatigue may be building — an extra easy day now beats a flat week later.
+          </div>
+        );
+      })()}
+
       {/* Primary action(s) — one button per scheduled item (e.g. Tabata + Lift) */}
       {trained ? (
         <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
@@ -3471,6 +3720,7 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
   const [duration, setDuration] = useState(editing && editing.duration_min != null ? String(editing.duration_min) : "");
   const [rpe, setRpe] = useState(editing && editing.rpe != null ? Number(editing.rpe) : RECOVERY.TYPES[initType].defaultRPE);
   const [notes, setNotes] = useState(editing ? (editing.notes || "") : "");
+  const [legs, setLegs] = useState(state.legs || null);
 
   const def = RECOVERY.TYPES[type];
   const chooseType = (tk) => { setType(tk); if (!touchedRpe) setRpe(RECOVERY.TYPES[tk].defaultRPE); };
@@ -3483,6 +3733,7 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
       duration_min: duration !== "" ? Number(duration) : def.defaultDurationMin,
       rpe,
       notes: notes.trim() || null,
+      legs: type === "game" ? legs : null,
     });
   };
 
@@ -3540,6 +3791,29 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
         <input type="range" min="1" max="10" step="1" value={rpe} onChange={e => { setRpe(Number(e.target.value)); setTouchedRpe(true); }}
           style={{ width: "100%", margin: "10px 0 4px", accentColor: C[def.colorKey] }} />
         <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginBottom: 18 }}>Default for {def.label}: {def.defaultRPE}. Adjust if it felt easier or harder.</div>
+
+        {/* Post-game check-in — the real test of game shape */}
+        {type === "game" && (
+          <>
+            <Eyebrow>Fourth-quarter legs</Eyebrow>
+            <div style={{ display: "flex", gap: 8, margin: "8px 0 4px" }}>
+              {LEGS_OPTIONS.map(o => {
+                const on = legs === o.key; const col = C[o.colorKey];
+                return (
+                  <button key={o.key} className="btn" onClick={() => setLegs(on ? null : o.key)} style={{
+                    flex: 1, padding: "11px 6px", borderRadius: 12, cursor: "pointer",
+                    border: `1px solid ${on ? col : C.line}`, background: on ? `${col}18` : C.raised,
+                    color: on ? col : C.cream, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 12,
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                  }}>
+                    <span style={{ fontSize: 18 }}>{o.emoji}</span>{o.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginBottom: 18 }}>How were the legs late in the game? Tracked over the season as your game-shape trend.</div>
+          </>
+        )}
 
         {/* Notes */}
         <Eyebrow>Notes (optional)</Eyebrow>
@@ -4132,6 +4406,13 @@ function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, constrai
         <TimeTrainedCard cardioSessions={cardioSessions} workouts={history} />
       </div>
 
+      {/* ── SUNDAY RECAP — close out the week that just ended ── */}
+      {new Date().getDay() === 0 && (
+        <div className="ease-up-3">
+          <WeeklyRecap sessions={normalizeAll(cardioSessions, history)} weightLog={weightLog} prev />
+        </div>
+      )}
+
       {/* ── DAILY HYPE ── */}
       <div className="ease-up-3">
         <Surface accent={C.rust} padding={22}>
@@ -4312,6 +4593,17 @@ export default function App() {
   // Gamification state, derived purely from logged data.
   const game = useMemo(() => computeGameState(history, cardioSessions, weightLog), [history, cardioSessions, weightLog]);
 
+  // Post-game legs check-ins, keyed by cardio session id.
+  const [legsLog, setLegsLog] = useState(loadLegsLog);
+  const setGameLegs = (sessionId, val) => {
+    setLegsLog(prev => {
+      const next = { ...prev };
+      if (val) next[sessionId] = val; else delete next[sessionId];
+      saveLegsLog(next);
+      return next;
+    });
+  };
+
   // Fixed weekly schedule (Shabbat / game night) → engine constraints.
   const [schedule, setSchedule] = useState(loadSchedule);
   const updateSchedule = (next) => { setSchedule(next); saveSchedule(next); };
@@ -4319,6 +4611,7 @@ export default function App() {
     restDows: schedule.shabbat ? [6] : [],
     gameDow: schedule.gameNight ? schedule.gameDow : null,
     skipGameWeekStart: schedule.skipGameWeek,
+    classDows: schedule.crossClass ? (schedule.classDows || []) : [],
   }), [schedule]);
 
   // Celebrate genuinely new levels / badges. First run for a given browser sets
@@ -4523,15 +4816,15 @@ export default function App() {
     if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); showSave(true); toast("🔥 Tabata logged — nice"); } else showSave(false);
   };
 
-  // Create or update a conditioning session (Tabata / Long Interval / Game).
-  const saveCardio = async ({ id, type, completed_at, duration_min, rpe, notes }) => {
+  // Create or update a conditioning session (Tabata / Long Interval / Game / Cross).
+  const saveCardio = async ({ id, type, completed_at, duration_min, rpe, notes, legs }) => {
     const row = { workout_type: type, completed_at, duration_min, rpe, notes };
     if (id != null) {
       const { data, error } = await supabase.from("cardio_sessions").update(row).eq("id", id).select();
-      if (!error && data) { setCardioSessions(p => sortCardio(p.map(r => r.id === id ? data[0] : r))); showSave(true); } else showSave(false);
+      if (!error && data) { setCardioSessions(p => sortCardio(p.map(r => r.id === id ? data[0] : r))); setGameLegs(id, legs); showSave(true); } else showSave(false);
     } else {
       const { data, error } = await supabase.from("cardio_sessions").insert([row]).select();
-      if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); setConfetti(true); showSave(true); toast(`${RECOVERY.TYPES[type].emoji} ${RECOVERY.TYPES[type].label} logged — nice`); } else showSave(false);
+      if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); setGameLegs(data[0].id, legs); setConfetti(true); showSave(true); toast(`${RECOVERY.TYPES[type].emoji} ${RECOVERY.TYPES[type].label} logged — nice`); } else showSave(false);
     }
     setLoggerState({ open: false });
   };
@@ -5010,7 +5303,7 @@ export default function App() {
         })()}
 
         {/* ── STATS ── */}
-        {tab === "stats" && <StatsTab history={history} weightLog={weightLog} cardioSessions={cardioSessions} />}
+        {tab === "stats" && <StatsTab history={history} weightLog={weightLog} cardioSessions={cardioSessions} legsLog={legsLog} />}
 
         {/* ── WEIGHT ── */}
         {tab === "weight" && (() => {
@@ -5049,6 +5342,25 @@ export default function App() {
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 11, color: C.dim, fontFamily: FONT_MONO }}>
                     <span>225</span><span style={{ color: C.amber }}>{remaining > 0 ? remaining.toFixed(1) : "0"} TO GO</span><span style={{ color: C.moss }}>200</span>
                   </div>
+                  {(() => {
+                    const proj = weightProjection(weightLog, 200);
+                    if (!proj) return null;
+                    const rate = `${proj.weekly < 0 ? "▼" : "▲"} ${Math.abs(proj.weekly).toFixed(1)} lb/week`;
+                    return (
+                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
+                        {proj.done ? (
+                          <p className="h-serif" style={{ fontSize: 15, color: C.moss, margin: 0 }}>You're at goal. 200 is here. 🎉</p>
+                        ) : proj.stalled ? (
+                          <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>{rate} · trend is flat right now — the projection kicks back in once the scale starts moving.</div>
+                        ) : (
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                            <span style={{ fontSize: 12, color: C.moss, fontFamily: FONT_MONO, fontWeight: 600 }}>{rate}</span>
+                            <span className="h-serif" style={{ fontSize: 15, color: C.cream }}>On pace for <b style={{ color: C.moss }}>200</b> by <b style={{ color: C.moss }}>{proj.eta.toLocaleDateString("en-US", { month: "long", day: "numeric" })}</b></span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </Surface>
               </div>
 
@@ -5170,6 +5482,30 @@ export default function App() {
                           </div>
                           <Switch on={playingThisWeek} onToggle={() => updateSchedule({ ...schedule, skipGameWeek: playingThisWeek ? wkNow : null })} />
                         </div>
+                      </>
+                    )}
+                    {/* Cross-training class days */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0 10px", borderTop: `1px solid ${C.line}`, marginTop: schedule.gameNight ? 12 : 0 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>🤸 Cross-training class</div>
+                        <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Recurring class days — the engine plans around them</div>
+                      </div>
+                      <Switch on={schedule.crossClass} onToggle={() => updateSchedule({ ...schedule, crossClass: !schedule.crossClass })} />
+                    </div>
+                    {schedule.crossClass && (
+                      <>
+                        <div style={{ display: "flex", gap: 5, marginTop: 8 }}>
+                          {DOW_NAMES.map((d, i) => {
+                            const on = (schedule.classDows || []).includes(i);
+                            return (
+                              <button key={i} onClick={() => updateSchedule({ ...schedule, classDows: on ? (schedule.classDows || []).filter(x => x !== i) : [...(schedule.classDows || []), i] })} className="btn" style={{
+                                flex: 1, padding: "8px 0", borderRadius: 9, cursor: "pointer", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 11,
+                                border: `1px solid ${on ? C.pink : C.line}`, background: on ? `${C.pink}18` : C.raised, color: on ? C.pink : C.dim,
+                              }}>{d}</button>
+                            );
+                          })}
+                        </div>
+                        <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginTop: 8 }}>Tap every day you have class — pick as many as apply.</div>
                       </>
                     )}
                   </Surface>
@@ -5439,7 +5775,7 @@ export default function App() {
       {/* ── CONDITIONING LOGGER sheet ── */}
       {loggerState.open && (
         <ConditioningLogger
-          state={loggerState}
+          state={{ ...loggerState, legs: loggerState.editing ? legsLog[loggerState.editing.id] || null : null }}
           onClose={() => setLoggerState({ open: false })}
           onSave={saveCardio}
           onDelete={deleteCardio}
@@ -5458,5 +5794,6 @@ export default function App() {
     </div>
   );
 }
+
 
 
