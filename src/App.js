@@ -1172,6 +1172,17 @@ function fireNotification(title, body) {
    HELPERS
    ════════════════════════════════════════════════════════════ */
 
+/* ── Web push — daily D3 reminder. Public half of the VAPID pair; the
+   private half lives server-side with the scheduled sender function. ── */
+const VAPID_PUBLIC_KEY = "BOHVU8MxqhXzR_P_nXZtsSrBbWCxuTLv0ipCmfLR5jThhAbnpqaY_dxNwqIBAOurEDo3nGTYvtUDDtJSOSrIDHE";
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = window.atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+
 function daysAgo(iso) {
   const d = Math.floor((Date.now() - new Date(iso)) / 86400000);
   return d === 0 ? "Today" : d === 1 ? "Yesterday" : d + "d ago";
@@ -4608,6 +4619,45 @@ export default function App() {
     });
   };
 
+  // Daily D3 reminder — phone push subscription state.
+  const [d3Push, setD3Push] = useState(false);
+  useEffect(() => {
+    if (!pushSupported()) return;
+    navigator.serviceWorker.getRegistration()
+      .then(reg => reg && reg.pushManager.getSubscription())
+      .then(sub => setD3Push(!!sub))
+      .catch(() => {});
+  }, []);
+  const toggleD3Push = async () => {
+    try {
+      if (!pushSupported()) {
+        toast("Not supported in this browser — on iPhone, add the app to your Home Screen (Share → Add to Home Screen), open it from there, then flip this on.");
+        return;
+      }
+      if (d3Push) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        const sub = reg && await reg.pushManager.getSubscription();
+        if (sub) {
+          await supabase.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+          await sub.unsubscribe();
+        }
+        setD3Push(false);
+        toast("Daily D3 reminder off");
+      } else {
+        const reg = await navigator.serviceWorker.register("/sw.js");
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") { toast("Notifications are blocked — allow them for this app in Settings, then try again."); return; }
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) });
+        const { error } = await supabase.from("push_subscriptions").insert({ subscription: sub.toJSON() });
+        if (error && error.code !== "23505") throw error; // 23505 = this device already registered
+        setD3Push(true);
+        toast("💊 Daily D3 reminder on — every morning at 9");
+      }
+    } catch (e) {
+      toast("Couldn't set up the reminder: " + (e.message || e));
+    }
+  };
+
   // Fixed weekly schedule (Shabbat / game night) → engine constraints.
   const [schedule, setSchedule] = useState(loadSchedule);
   const updateSchedule = (next) => { setSchedule(next); saveSchedule(next); };
@@ -5552,6 +5602,26 @@ export default function App() {
                     ) : (
                       <Btn color={C.electric} size="sm" onClick={enableNotifications}>Enable</Btn>
                     )}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: `1px solid ${C.line}` }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>💊 Daily D3 reminder</div>
+                      <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Push to this phone every morning at 9</div>
+                    </div>
+                    <button onClick={toggleD3Push} className="btn"
+                      style={{
+                        width: 50, height: 28, borderRadius: 14, border: "none",
+                        background: d3Push ? C.moss : C.faint,
+                        position: "relative", cursor: "pointer", padding: 0, flexShrink: 0,
+                        transition: "background 0.2s",
+                      }}>
+                      <div style={{
+                        width: 22, height: 22, borderRadius: 999, background: "#fff",
+                        position: "absolute", top: 3, left: d3Push ? 25 : 3,
+                        transition: "left 0.2s cubic-bezier(0.22, 1, 0.36, 1)",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                      }} />
+                    </button>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: `1px solid ${C.line}` }}>
                     <div style={{ minWidth: 0 }}>
