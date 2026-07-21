@@ -4249,6 +4249,7 @@ function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, constrai
     const types = [...new Set(dayTypes.get(d.toDateString()) || [])];
     strip.push({
       key: d.toDateString(), active: activeDays.has(d.toDateString()), isToday: i === 0,
+      dow: "SMTWTFS"[d.getDay()],
       emojis: types.map(t => RECOVERY.TYPES[t] && RECOVERY.TYPES[t].emoji).filter(Boolean),
       label: types.map(t => RECOVERY.TYPES[t] && RECOVERY.TYPES[t].label).filter(Boolean).join(" + "),
     });
@@ -4369,22 +4370,25 @@ function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, constrai
             </div>
           </div>
 
-          {/* Activity strip — each day shows what was done, not just that it was */}
+          {/* Activity strip — each day shows what was done, with its weekday under it */}
           <div style={{ display: "flex", gap: 4, marginTop: 16 }}>
             {strip.map((d, i) => (
-              <div key={i} title={d.label ? `${d.key} · ${d.label}` : d.key} style={{
-                flex: 1, height: 30, borderRadius: 5,
-                background: d.active ? momentumColor : C.raised,
-                border: `1px solid ${d.active ? momentumColor : C.line}`,
-                outline: d.isToday ? `1.5px solid ${C.bone}` : "none", outlineOffset: 1,
-                transition: "background 0.3s",
-                display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
-              }}>
-                {d.emojis.length > 0 && (
-                  <span style={{ fontSize: d.emojis.length > 1 ? 8.5 : 12, lineHeight: 1, letterSpacing: "-1px" }}>
-                    {d.emojis.slice(0, 2).join("")}
-                  </span>
-                )}
+              <div key={i} title={d.label ? `${d.key} · ${d.label}` : d.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, minWidth: 0 }}>
+                <div style={{
+                  width: "100%", height: 30, borderRadius: 5,
+                  background: d.active ? momentumColor : C.raised,
+                  border: `1px solid ${d.active ? momentumColor : C.line}`,
+                  outline: d.isToday ? `1.5px solid ${C.bone}` : "none", outlineOffset: 1,
+                  transition: "background 0.3s",
+                  display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", boxSizing: "border-box",
+                }}>
+                  {d.emojis.length > 0 && (
+                    <span style={{ fontSize: d.emojis.length > 1 ? 8.5 : 12, lineHeight: 1, letterSpacing: "-1px" }}>
+                      {d.emojis.slice(0, 2).join("")}
+                    </span>
+                  )}
+                </div>
+                <span style={{ fontSize: 8, fontFamily: FONT_MONO, lineHeight: 1, color: d.isToday ? C.bone : C.mute, fontWeight: d.isToday ? 700 : 400 }}>{d.dow}</span>
               </div>
             ))}
           </div>
@@ -5794,6 +5798,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
