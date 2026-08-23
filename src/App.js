@@ -2487,6 +2487,19 @@ function FastBreakTimer({ onLog }) {
         </div>
       )}
 
+      {/* Phone stayed on the sideline? One-tap log without running the timer. */}
+      {phase === "idle" && countdown === null && (
+        <button onClick={() => { onLog(minutes); beep(880, 0.12, 0.4); if (navigator.vibrate) navigator.vibrate(10); }} className="btn"
+          style={{
+            width: "100%", marginTop: 12, padding: "11px 12px", borderRadius: 12, cursor: "pointer",
+            background: "transparent", border: `1px dashed ${C.dim}66`,
+            color: C.dim, fontFamily: FONT_MONO, fontSize: 11,
+            letterSpacing: "0.05em", textTransform: "uppercase", fontWeight: 700,
+          }}>
+          ✓ Already ran it? Log {minutes} sprints · {minutes} min
+        </button>
+      )}
+
       {countdown !== null && (
         <div className="ease-up" style={{ textAlign: "center", padding: "32px 0 12px" }}>
           <Eyebrow color={C.amber}>Get Ready</Eyebrow>
