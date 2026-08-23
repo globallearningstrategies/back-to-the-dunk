@@ -365,7 +365,7 @@ const SCI = {
 
 function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
 function addDays(d, n) { const x = startOfDay(d); x.setDate(x.getDate() + n); return x; }
-function startOfWeek(d) { const x = startOfDay(d); x.setDate(x.getDate() - x.getDay()); return x; } // Sunday
+function startOfWeek(d) { const x = startOfDay(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; } // Monday — weeks run Mon → Sun
 // Whole calendar days from b to a (a - b). Positive when a is later.
 function dayGap(a, b) { return Math.round((startOfDay(a) - startOfDay(b)) / 86400000); }
 function isHardType(type) { return !!(RECOVERY.TYPES[type] && RECOVERY.TYPES[type].hard); }
@@ -1286,7 +1286,7 @@ function isPR(history, exerciseName, weight) {
 }
 
 function thisWeekRange() {
-  const start = new Date(); start.setDate(start.getDate() - start.getDay()); start.setHours(0,0,0,0);
+  const start = new Date(); start.setDate(start.getDate() - ((start.getDay() + 6) % 7)); start.setHours(0,0,0,0);
   const end = new Date(start); end.setDate(start.getDate() + 7);
   return { start, end };
 }
@@ -2826,7 +2826,8 @@ function StatsTab({ history, weightLog, cardioSessions, legsLog = {} }) {
   const crossSessions = cardioSessions.filter(s => s.workout_type === "cross_training");
 
   const totalVolume = gymSessions.reduce((a, h) => a + (h.total_volume || 0), 0);
-  const thisWeekVol = gymSessions.filter(h => (Date.now() - new Date(h.logged_at)) < 7*86400000).reduce((a,h) => a+(h.total_volume||0),0);
+  const wkStartMs = startOfWeek(new Date()).getTime();
+  const thisWeekVol = gymSessions.filter(h => new Date(h.logged_at).getTime() >= wkStartMs).reduce((a,h) => a+(h.total_volume||0),0);
   const totalMiles = treadmillSessions.reduce((a,h) => a + (h.exercises?.[0]?.miles||0), 0);
   const totalMin = treadmillSessions.reduce((a,h) => a + (h.exercises?.[0]?.duration||0), 0);
 
@@ -2835,7 +2836,7 @@ function StatsTab({ history, weightLog, cardioSessions, legsLog = {} }) {
 
   const weeklyVol = {};
   gymSessions.forEach(h => {
-    const d = new Date(h.logged_at); const ws = new Date(d); ws.setDate(d.getDate()-d.getDay());
+    const d = new Date(h.logged_at); const ws = startOfWeek(d);
     const key = ws.toLocaleDateString("en-CA",{month:"short",day:"numeric"});
     weeklyVol[key] = (weeklyVol[key]||0) + (h.total_volume||0);
   });
@@ -2963,8 +2964,8 @@ function StatsTab({ history, weightLog, cardioSessions, legsLog = {} }) {
               <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO, marginTop: 6 }}>THIS WEEK</div>
               {(() => {
                 const lastWeekVol = gymSessions.filter(h => {
-                  const d = Date.now() - new Date(h.logged_at);
-                  return d >= 7*86400000 && d < 14*86400000;
+                  const t = new Date(h.logged_at).getTime();
+                  return t >= wkStartMs - 7*86400000 && t < wkStartMs;
                 }).reduce((a,h) => a+(h.total_volume||0), 0);
                 if (lastWeekVol === 0) return null;
                 const diff = thisWeekVol - lastWeekVol;
@@ -4587,10 +4588,10 @@ function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, constrai
         <TimeTrainedCard cardioSessions={cardioSessions} workouts={history} />
       </div>
 
-      {/* ── SUNDAY RECAP — close out the week that just ended ── */}
+      {/* ── SUNDAY RECAP — weeks run Mon → Sun, so Sunday closes this week ── */}
       {new Date().getDay() === 0 && (
         <div className="ease-up-3">
-          <WeeklyRecap sessions={normalizeAll(cardioSessions, history)} weightLog={weightLog} prev />
+          <WeeklyRecap sessions={normalizeAll(cardioSessions, history)} weightLog={weightLog} />
         </div>
       )}
 
@@ -6044,6 +6045,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
