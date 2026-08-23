@@ -2393,6 +2393,159 @@ function TabataTimer({ onLog, loggedToday }) {
   );
 }
 
+/* ── Fast Break timer — 15s sprint / 45s float, 10–15 min.
+   Matches the stop-start pace of a real game; logs as a Long Interval. ── */
+const FASTBREAK_CONFIG = { sprintSec: 15, floatSec: 45, choices: [10, 12, 15] };
+function FastBreakTimer({ onLog }) {
+  const [minutes, setMinutes] = useState(12);   // one round = 60s, so rounds = minutes
+  const [phase, setPhase] = useState("idle");   // idle | sprint | float | done
+  const [round, setRound] = useState(1);
+  const [count, setCount] = useState(FASTBREAK_CONFIG.sprintSec);
+  const [countdown, setCountdown] = useState(null);
+  const wakeLockRef = useRef(null);
+
+  const requestWakeLock = async () => {
+    try { if ("wakeLock" in navigator) wakeLockRef.current = await navigator.wakeLock.request("screen"); } catch(e) {}
+  };
+  const releaseWakeLock = () => {
+    try { if (wakeLockRef.current) { wakeLockRef.current.release(); wakeLockRef.current = null; } } catch(e) {}
+  };
+
+  const start = () => { getAudioCtx(); requestNotificationPermission(); requestWakeLock(); setCountdown(5); };
+  const reset = () => { releaseWakeLock(); setPhase("idle"); setRound(1); setCount(FASTBREAK_CONFIG.sprintSec); setCountdown(null); };
+
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown === 0) {
+      setCountdown(null); beep(1046, 0.25, 0.5); speak("Sprint!");
+      setPhase("sprint"); setRound(1); setCount(FASTBREAK_CONFIG.sprintSec); return;
+    }
+    beep(660, 0.08, 0.3);
+    if (countdown === 3) speak("Get ready");
+    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [countdown]);
+
+  useEffect(() => {
+    if (phase === "idle" || phase === "done") return;
+    const interval = setInterval(() => {
+      setCount(c => {
+        // Tick beeps only in the last 3s of the float so the long recovery stays quiet.
+        if (c > 1) { if (phase === "sprint" || c <= 4) beep(440, 0.06, 0.2); return c - 1; }
+        if (phase === "sprint") {
+          beep(523, 0.15, 0.4); speak("Easy pace");
+          fireNotification("😮‍💨 Float", `Sprint ${round}/${minutes} done — walk it off.`);
+          setPhase("float"); return FASTBREAK_CONFIG.floatSec;
+        }
+        else {
+          setRound(r => {
+            if (r >= minutes) {
+              ringAlarm(); speak("Done! That's game pace!");
+              fireNotification("🏁 Fast break drill complete", `${minutes} sprints in ${minutes} minutes. Game shape work.`);
+              releaseWakeLock(); setPhase("done"); return r;
+            }
+            beep(880, 0.18, 0.5); speak("Sprint!");
+            fireNotification("💥 Sprint!", `${r + 1}/${minutes} — go hard.`);
+            setPhase("sprint"); return r + 1;
+          });
+          return FASTBREAK_CONFIG.sprintSec;
+        }
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [phase, minutes]);
+
+  const isSprint = phase === "sprint";
+  const isFloat = phase === "float";
+  const activeColor = isSprint ? C.electric : C.amber;
+  const max = isSprint ? FASTBREAK_CONFIG.sprintSec : FASTBREAK_CONFIG.floatSec;
+  const pct = ((max - count) / max) * 100;
+
+  return (
+    <Surface accent={C.electric} style={{ background: C.panel }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div>
+          <Pill color={C.electric}>Game pace</Pill>
+          <h2 className="h-display" style={{ fontSize: 26, margin: "10px 0 4px", color: C.bone }}>🏃 Fast Break</h2>
+          <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>{FASTBREAK_CONFIG.sprintSec}s SPRINT / {FASTBREAK_CONFIG.floatSec}s FLOAT · {minutes} min</div>
+          <div style={{ fontSize: 11, color: C.mute, marginTop: 4, fontFamily: FONT_MONO }}>logs as a Long Interval</div>
+        </div>
+        {phase === "idle" && countdown === null && <Btn color={C.electric} onClick={start}>Start</Btn>}
+      </div>
+
+      {/* Duration picker — a round is one minute, so rounds = minutes */}
+      {phase === "idle" && countdown === null && (
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          {FASTBREAK_CONFIG.choices.map(m => (
+            <button key={m} className="btn" onClick={() => setMinutes(m)} style={{
+              flex: 1, padding: "10px 6px", borderRadius: 12, cursor: "pointer",
+              border: `1px solid ${minutes === m ? C.electric : C.line}`,
+              background: minutes === m ? `${C.electric}18` : C.raised,
+              color: minutes === m ? C.electric : C.dim, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 13,
+            }}>{m} min</button>
+          ))}
+        </div>
+      )}
+
+      {countdown !== null && (
+        <div className="ease-up" style={{ textAlign: "center", padding: "32px 0 12px" }}>
+          <Eyebrow color={C.amber}>Get Ready</Eyebrow>
+          <div className="num-tab h-display" style={{ fontSize: 140, fontWeight: 800, color: C.amber, lineHeight: 0.85, marginTop: 12 }}>{countdown}</div>
+          <Btn ghost color={C.dim} onClick={reset} size="sm" style={{ marginTop: 24 }}>Cancel</Btn>
+        </div>
+      )}
+
+      {countdown === null && phase !== "idle" && (
+        <div className="ease-in" style={{ marginTop: 20 }}>
+          {(isSprint || isFloat) && (
+            <>
+              <div style={{ position: "relative", width: 220, height: 220, margin: "0 auto" }}>
+                <svg width="220" height="220" viewBox="0 0 100 100" style={{ position: "absolute" }}>
+                  <circle cx="50" cy="50" r="45" stroke={C.line} strokeWidth="4" fill="none" />
+                  <circle
+                    className="ring-progress"
+                    cx="50" cy="50" r="45" stroke={activeColor} strokeWidth="4" fill="none"
+                    strokeLinecap="round"
+                    strokeDasharray="282.7"
+                    strokeDashoffset={282.7 - (pct / 100) * 282.7}
+                    style={{ transition: "stroke-dashoffset 1s linear" }}
+                  />
+                </svg>
+                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                  <Eyebrow color={C.dim}>SPRINT {round} / {minutes}</Eyebrow>
+                  <div className="num-tab h-display" style={{ fontSize: 90, fontWeight: 800, color: activeColor, lineHeight: 0.9, marginTop: 4 }}>{count}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: activeColor, letterSpacing: "0.2em", marginTop: 2 }}>{isSprint ? "SPRINT" : "FLOAT"}</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 24 }}>
+                {Array.from({ length: minutes }).map((_, i) => (
+                  <div key={i} style={{
+                    width: 7, height: 7, borderRadius: 999,
+                    background: i < round - 1 ? C.electric : i === round - 1 ? C.electric + "AA" : C.faint,
+                    transition: "all 0.3s",
+                  }} />
+                ))}
+              </div>
+              <Btn ghost color={C.dim} onClick={reset} full style={{ marginTop: 20, fontSize: 12 }}>Reset</Btn>
+            </>
+          )}
+          {phase === "done" && (
+            <div className="ease-up" style={{ textAlign: "center", padding: "12px 0" }}>
+              <div style={{ fontSize: 56, marginBottom: 12 }}>🏁</div>
+              <h3 className="h-display" style={{ fontSize: 28, color: C.electric, margin: "0 0 6px" }}>Game pace.</h3>
+              <p className="h-serif" style={{ fontSize: 18, color: C.cream, margin: "0 0 20px" }}>{minutes} sprints in {minutes} minutes.</p>
+              <div style={{ display: "flex", gap: 10 }}>
+                <Btn ghost color={C.dim} onClick={reset} style={{ flex: 1 }}>Reset</Btn>
+                <Btn color={C.electric} onClick={() => { onLog(minutes); reset(); }} style={{ flex: 1 }}>Log It</Btn>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </Surface>
+  );
+}
+
 /* ── Treadmill ── */
 /* ── Stat Cards ── */
 function StatCard({ kicker, value, unit, color, big, sub }) {
@@ -4870,6 +5023,15 @@ export default function App() {
     if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); showSave(true); toast("🔥 Tabata logged — nice"); } else showSave(false);
   };
 
+  // Fast Break drill completions log as Long Intervals with their real duration.
+  const logFastBreak = async (minutes) => {
+    const { data, error } = await supabase.from("cardio_sessions").insert([{
+      workout_type: "long_interval", completed_at: new Date().toISOString(),
+      duration_min: minutes, rpe: 9, notes: `Fast break drill · 15s sprint / 45s float × ${minutes}`,
+    }]).select();
+    if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); setConfetti(true); showSave(true); toast("🏃 Fast break drill logged — game shape"); } else showSave(false);
+  };
+
   // Create or update a conditioning session (Tabata / Long Interval / Game / Cross).
   const saveCardio = async ({ id, type, completed_at, duration_min, rpe, notes, legs }) => {
     const row = { workout_type: type, completed_at, duration_min, rpe, notes };
@@ -5169,6 +5331,7 @@ export default function App() {
             </div>
 
             <div className="ease-up-1"><TabataTimer onLog={logTabata} loggedToday={tabataToday} /></div>
+            <div className="ease-up-2"><FastBreakTimer onLog={logFastBreak} /></div>
             <div className="ease-up-2">
               <Surface accent={C.plum}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -5868,6 +6031,8 @@ export default function App() {
     </div>
   );
 }
+
+
 
 
 
