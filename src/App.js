@@ -338,13 +338,19 @@ const RECOVERY = {
 // Lifts log via the gym session card; walks via the walk logger.
 const CONDITIONING_TYPES = ["tabata", "long_interval", "game", "cross_training"];
 
-// Sweat440 weekly rotation: Monday legs, Wednesday cardio, Friday upper body.
-// Keyed by day-of-week; used to default the focus when logging a class.
-const S440_FOCUS = {
-  1: { key: "legs",   label: "Legs",   emoji: "🦵" },
-  3: { key: "cardio", label: "Cardio", emoji: "❤️" },
-  5: { key: "upper",  label: "Upper",  emoji: "💪" },
+// SWEAT440's weekly class rotation (same split every week, per the gym's
+// schedule) — real class names, keyed by day-of-week. Auto-picks what you
+// took based on the session date; the focus drives the engine + digital twin.
+const S440_CLASSES = {
+  1: { name: "SWEAT440 Strength – Lower", focus: "legs",   desc: "Legs & glutes · progressive lower-body strength" },
+  2: { name: "SWEAT440 Strength – Upper", focus: "upper",  desc: "Chest, back, shoulders & arms" },
+  3: { name: "SWEAT440 Cardio & Core",    focus: "cardio", desc: "Conditioning circuits + core" },
+  4: { name: "SWEAT440 Strength – Lower", focus: "legs",   desc: "Lower body + conditioning" },
+  5: { name: "SWEAT440 Strength – Upper", focus: "upper",  desc: "Upper body + conditioning" },
+  6: { name: "SWEAT440 Total Body",       focus: null,     desc: "Full-body mix" },
+  0: { name: "SWEAT440 Total Body",       focus: null,     desc: "Full-body mix" },
 };
+const S440_NAME_BY_FOCUS = { legs: "SWEAT440 Strength – Lower", upper: "SWEAT440 Strength – Upper", cardio: "SWEAT440 Cardio & Core" };
 const S440_FOCUS_OPTIONS = [
   { key: "legs",   label: "Legs",   emoji: "🦵", blurb: "squats & lower body" },
   { key: "cardio", label: "Cardio", emoji: "❤️", blurb: "engine work" },
@@ -547,7 +553,7 @@ function recommend(allSessions, refDate, constraints = {}) {
   }
   if (classToday) {
     if (daysSinceHard === 1) flags.push("Class lands the day after a hard session — pace yourself in there.");
-    return mk("train", [{ type: "cross_training" }], `Sweat440 day 💦 — ${S440_FOCUS[dow] ? S440_FOCUS[dow].label.toLowerCase() + " class" : "class"} is today's hard session.`, SCI.crossDo);
+    return mk("train", [{ type: "cross_training" }], `Sweat440 day 💦 — ${S440_CLASSES[dow] ? S440_CLASSES[dow].name.replace("SWEAT440 ", "") : "class"} is today's hard session.`, SCI.crossDo);
   }
   if (gameTomorrow) {
     return recoveryDay("Game tomorrow — keep your legs fresh today.", SCI.preGame);
@@ -2838,100 +2844,169 @@ function StrengthProgress({ gymSessions }) {
    that leans out as the scale drops. HeartSim: the aerobic engine —
    endurance work genuinely remodels the heart (athlete's heart).
    ════════════════════════════════════════════════════════════ */
-const LOWER_RE = /squat|deadlift|lunge|leg|calf|glute|hip|rdl|hamstring|quad/i;
-const UPPER_RE = /bench|press|row|curl|pull|push|shoulder|fly|dip|chin|lat|tricep|bicep|chest|arm/i;
+/* Per-muscle-group work tally: recent (last 28d, drives the highlight)
+   and lifetime (drives how much bigger each muscle is drawn). */
+const MUSCLE_GROUPS = [
+  { key: "shoulders", label: "Shoulders", re: /shoulder|ohp|overhead|raise|delt|arnold/i },
+  { key: "chest",     label: "Chest",     re: /bench|chest|fly|push[- ]?up|dip/i },
+  { key: "arms",      label: "Arms",      re: /curl|tricep|bicep|row|pull|chin|lat/i },
+  { key: "core",      label: "Core",      re: /\bab\b|abs|crunch|plank|core|sit[- ]?up/i },
+  { key: "quads",     label: "Quads",     re: /squat|lunge|leg press|leg ext|deadlift|rdl|glute|hip|hamstring|quad|\bleg\b/i },
+  { key: "calves",    label: "Calves",    re: /calf|calves/i },
+];
+function muscleWork(cardioSessions, workouts) {
+  const cutoff = Date.now() - 28 * 86400000;
+  const w = {};
+  MUSCLE_GROUPS.forEach(g => { w[g.key] = { recent: 0, lifetime: 0 }; });
+  const add = (key, when, amt) => {
+    w[key].lifetime += amt;
+    if (when >= cutoff) w[key].recent += amt;
+  };
+  (cardioSessions || []).forEach(s => {
+    const t = new Date(s.completed_at).getTime();
+    if (s.workout_type === "cross_training") {
+      if (s.focus === "upper") { add("chest", t, 1); add("shoulders", t, 1); add("arms", t, 1); add("core", t, 0.5); }
+      else if (s.focus === "legs") { add("quads", t, 1); add("calves", t, 1); add("core", t, 0.5); }
+      else if (s.focus === "cardio") { add("quads", t, 0.7); add("calves", t, 0.7); add("core", t, 0.3); }
+      else { add("quads", t, 0.6); add("calves", t, 0.5); add("chest", t, 0.6); add("shoulders", t, 0.6); add("arms", t, 0.5); add("core", t, 0.4); } // total body
+    } else { // tabata / long interval / game — running is leg work
+      add("quads", t, 1); add("calves", t, 1); add("core", t, 0.3);
+    }
+  });
+  (workouts || []).forEach(wk => {
+    if (!wk.session_name) return;
+    const t = new Date(wk.logged_at).getTime();
+    if (wk.session_name === "Treadmill Walk") { add("quads", t, 0.3); add("calves", t, 0.3); return; }
+    const hit = new Set();
+    (wk.exercises || []).forEach(ex => {
+      const name = ex.name || "";
+      for (const g of MUSCLE_GROUPS) if (g.re.test(name)) { hit.add(g.key); break; }
+    });
+    if (hit.size === 0) { hit.add("chest"); hit.add("quads"); } // unlabeled lift: assume full body
+    hit.forEach(k => add(k, t, 1));                             // each group once per gym session
+  });
+  return w;
+}
 
-// Heat tiers: session count over 28 days → color + label.
-function heatFor(count) {
-  if (count >= 6) return { color: C.rust,  alpha: "EE", label: "On fire" };
-  if (count >= 3) return { color: C.rustHi, alpha: "BB", label: "Building" };
-  if (count >= 1) return { color: C.amber, alpha: "77", label: "Warming" };
+// Highlight ramp for a muscle (Hevy-style): gray → warm → orange → red-hot.
+function muscleFill(recent) {
+  if (recent >= 6) return { color: C.rust,   alpha: "F0", label: "On fire" };
+  if (recent >= 3) return { color: C.rustHi, alpha: "CC", label: "Building" };
+  if (recent >= 1) return { color: C.amber,  alpha: "88", label: "Warming" };
   return { color: C.faint, alpha: "FF", label: "Dormant" };
+}
+// Lifetime volume → how much bigger the muscle is drawn (caps at +15%).
+const muscleGrow = (lifetime) => 1 + Math.min(0.15, lifetime * 0.005);
+
+/* Front-view muscle figure. Each group is filled by its recent heat and
+   scaled around its own center by its lifetime growth. */
+function MuscleBody({ work, width = 150 }) {
+  const info = {};
+  MUSCLE_GROUPS.forEach(g => {
+    const d = work[g.key] || { recent: 0, lifetime: 0 };
+    info[g.key] = { fill: (f => `${f.color}${f.alpha}`)(muscleFill(Math.round(d.recent))), grow: muscleGrow(d.lifetime) };
+  });
+  const stroke = C.line;
+  // Scale a muscle about its own center so growth reads as the muscle swelling.
+  const T = (cx, cy, key) => `translate(${cx} ${cy}) scale(${info[key].grow}) translate(${-cx} ${-cy})`;
+  const F = (key) => info[key].fill;
+
+  return (
+    <svg width={width} height={width * 1.73} viewBox="0 0 220 380" style={{ flexShrink: 0 }}>
+      {/* base silhouette */}
+      <circle cx="110" cy="26" r="16" fill={C.raised} stroke={stroke} strokeWidth="1.5" />
+      <rect x="101" y="40" width="18" height="12" rx="5" fill={C.raised} stroke={stroke} strokeWidth="1" />
+      <path d="M 74 56 L 146 56 C 152 100 146 134 140 172 L 80 172 C 74 134 68 100 74 56 Z" fill={C.raised} stroke={stroke} strokeWidth="1.5" />
+      <rect x="47" y="60" width="21" height="102" rx="10.5" fill={C.raised} stroke={stroke} strokeWidth="1.5" transform="rotate(5 57 60)" />
+      <rect x="152" y="60" width="21" height="102" rx="10.5" fill={C.raised} stroke={stroke} strokeWidth="1.5" transform="rotate(-5 163 60)" />
+      <rect x="83" y="172" width="26" height="112" rx="12" fill={C.raised} stroke={stroke} strokeWidth="1.5" />
+      <rect x="111" y="172" width="26" height="112" rx="12" fill={C.raised} stroke={stroke} strokeWidth="1.5" />
+      <rect x="86" y="284" width="20" height="76" rx="9" fill={C.raised} stroke={stroke} strokeWidth="1.5" />
+      <rect x="114" y="284" width="20" height="76" rx="9" fill={C.raised} stroke={stroke} strokeWidth="1.5" />
+
+      {/* traps + delts */}
+      <g transform={T(110, 70, "shoulders")}>
+        <path d="M 95 52 L 78 62 L 108 62 Z" fill={F("shoulders")} stroke={stroke} strokeWidth="1" />
+        <path d="M 125 52 L 142 62 L 112 62 Z" fill={F("shoulders")} stroke={stroke} strokeWidth="1" />
+        <ellipse cx="72" cy="74" rx="14" ry="13" fill={F("shoulders")} stroke={stroke} strokeWidth="1" />
+        <ellipse cx="148" cy="74" rx="14" ry="13" fill={F("shoulders")} stroke={stroke} strokeWidth="1" />
+      </g>
+      {/* pecs */}
+      <g transform={T(110, 95, "chest")}>
+        <path d="M 84 72 C 74 84 80 102 96 106 C 104 108 108 104 108 98 L 108 76 C 100 70 90 70 84 72 Z" fill={F("chest")} stroke={stroke} strokeWidth="1" />
+        <path d="M 136 72 C 146 84 140 102 124 106 C 116 108 112 104 112 98 L 112 76 C 120 70 130 70 136 72 Z" fill={F("chest")} stroke={stroke} strokeWidth="1" />
+      </g>
+      {/* biceps + forearms */}
+      <g transform={T(58, 112, "arms")}>
+        <ellipse cx="59" cy="102" rx="9" ry="18" fill={F("arms")} stroke={stroke} strokeWidth="1" transform="rotate(7 59 102)" />
+        <ellipse cx="63" cy="142" rx="7" ry="17" fill={F("arms")} stroke={stroke} strokeWidth="1" transform="rotate(9 63 142)" />
+      </g>
+      <g transform={T(162, 112, "arms")}>
+        <ellipse cx="161" cy="102" rx="9" ry="18" fill={F("arms")} stroke={stroke} strokeWidth="1" transform="rotate(-7 161 102)" />
+        <ellipse cx="157" cy="142" rx="7" ry="17" fill={F("arms")} stroke={stroke} strokeWidth="1" transform="rotate(-9 157 142)" />
+      </g>
+      {/* abs + obliques */}
+      <g transform={T(110, 138, "core")}>
+        <rect x="94" y="112" width="32" height="52" rx="9" fill={F("core")} stroke={stroke} strokeWidth="1" />
+        <line x1="110" y1="114" x2="110" y2="162" stroke={stroke} strokeWidth="1.2" />
+        <line x1="96" y1="126" x2="124" y2="126" stroke={stroke} strokeWidth="1" />
+        <line x1="96" y1="139" x2="124" y2="139" stroke={stroke} strokeWidth="1" />
+        <line x1="96" y1="152" x2="124" y2="152" stroke={stroke} strokeWidth="1" />
+        <path d="M 88 114 C 84 128 84 146 88 160 L 92 158 C 89 145 89 128 92 116 Z" fill={F("core")} stroke={stroke} strokeWidth="0.8" />
+        <path d="M 132 114 C 136 128 136 146 132 160 L 128 158 C 131 145 131 128 128 116 Z" fill={F("core")} stroke={stroke} strokeWidth="0.8" />
+      </g>
+      {/* quads */}
+      <g transform={T(96, 224, "quads")}>
+        <path d="M 86 176 C 78 200 78 236 88 262 C 94 270 102 268 106 258 C 110 234 108 200 104 178 Z" fill={F("quads")} stroke={stroke} strokeWidth="1" />
+      </g>
+      <g transform={T(124, 224, "quads")}>
+        <path d="M 134 176 C 142 200 142 236 132 262 C 126 270 118 268 114 258 C 110 234 112 200 116 178 Z" fill={F("quads")} stroke={stroke} strokeWidth="1" />
+      </g>
+      {/* calves */}
+      <g transform={T(96, 312, "calves")}>
+        <ellipse cx="96" cy="310" rx="10" ry="24" fill={F("calves")} stroke={stroke} strokeWidth="1" />
+      </g>
+      <g transform={T(124, 312, "calves")}>
+        <ellipse cx="124" cy="310" rx="10" ry="24" fill={F("calves")} stroke={stroke} strokeWidth="1" />
+      </g>
+    </svg>
+  );
 }
 
 function BodySim({ cardioSessions, workouts, weightLog }) {
-  const all = normalizeAll(cardioSessions, workouts);
-  const cutoff = Date.now() - 28 * 86400000;
-  const recent = all.filter(s => s.date.getTime() >= cutoff);
-
-  // Which muscle groups has the last month of work actually hit?
-  const focusOf = (id) => (cardioSessions.find(c => c.id === id) || {}).focus || null;
-  let legs = 0, upper = 0;
-  recent.forEach(s => {
-    if (s.type === "cross_training") {
-      const f = s.focus || focusOf(s.id);
-      if (f === "legs") legs++;
-      else if (f === "upper") upper++;
-      else if (f !== "cardio") { legs += 0.5; upper += 0.5; } // unknown focus: split it
-      else legs += 0.5; // cardio class still runs on legs
-    }
-    else if (s.type === "tabata" || s.type === "long_interval" || s.type === "game") legs++;
-  });
-  workouts.filter(w => w.session_name && w.session_name !== "Treadmill Walk" && new Date(w.logged_at).getTime() >= cutoff)
-    .forEach(w => {
-      let hitLower = false, hitUpper = false;
-      (w.exercises || []).forEach(ex => {
-        if (LOWER_RE.test(ex.name || "")) hitLower = true;
-        else if (UPPER_RE.test(ex.name || "")) hitUpper = true;
-      });
-      if (hitLower) legs++;
-      if (hitUpper) upper++;
-      if (!hitLower && !hitUpper) { legs += 0.5; upper += 0.5; }
-    });
-  legs = Math.round(legs); upper = Math.round(upper);
-  const legHeat = heatFor(legs), upHeat = heatFor(upper);
-
-  // Silhouette leans out as the scale drops: 225 → wide, 200 → trim.
+  const work = muscleWork(cardioSessions, workouts);
   const cur = (weightLog && weightLog[0] && Number(weightLog[0].weight)) || 225;
-  const fat = Math.max(0, Math.min(1, (cur - 200) / 25));
-  const waistW = 26 + 16 * fat;                 // half-width at the waist
-  const pctToGoal = Math.round((1 - fat) * 100);
-  const fill = (h) => `${h.color}${h.alpha}`;
+  const pctToGoal = Math.round((1 - Math.max(0, Math.min(1, (cur - 200) / 25))) * 100);
 
   return (
     <Surface accent={C.rust}>
-      <Eyebrow color={C.rust}>The rebuild · last 4 weeks</Eyebrow>
-      <div style={{ display: "flex", gap: 16, marginTop: 14, alignItems: "center" }}>
-        <svg width="132" height="220" viewBox="0 0 200 330" style={{ flexShrink: 0 }}>
-          {/* head + neck */}
-          <circle cx="100" cy="28" r="19" fill={C.faint} />
-          <rect x="92" y="46" width="16" height="14" rx="5" fill={C.faint} />
-          {/* torso — waist narrows as weight drops */}
-          <path d={`M 54 62 L 146 62 C 150 100, ${100 + waistW} 130, ${100 + waistW} 152 L ${100 + waistW - 6} 176 L ${100 - waistW + 6} 176 L ${100 - waistW} 152 C ${100 - waistW} 130, 50 100, 54 62 Z`} fill={C.raised} stroke={C.line} strokeWidth="2" />
-          {/* chest + shoulders glow with upper-body work */}
-          <ellipse cx="100" cy="88" rx="40" ry="21" fill={fill(upHeat)} />
-          {/* arms */}
-          <rect x="34" y="63" width="17" height="96" rx="9" fill={fill(upHeat)} stroke={C.line} strokeWidth="1.5" />
-          <rect x="149" y="63" width="17" height="96" rx="9" fill={fill(upHeat)} stroke={C.line} strokeWidth="1.5" />
-          {/* legs */}
-          <rect x="68" y="180" width="27" height="128" rx="13" fill={fill(legHeat)} stroke={C.line} strokeWidth="1.5" />
-          <rect x="105" y="180" width="27" height="128" rx="13" fill={fill(legHeat)} stroke={C.line} strokeWidth="1.5" />
-        </svg>
+      <Eyebrow color={C.rust}>The rebuild · muscles worked</Eyebrow>
+      <div style={{ display: "flex", gap: 14, marginTop: 14, alignItems: "center" }}>
+        <MuscleBody work={work} width={150} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: `1px solid ${C.line}` }}>
-            <span style={{ fontSize: 16 }}>💪</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.bone }}>Upper body</div>
-              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO }}>{upper} session{upper === 1 ? "" : "s"} · {upHeat.label}</div>
-            </div>
-            <div style={{ width: 10, height: 10, borderRadius: 999, background: fill(upHeat), border: `1px solid ${C.line}` }} />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: `1px solid ${C.line}` }}>
-            <span style={{ fontSize: 16 }}>🦵</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.bone }}>Legs</div>
-              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO }}>{legs} session{legs === 1 ? "" : "s"} · {legHeat.label}</div>
-            </div>
-            <div style={{ width: 10, height: 10, borderRadius: 999, background: fill(legHeat), border: `1px solid ${C.line}` }} />
-          </div>
-          <div style={{ padding: "10px 0 0" }}>
-            <div className="num-tab h-display" style={{ fontSize: 24, fontWeight: 800, color: C.moss, letterSpacing: "-0.03em", lineHeight: 1 }}>{pctToGoal}%</div>
-            <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, marginTop: 3, letterSpacing: "0.05em" }}>SILHOUETTE → GOAL ({cur} → 200)</div>
+          {MUSCLE_GROUPS.map(g => {
+            const d = work[g.key];
+            const n = Math.round(d.recent);
+            const f = muscleFill(n);
+            const grownPct = Math.round((muscleGrow(d.lifetime) - 1) * 100);
+            return (
+              <div key={g.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5.5px 0", borderBottom: `1px solid ${C.line}` }}>
+                <div style={{ width: 9, height: 9, borderRadius: 999, background: `${f.color}${f.alpha}`, border: `1px solid ${C.line}`, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: n > 0 ? C.bone : C.dim }}>{g.label}</span>
+                </div>
+                <span style={{ fontSize: 9.5, color: C.dim, fontFamily: FONT_MONO, whiteSpace: "nowrap" }}>{n}× 4wk{grownPct > 0 ? ` · +${grownPct}%` : ""}</span>
+              </div>
+            );
+          })}
+          <div style={{ paddingTop: 8, display: "flex", alignItems: "baseline", gap: 6 }}>
+            <span className="num-tab h-display" style={{ fontSize: 20, fontWeight: 800, color: C.moss, letterSpacing: "-0.03em" }}>{pctToGoal}%</span>
+            <span style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO }}>TO {200} LBS ({cur})</span>
           </div>
         </div>
       </div>
       <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginTop: 12, lineHeight: 1.5 }}>
-        A playful simulation from your logs and weight trend — not a scan. Muscle warms where the work goes; the waistline follows the scale.
+        Color = worked in the last 4 weeks · +% = how much bigger that muscle is drawn from your lifetime volume. A simulation from your logs, not a scan.
       </div>
     </Surface>
   );
@@ -4146,8 +4221,11 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
   // until the user picks one explicitly.
   const [focus, setFocus] = useState(editing ? (editing.focus || null) : null);
   const [touchedFocus, setTouchedFocus] = useState(editing ? editing.focus != null : false);
-  const dowFocus = S440_FOCUS[new Date(when).getDay()];
-  const effFocus = touchedFocus ? focus : (dowFocus ? dowFocus.key : null);
+  const dowClass = S440_CLASSES[new Date(when).getDay()];
+  const effFocus = touchedFocus ? focus : (dowClass ? dowClass.focus : null);
+  const effClassName = touchedFocus
+    ? (S440_NAME_BY_FOCUS[focus] || (dowClass && dowClass.name) || null)
+    : (dowClass ? dowClass.name : null);
 
   const def = RECOVERY.TYPES[type];
   const chooseType = (tk) => { setType(tk); if (!touchedRpe) setRpe(RECOVERY.TYPES[tk].defaultRPE); };
@@ -4162,6 +4240,7 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
       notes: notes.trim() || null,
       legs: type === "game" ? legs : null,
       focus: type === "cross_training" ? effFocus : null,
+      class_name: type === "cross_training" ? effClassName : null,
     });
   };
 
@@ -4239,8 +4318,8 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
                 );
               })}
             </div>
-            <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginBottom: 18 }}>
-              {!touchedFocus && dowFocus ? `Auto-picked from the schedule — ${dowFocus.label.toLowerCase()} day. Tap to change.` : "Mon legs · Wed cardio · Fri upper."}
+            <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginBottom: 18, lineHeight: 1.5 }}>
+              {effClassName ? <><span style={{ color: C.pink, fontWeight: 700 }}>{effClassName}</span>{!touchedFocus ? " · auto from the weekly schedule — tap to change" : ""}</> : "Mon/Thu lower · Tue/Fri upper · Wed cardio & core · weekends total body."}
             </div>
           </>
         )}
@@ -5323,8 +5402,8 @@ export default function App() {
   };
 
   // Create or update a conditioning session (Tabata / Long Interval / Game / Cross).
-  const saveCardio = async ({ id, type, completed_at, duration_min, rpe, notes, legs, focus }) => {
-    const row = { workout_type: type, completed_at, duration_min, rpe, notes, focus };
+  const saveCardio = async ({ id, type, completed_at, duration_min, rpe, notes, legs, focus, class_name }) => {
+    const row = { workout_type: type, completed_at, duration_min, rpe, notes, focus, class_name };
     if (id != null) {
       const { data, error } = await supabase.from("cardio_sessions").update(row).eq("id", id).select();
       if (!error && data) { setCardioSessions(p => sortCardio(p.map(r => r.id === id ? data[0] : r))); setGameLegs(id, legs); showSave(true); } else showSave(false);
@@ -5759,8 +5838,9 @@ export default function App() {
               const col = C[def.colorKey] || C.rust;
               const title = f.kind === "cardio" ? (def.label || f.type) : f.title;
               const focusOpt = f.kind === "cardio" && f.type === "cross_training" ? s440FocusFor(f.focus) : null;
+              const clsName = f.kind === "cardio" && f.type === "cross_training" && f.raw.class_name ? f.raw.class_name.replace("SWEAT440 ", "") : null;
               const detail = f.kind === "cardio"
-                ? [focusOpt ? `${focusOpt.emoji} ${focusOpt.label} day` : null, f.duration != null ? `${f.duration} min` : null, f.rpe != null ? `RPE ${f.rpe}` : null].filter(Boolean).join(" · ")
+                ? [clsName ? `${focusOpt ? focusOpt.emoji + " " : ""}${clsName}` : focusOpt ? `${focusOpt.emoji} ${focusOpt.label} day` : null, f.duration != null ? `${f.duration} min` : null, f.rpe != null ? `RPE ${f.rpe}` : null].filter(Boolean).join(" · ")
                 : f.subtitle;
               const canExpand = f.kind === "workout" && f.type === "lift" && f.exercises && f.exercises.length;
               const expanded = expandedLog[f.kind + f.id];
@@ -6322,6 +6402,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
