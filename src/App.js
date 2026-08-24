@@ -338,19 +338,46 @@ const RECOVERY = {
 // Lifts log via the gym session card; walks via the walk logger.
 const CONDITIONING_TYPES = ["tabata", "long_interval", "game", "cross_training"];
 
-// SWEAT440's weekly class rotation (same split every week, per the gym's
-// schedule) — real class names, keyed by day-of-week. Auto-picks what you
-// took based on the session date; the focus drives the engine + digital twin.
+// SWEAT440 Boca Raton weekly rotation — fallback when the live schedule is
+// unreachable. Class names as they appear on the gym's Mindbody schedule.
 const S440_CLASSES = {
-  1: { name: "SWEAT440 Strength – Lower", focus: "legs",   desc: "Legs & glutes · progressive lower-body strength" },
-  2: { name: "SWEAT440 Strength – Upper", focus: "upper",  desc: "Chest, back, shoulders & arms" },
-  3: { name: "SWEAT440 Cardio & Core",    focus: "cardio", desc: "Conditioning circuits + core" },
-  4: { name: "SWEAT440 Strength – Lower", focus: "legs",   desc: "Lower body + conditioning" },
-  5: { name: "SWEAT440 Strength – Upper", focus: "upper",  desc: "Upper body + conditioning" },
-  6: { name: "SWEAT440 Total Body",       focus: null,     desc: "Full-body mix" },
-  0: { name: "SWEAT440 Total Body",       focus: null,     desc: "Full-body mix" },
+  1: { name: "SWEAT440 Strength – Lower",     focus: "legs",   desc: "Legs & glutes · progressive lower-body strength" },
+  2: { name: "SWEAT440 Strength – Upper",     focus: "upper",  desc: "Chest, back, shoulders & arms" },
+  3: { name: "SWEAT440 Athletic Conditioning", focus: "cardio", desc: "Conditioning circuits + core" },
+  4: { name: "SWEAT440 Strength – Lower",     focus: "legs",   desc: "Lower body + conditioning" },
+  5: { name: "SWEAT440 Strength – Upper",     focus: "upper",  desc: "Upper body + conditioning" },
+  6: { name: "SWEAT440 Hybrid – Full Body",   focus: null,     desc: "Full-body mix" },
+  0: { name: "SWEAT440 Hybrid – Full Body",   focus: null,     desc: "Full-body mix" },
 };
-const S440_NAME_BY_FOCUS = { legs: "SWEAT440 Strength – Lower", upper: "SWEAT440 Strength – Upper", cardio: "SWEAT440 Cardio & Core" };
+const S440_NAME_BY_FOCUS = { legs: "SWEAT440 Strength – Lower", upper: "SWEAT440 Strength – Upper", cardio: "SWEAT440 Athletic Conditioning" };
+
+/* ── Live schedule: the s440-schedule edge function scrapes the gym's real
+   Mindbody class list and returns { byDate: { "YYYY-MM-DD": [{name,...}] } }.
+   Cached locally for 6h; the function caches server-side too. ── */
+const LS_S440_SCHEDULE = "bttd_s440_schedule_v1";
+const focusFromClassName = (n) => !n ? null
+  : /lower|leg|glute/i.test(n) ? "legs"
+  : /upper|arm|chest/i.test(n) ? "upper"
+  : /conditioning|cardio|core|shred/i.test(n) ? "cardio"
+  : null; // hybrid / full body → no single focus
+async function fetchS440Schedule() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(LS_S440_SCHEDULE) || "null");
+    if (cached && cached.byDate && Date.now() - cached.fetchedAt < 6 * 3600 * 1000) return cached;
+  } catch (e) {}
+  try {
+    const res = await fetch(`${process.env.REACT_APP_SUPABASE_URL}/functions/v1/s440-schedule`, {
+      headers: { Authorization: `Bearer ${process.env.REACT_APP_SUPABASE_KEY}`, apikey: process.env.REACT_APP_SUPABASE_KEY },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data && data.byDate) {
+      try { localStorage.setItem(LS_S440_SCHEDULE, JSON.stringify(data)); } catch (e) {}
+      return data;
+    }
+  } catch (e) {}
+  return null;
+}
 const S440_FOCUS_OPTIONS = [
   { key: "legs",   label: "Legs",   emoji: "🦵", blurb: "squats & lower body" },
   { key: "cardio", label: "Cardio", emoji: "❤️", blurb: "engine work" },
@@ -4221,11 +4248,18 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
   // until the user picks one explicitly.
   const [focus, setFocus] = useState(editing ? (editing.focus || null) : null);
   const [touchedFocus, setTouchedFocus] = useState(editing ? editing.focus != null : false);
+  // Live schedule first (what the gym actually held that day), weekly pattern as fallback.
+  const [liveSched, setLiveSched] = useState(null);
+  useEffect(() => { if (type === "cross_training") fetchS440Schedule().then(s => s && setLiveSched(s)); }, [type]);
   const dowClass = S440_CLASSES[new Date(when).getDay()];
-  const effFocus = touchedFocus ? focus : (dowClass ? dowClass.focus : null);
-  const effClassName = touchedFocus
-    ? (S440_NAME_BY_FOCUS[focus] || (dowClass && dowClass.name) || null)
-    : (dowClass ? dowClass.name : null);
+  const liveEntries = liveSched && liveSched.byDate ? liveSched.byDate[dateKey(new Date(when))] : null;
+  const liveName = liveEntries && liveEntries.length ? liveEntries[0].name : null;
+  const autoName = liveName || (dowClass ? dowClass.name : null);
+  const autoFocus = liveName
+    ? (focusFromClassName(liveName) !== null ? focusFromClassName(liveName) : null)
+    : (dowClass ? dowClass.focus : null);
+  const effFocus = touchedFocus ? focus : autoFocus;
+  const effClassName = touchedFocus ? (S440_NAME_BY_FOCUS[focus] || autoName) : autoName;
 
   const def = RECOVERY.TYPES[type];
   const chooseType = (tk) => { setType(tk); if (!touchedRpe) setRpe(RECOVERY.TYPES[tk].defaultRPE); };
@@ -4319,7 +4353,7 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
               })}
             </div>
             <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginBottom: 18, lineHeight: 1.5 }}>
-              {effClassName ? <><span style={{ color: C.pink, fontWeight: 700 }}>{effClassName}</span>{!touchedFocus ? " · auto from the weekly schedule — tap to change" : ""}</> : "Mon/Thu lower · Tue/Fri upper · Wed cardio & core · weekends total body."}
+              {effClassName ? <><span style={{ color: C.pink, fontWeight: 700 }}>{effClassName}</span>{!touchedFocus ? (liveName ? " · live from the gym's schedule — tap to change" : " · from the weekly pattern — tap to change") : ""}</> : "Mon/Thu lower · Tue/Fri upper · Wed conditioning · weekends full body."}
             </div>
           </>
         )}
@@ -6402,6 +6436,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
