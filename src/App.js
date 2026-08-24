@@ -3187,8 +3187,39 @@ function HeartSim({ cardioSessions, workouts }) {
   // lifetime base (keeps earned adaptation from vanishing overnight).
   const growth = Math.min(1, 0.6 * Math.min(1, mins / 300) + 0.4 * Math.min(1, lifetime / 3000));
   const beatDur = (0.85 + 0.45 * growth).toFixed(2); // fitter heart = slower, calmer resting beat
-  const tier = mins >= 300 ? "Athlete's heart" : mins >= 150 ? "Strong pump" : mins >= 60 ? "Warming up" : "Idling";
+  const TIERS = [
+    { name: "Idling", min: 0, blurb: "under 1h of hard cardio in 4 weeks" },
+    { name: "Warming up", min: 60, blurb: "1h – 2h 30m per 4 weeks" },
+    { name: "Strong pump", min: 150, blurb: "2h 30m – 5h per 4 weeks" },
+    { name: "Athlete's heart", min: 300, blurb: "5h+ per 4 weeks" },
+  ];
+  const tierIdx = TIERS.reduce((a, t, i) => (mins >= t.min ? i : a), 0);
+  const tier = TIERS[tierIdx].name;
+  const nextTier = TIERS[tierIdx + 1] || null;
   const diff = mins - prev;
+  const [showInfo, setShowInfo] = useState(false);
+
+  // The receipt: where this block's aerobic minutes actually came from.
+  const RECEIPT_LABELS = {
+    long_interval: { emoji: "⚡", label: "Long intervals / fast breaks" },
+    cross_training: { emoji: "💦", label: "Conditioning classes" },
+    game: { emoji: "🏀", label: "Basketball games" },
+    tabata: { emoji: "🔥", label: "Tabatas" },
+    walk: { emoji: "🚶", label: "Walks (half credit — easy aerobic)" },
+  };
+  const receipt = {};
+  all.forEach(s => {
+    const t = s.date.getTime();
+    if (t < now - W || t > now) return;
+    let credit = 0, key = null;
+    if (s.type === "walk") { credit = (s.duration || 0) * 0.5; key = "walk"; }
+    else if (s.type === "cross_training" && s.focus === "cardio") { credit = s.duration || 0; key = "cross_training"; }
+    else if (s.type === "tabata" || s.type === "long_interval" || s.type === "game") { credit = s.duration || 0; key = s.type; }
+    if (key && credit > 0) {
+      if (!receipt[key]) receipt[key] = { n: 0, min: 0 };
+      receipt[key].n++; receipt[key].min += credit;
+    }
+  });
 
   return (
     <Surface accent={C.red}>
@@ -3200,17 +3231,68 @@ function HeartSim({ cardioSessions, workouts }) {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="h-display" style={{ fontSize: 20, fontWeight: 800, color: C.red, letterSpacing: "-0.02em" }}>{tier}</div>
-          <div className="num-tab" style={{ fontSize: 14, color: C.bone, fontFamily: FONT_MONO, fontWeight: 700, marginTop: 6 }}>{fmtDur(mins)} <span style={{ color: C.dim, fontWeight: 400 }}>aerobic · 4 wks</span></div>
+          <div className="num-tab" style={{ fontSize: 13, color: C.bone, fontFamily: FONT_MONO, fontWeight: 700, marginTop: 6, lineHeight: 1.4 }}>{fmtDur(mins)} <span style={{ color: C.dim, fontWeight: 400 }}>of hard cardio in the last 4 weeks</span></div>
           {prev > 0 && Math.abs(diff) >= 5 && (
-            <div style={{ fontSize: 11, color: diff > 0 ? C.moss : C.amber, fontFamily: FONT_MONO, marginTop: 4, fontWeight: 600 }}>
-              {diff > 0 ? "▲" : "▼"} {fmtDur(Math.abs(diff))} vs the 4 weeks before
+            <div style={{ fontSize: 11, color: diff > 0 ? C.moss : C.amber, fontFamily: FONT_MONO, marginTop: 4, fontWeight: 600, lineHeight: 1.4 }}>
+              {diff > 0 ? "▲" : "▼"} {fmtDur(Math.abs(diff))} {diff > 0 ? "more" : "less"} than the 4 weeks before that
             </div>
+          )}
+          {nextTier && (
+            <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 5 }}>{fmtDur(nextTier.min - mins)} more → {nextTier.name}</div>
           )}
         </div>
       </div>
-      <div style={{ fontSize: 11, color: C.cream, marginTop: 12, lineHeight: 1.55 }} className="h-serif">
-        Yes — it really does get bigger. Endurance work stretches the left ventricle so it holds and pumps more blood per beat (the "athlete's heart"), and your resting rate drops because each beat does more. The pulse here is a simulation of that trend, not a measurement.
-      </div>
+
+      {/* The full explanation, for anyone asking "what does all this mean?" */}
+      <button onClick={() => setShowInfo(v => !v)} className="btn" style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, marginTop: 12 }}>
+        <span style={{ fontSize: 10, color: C.electric, fontFamily: FONT_MONO, letterSpacing: "0.1em", fontWeight: 700 }}>ⓘ WHAT DO THESE NUMBERS MEAN?</span>
+        <span style={{ fontSize: 9, color: C.dim }}>{showInfo ? "▲" : "▼"}</span>
+      </button>
+      {showInfo && (
+        <div className="ease-up" style={{ marginTop: 10, padding: "12px 14px", background: C.raised, borderRadius: 12, border: `1px solid ${C.line}` }}>
+          <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em" }}>WHERE YOUR {fmtDur(mins).toUpperCase()} CAME FROM (LAST 28 DAYS)</div>
+          <div style={{ marginTop: 8 }}>
+            {Object.keys(RECEIPT_LABELS).filter(k => receipt[k]).map(k => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "4px 0", fontSize: 12 }}>
+                <span style={{ color: C.cream }}>{RECEIPT_LABELS[k].emoji} {receipt[k].n}× {RECEIPT_LABELS[k].label}</span>
+                <span className="num-tab" style={{ color: C.bone, fontFamily: FONT_MONO, fontWeight: 700, flexShrink: 0 }}>{fmtDur(Math.round(receipt[k].min))}</span>
+              </div>
+            ))}
+            {Object.keys(receipt).length === 0 && <div style={{ fontSize: 12, color: C.dim }}>Nothing yet this block — the next hard cardio session starts the clock.</div>}
+          </div>
+          <p style={{ fontSize: 11.5, color: C.cream, margin: "10px 0 0", lineHeight: 1.55 }} className="h-serif">
+            Only work that pushes your heart counts: Tabatas, long intervals and fast-break drills, basketball games, and cardio-focused Sweat440 classes at full value — easy walks at half value. Lifts and strength classes build muscle, so they feed the body card instead.
+          </p>
+
+          <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginTop: 14 }}>THE COMPARISON</div>
+          <p style={{ fontSize: 11.5, color: C.cream, margin: "6px 0 0", lineHeight: 1.55 }} className="h-serif">
+            {prev > 0
+              ? <>The little arrow compares this rolling 4-week block against the 4 weeks before it: {fmtDur(mins)} now vs {fmtDur(prev)} then{Math.abs(diff) >= 5 ? ` — so you're ${fmtDur(Math.abs(diff))} ${diff > 0 ? "ahead of" : "behind"} your previous pace` : " — essentially even"}. It's a trend check, not a judgement — a lighter month after a heavy one is often exactly what the plan wants.</>
+              : <>The arrow (when it appears) compares this rolling 4-week block against the 4 weeks before it. Your previous block has no logged cardio, so there's nothing to compare yet — it shows up once two blocks exist.</>}
+          </p>
+
+          <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginTop: 14 }}>THE TIERS</div>
+          <div style={{ marginTop: 6 }}>
+            {TIERS.map((t, i) => (
+              <div key={t.name} style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "3px 0" }}>
+                <span style={{ fontSize: 12, fontWeight: i === tierIdx ? 800 : 500, color: i === tierIdx ? C.red : C.dim, minWidth: 110 }}>{i === tierIdx ? "→ " : ""}{t.name}</span>
+                <span style={{ fontSize: 10.5, color: C.dim, fontFamily: FONT_MONO }}>{t.blurb}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginTop: 14 }}>WHY THE HEART CHANGES</div>
+          <p style={{ fontSize: 11.5, color: C.cream, margin: "6px 0 0", lineHeight: 1.55 }} className="h-serif">
+            The drawing grows and deepens in color as your aerobic base builds — 60% from this 4-week block, 40% from everything you've ever logged ({fmtDur(lifetime)} lifetime), so one quiet week dims it a little but never erases what you've built. The coronary vessels fill in as it strengthens, and the beat slows down, because that's the real adaptation: endurance work stretches the left ventricle so it holds and pumps more blood per stroke — the classic "athlete's heart." A bigger, more efficient pump needs fewer beats at rest, which is why trained resting heart rates drift down over months of this. All of it here is a simulation drawn from your logs — a mirror of your training, not a medical measurement.
+          </p>
+        </div>
+      )}
+
+      {!showInfo && (
+        <div style={{ fontSize: 11, color: C.cream, marginTop: 10, lineHeight: 1.55 }} className="h-serif">
+          Yes — it really does get bigger. Endurance work stretches the left ventricle so it holds and pumps more blood per beat (the "athlete's heart"), and your resting rate drops because each beat does more.
+        </div>
+      )}
     </Surface>
   );
 }
@@ -6501,6 +6583,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
