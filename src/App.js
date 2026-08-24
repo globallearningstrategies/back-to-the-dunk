@@ -2633,6 +2633,12 @@ function StatCard({ kicker, value, unit, color, big, sub }) {
 /* ── Consistency calendar — GitHub-style year heatmap of every active day ── */
 function ConsistencyCalendar({ sessions }) {
   const today = startOfDay(new Date());
+  // The grid is wider than a phone — start scrolled to NOW (the right end),
+  // so recent months show first and history is a swipe away.
+  const scrollRef = useRef(null);
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+  }, []);
   const countMap = new Map();
   sessions.forEach(s => { const t = startOfDay(s.date).getTime(); countMap.set(t, (countMap.get(t) || 0) + 1); });
 
@@ -2663,7 +2669,7 @@ function ConsistencyCalendar({ sessions }) {
         <Eyebrow color={C.rust}>Consistency · last 12 months</Eyebrow>
         <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO }}>{activeCount} active days</span>
       </div>
-      <div style={{ overflowX: "auto", marginTop: 12, paddingBottom: 4 }}>
+      <div ref={scrollRef} style={{ overflowX: "auto", marginTop: 12, paddingBottom: 4 }}>
         <div style={{ minWidth: "min-content" }}>
           {/* Month labels */}
           <div style={{ display: "flex", gap: GAP, marginBottom: 4 }}>
@@ -2686,10 +2692,66 @@ function ConsistencyCalendar({ sessions }) {
           </div>
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginTop: 10, fontSize: 9, color: C.mute, fontFamily: FONT_MONO }}>
-        <span>Less</span>
-        {[0, 1, 2, 3].map(c => <span key={c} style={{ width: 11, height: 11, borderRadius: 2, background: color(c), display: "inline-block" }} />)}
-        <span>More</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginTop: 10, fontSize: 9, color: C.mute, fontFamily: FONT_MONO }}>
+        <span>‹ swipe left for older months</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span>Less</span>
+          {[0, 1, 2, 3].map(c => <span key={c} style={{ width: 11, height: 11, borderRadius: 2, background: color(c), display: "inline-block" }} />)}
+          <span>More</span>
+        </span>
+      </div>
+    </Surface>
+  );
+}
+
+/* ── Last 3 months — the medium-range recap between month and year ── */
+function QuarterRecap({ sessions, weightLog }) {
+  const from = addDays(startOfDay(new Date()), -90);
+  const qs = sessions.filter(s => s.date >= from);
+  const count = qs.length;
+  const minutes = qs.reduce((a, s) => a + (s.duration || 0), 0);
+  const activeDays = new Set(qs.map(s => startOfDay(s.date).getTime())).size;
+  const byType = { tabata: 0, long_interval: 0, game: 0, lift: 0, walk: 0, cross_training: 0 };
+  qs.forEach(s => { if (byType[s.type] != null) byType[s.type]++; });
+
+  const sortedW = [...(weightLog || [])].sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at));
+  let wDelta = null;
+  const inWin = sortedW.filter(w => new Date(w.logged_at) >= from);
+  if (inWin.length) {
+    const before = sortedW.filter(w => new Date(w.logged_at) < from);
+    const baseline = before.length ? before[before.length - 1].weight : inWin[0].weight;
+    wDelta = +(inWin[inWin.length - 1].weight - baseline).toFixed(1);
+  }
+  const wStr = wDelta != null && wDelta !== 0 ? `${wDelta < 0 ? "−" : "+"}${Math.abs(wDelta)} lb` : null;
+  const shareText = `Last 3 months on The Work — ${count} workout${count === 1 ? "" : "s"} · ${fmtDur(minutes)} trained · ${activeDays} active days${wStr ? ` · ${wStr}` : ""} 💪`;
+  const share = () => {
+    if (navigator.share) navigator.share({ text: shareText }).catch(() => {});
+    else { try { navigator.clipboard.writeText(shareText); toast("Copied to clipboard"); } catch (e) { toast(shareText); } }
+  };
+
+  const big = (value, label, color) => (
+    <div style={{ flex: 1 }}>
+      <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 800, color, letterSpacing: "-0.03em", lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, marginTop: 5, letterSpacing: "0.06em" }}>{label}</div>
+    </div>
+  );
+
+  return (
+    <Surface accent={C.plum} padding={20}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <Eyebrow color={C.plum}>Last 3 months</Eyebrow>
+        <button onClick={share} className="btn" style={{ background: `${C.plum}18`, border: `1px solid ${C.plum}55`, color: C.plum, borderRadius: 9, padding: "5px 12px", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Share ↗</button>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+        {big(count, "WORKOUTS", C.bone)}
+        {big(fmtDurShort(minutes), "TRAINED", C.electric)}
+        {big(activeDays, "ACTIVE DAYS", C.moss)}
+        {big(wStr || "—", "WEIGHT", wDelta < 0 ? C.moss : wDelta > 0 ? C.red : C.dim)}
+      </div>
+      <div style={{ display: "flex", gap: 10, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}`, fontSize: 12, fontFamily: FONT_MONO, color: C.dim, flexWrap: "wrap" }}>
+        {["tabata", "long_interval", "lift", "cross_training", "walk", "game"].map(k => (
+          <span key={k} title={RECOVERY.TYPES[k].label}>{RECOVERY.TYPES[k].emoji} {byType[k]}</span>
+        ))}
       </div>
     </Surface>
   );
@@ -3206,6 +3268,9 @@ function StatsTab({ history, weightLog, cardioSessions, legsLog = {} }) {
           </div>
           <div className="ease-up-1" style={{ marginBottom: 12 }}>
             <MonthlyRecap sessions={allActivity} weightLog={weightLog} />
+          </div>
+          <div className="ease-up-1" style={{ marginBottom: 12 }}>
+            <QuarterRecap sessions={allActivity} weightLog={weightLog} />
           </div>
           <div className="ease-up-2" style={{ marginBottom: 12 }}>
             <ConsistencyCalendar sessions={allActivity} />
@@ -6436,6 +6501,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
