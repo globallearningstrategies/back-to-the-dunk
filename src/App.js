@@ -291,12 +291,12 @@ const RECOVERY = {
       blurb: "Strength · A/B/C",
     },
     cross_training: {
-      key: "cross_training", label: "Cross Training", short: "Cross", emoji: "🤸", colorKey: "pink",
+      key: "cross_training", label: "Sweat440", short: "S440", emoji: "💦", colorKey: "pink",
       defaultDurationMin: 40, defaultRPE: 8,
-      hard: true,        // weights, squats, conditioning — a full hard session
+      hard: true,        // a full hard session, whatever the day's focus
       scheduled: false,  // class runs on its own schedule; logged, never recommended
       weeklyTarget: 0,
-      blurb: "40-min class · weights + squats",
+      blurb: "40-min class · legs / cardio / upper",
     },
     walk: {
       key: "walk", label: "Treadmill Walk", short: "Walk", emoji: "🚶", colorKey: "plum",
@@ -338,6 +338,20 @@ const RECOVERY = {
 // Lifts log via the gym session card; walks via the walk logger.
 const CONDITIONING_TYPES = ["tabata", "long_interval", "game", "cross_training"];
 
+// Sweat440 weekly rotation: Monday legs, Wednesday cardio, Friday upper body.
+// Keyed by day-of-week; used to default the focus when logging a class.
+const S440_FOCUS = {
+  1: { key: "legs",   label: "Legs",   emoji: "🦵" },
+  3: { key: "cardio", label: "Cardio", emoji: "❤️" },
+  5: { key: "upper",  label: "Upper",  emoji: "💪" },
+};
+const S440_FOCUS_OPTIONS = [
+  { key: "legs",   label: "Legs",   emoji: "🦵", blurb: "squats & lower body" },
+  { key: "cardio", label: "Cardio", emoji: "❤️", blurb: "engine work" },
+  { key: "upper",  label: "Upper",  emoji: "💪", blurb: "upper body" },
+];
+const s440FocusFor = (key) => S440_FOCUS_OPTIONS.find(o => o.key === key) || null;
+
 /* ── "What's happening in your body" — plain-language recovery science that
    rides along with each recommendation. Motivating, accurate, not a textbook. ── */
 const SCI = {
@@ -354,7 +368,7 @@ const SCI = {
   lift: "Lifting creates tiny tears and a 'come back stronger' signal — muscle-building stays elevated for 24–48 hours. Add a little each time and you get denser, more powerful, more explosive off the floor.",
   restart: "After time off, aerobic fitness fades first (detraining). A single Tabata wakes the system back up without overwhelming it — give it a session or two and muscle memory snaps your old capacity back fast.",
   gameDo: "Game night is your hard session — full-court running is a big conditioning and impact load. Empty the tank on the court; the engine counts it as this week's hard work and recovers you around it.",
-  crossDo: "Class day — 40 minutes of weights, squats, and conditioning hits strength and engine at once. It's a full hard session: the engine counts it toward this week's lifting and recovers you around it.",
+  crossDo: "Sweat440 day — 40 minutes at class pace is a full hard session, whether it's legs, cardio, or upper. The engine counts it as today's hard work and recovers you around it.",
   preGame: "Game tomorrow — keep your legs fresh today. Show up with full glycogen stores and springy legs, not sore ones. A short walk is fine; save the intensity for the court.",
   shabbat: "It's Shabbat — your built-in rest day. Recovery is when the adaptations actually happen, so a full day off is a feature, not a gap. An easy walk is perfectly in keeping if you're already out.",
 };
@@ -398,6 +412,7 @@ function normalizeSessions(rows) {
         date: new Date(r.completed_at),
         rpe: r.rpe != null ? Number(r.rpe) : def.defaultRPE,
         duration: r.duration_min != null ? Number(r.duration_min) : def.defaultDurationMin,
+        focus: r.focus || null,
       };
     });
 }
@@ -467,6 +482,8 @@ function recommend(allSessions, refDate, constraints = {}) {
     walk: t7.filter(s => s.type === "walk").length,
     game: t7.filter(s => s.type === "game").length,
     cross_training: t7.filter(s => s.type === "cross_training").length,
+    // Cardio-focused classes count as conditioning; legs/upper count as lifting.
+    cross_cardio: t7.filter(s => s.type === "cross_training" && s.focus === "cardio").length,
   };
 
   // Ramp band is driven by hard-training recency (walks don't count).
@@ -490,13 +507,13 @@ function recommend(allSessions, refDate, constraints = {}) {
   const recoverSci = (type) => type === "long_interval" ? SCI.liRecover : type === "lift" || type === "cross_training" ? SCI.liftRecover : type === "game" ? SCI.gameCovered : SCI.tabataRecover;
 
   // Weekly conditioning targets, reduced by any games played (lowest priority first).
-  let targetTab = T.tabata.weeklyTarget, targetLI = T.long_interval.weeklyTarget, off = done.game;
+  let targetTab = T.tabata.weeklyTarget, targetLI = T.long_interval.weeklyTarget, off = done.game + done.cross_cardio;
   const ct = Math.min(targetTab, off); targetTab -= ct; off -= ct;
   const cl = Math.min(targetLI, off); targetLI -= cl; off -= cl;
   const owedLI = Math.max(0, targetLI - done.long_interval);
   const owedTab = Math.max(0, targetTab - done.tabata);
-  // A cross-training class is weights + squats — it fills a lift slot for the week.
-  const owedLift = Math.max(0, T.lift.weeklyTarget - done.lift - done.cross_training);
+  // Legs/upper Sweat440 classes fill lift slots; cardio-focused ones counted above.
+  const owedLift = Math.max(0, T.lift.weeklyTarget - done.lift - (done.cross_training - done.cross_cardio));
   const canRampHard = band !== "restart" && band !== "fresh" && !(band === "ease" && daysSinceHard >= RECOVERY.reentryTabataAfterDays);
 
   // Fixed weekly schedule (Shabbat, game night) — these override training.
@@ -530,7 +547,7 @@ function recommend(allSessions, refDate, constraints = {}) {
   }
   if (classToday) {
     if (daysSinceHard === 1) flags.push("Class lands the day after a hard session — pace yourself in there.");
-    return mk("train", [{ type: "cross_training" }], "Class day 🤸 — cross training is today's hard session.", SCI.crossDo);
+    return mk("train", [{ type: "cross_training" }], `Sweat440 day 💦 — ${S440_FOCUS[dow] ? S440_FOCUS[dow].label.toLowerCase() + " class" : "class"} is today's hard session.`, SCI.crossDo);
   }
   if (gameTomorrow) {
     return recoveryDay("Game tomorrow — keep your legs fresh today.", SCI.preGame);
@@ -607,6 +624,7 @@ function trailingSummary(allSessions, refDate, windowDays) {
     count: t.length,
     hard: t.filter(s => isHardType(s.type)).length,
     minutes: t.reduce((a, s) => a + (s.duration || 0), 0),
+    crossCardio: t.filter(s => s.type === "cross_training" && s.focus === "cardio").length,
     byType: {
       tabata: t.filter(s => s.type === "tabata").length,
       long_interval: t.filter(s => s.type === "long_interval").length,
@@ -723,7 +741,7 @@ const ACHIEVEMENTS = [
   { id: "game1",    emoji: "🏀", name: "Baller",          desc: "Play a game",                 goal: 1,   val: s => s.byType.game },
   { id: "game10",   emoji: "🔟", name: "Run It Back",     desc: "10 games played",             goal: 10,  val: s => s.byType.game },
   { id: "walk20",   emoji: "🚶", name: "Active Recovery", desc: "20 recovery walks",           goal: 20,  val: s => s.byType.walk },
-  { id: "cross10",  emoji: "🤸", name: "Class Act",       desc: "10 cross training classes",   goal: 10,  val: s => s.byType.cross_training },
+  { id: "cross10",  emoji: "💦", name: "Class Act",       desc: "10 Sweat440 classes",         goal: 10,  val: s => s.byType.cross_training },
   { id: "early",    emoji: "🌅", name: "Early Bird",      desc: "Train before 7am",            goal: 1,   val: s => (s.earlyBird ? 1 : 0) },
   { id: "night",    emoji: "🌙", name: "Night Owl",       desc: "Train after 9pm",             goal: 1,   val: s => (s.nightOwl ? 1 : 0) },
   { id: "comeback", emoji: "🔄", name: "Comeback Kid",    desc: "Train after a 7+ day break",  goal: 1,   val: s => (s.comeback ? 1 : 0) },
@@ -794,7 +812,7 @@ function saveGameSeen(v) { try { localStorage.setItem(LS_GAME, JSON.stringify(v)
 
 // Fixed weekly schedule: Shabbat (no hard training Sat) + recurring game night.
 const LS_SCHEDULE = "bttd_schedule";
-const DEFAULT_SCHEDULE = { shabbat: true, gameNight: true, gameDow: 4, skipGameWeek: null, crossClass: false, classDows: [] };
+const DEFAULT_SCHEDULE = { shabbat: true, gameNight: true, gameDow: 4, skipGameWeek: null, crossClass: false, classDows: [1, 3, 5] };
 function loadSchedule() { try { return { ...DEFAULT_SCHEDULE, ...(JSON.parse(localStorage.getItem(LS_SCHEDULE)) || {}) }; } catch (e) { return { ...DEFAULT_SCHEDULE }; } }
 function saveSchedule(s) { try { localStorage.setItem(LS_SCHEDULE, JSON.stringify(s)); } catch (e) {} }
 const DOW_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -2814,6 +2832,155 @@ function StrengthProgress({ gymSessions }) {
   );
 }
 
+/* ════════════════════════════════════════════════════════════
+   THE REBUILD — playful simulations drawn from real logs.
+   BodySim: muscle-group heat from the last 4 weeks + a silhouette
+   that leans out as the scale drops. HeartSim: the aerobic engine —
+   endurance work genuinely remodels the heart (athlete's heart).
+   ════════════════════════════════════════════════════════════ */
+const LOWER_RE = /squat|deadlift|lunge|leg|calf|glute|hip|rdl|hamstring|quad/i;
+const UPPER_RE = /bench|press|row|curl|pull|push|shoulder|fly|dip|chin|lat|tricep|bicep|chest|arm/i;
+
+// Heat tiers: session count over 28 days → color + label.
+function heatFor(count) {
+  if (count >= 6) return { color: C.rust,  alpha: "EE", label: "On fire" };
+  if (count >= 3) return { color: C.rustHi, alpha: "BB", label: "Building" };
+  if (count >= 1) return { color: C.amber, alpha: "77", label: "Warming" };
+  return { color: C.faint, alpha: "FF", label: "Dormant" };
+}
+
+function BodySim({ cardioSessions, workouts, weightLog }) {
+  const all = normalizeAll(cardioSessions, workouts);
+  const cutoff = Date.now() - 28 * 86400000;
+  const recent = all.filter(s => s.date.getTime() >= cutoff);
+
+  // Which muscle groups has the last month of work actually hit?
+  const focusOf = (id) => (cardioSessions.find(c => c.id === id) || {}).focus || null;
+  let legs = 0, upper = 0;
+  recent.forEach(s => {
+    if (s.type === "cross_training") {
+      const f = s.focus || focusOf(s.id);
+      if (f === "legs") legs++;
+      else if (f === "upper") upper++;
+      else if (f !== "cardio") { legs += 0.5; upper += 0.5; } // unknown focus: split it
+      else legs += 0.5; // cardio class still runs on legs
+    }
+    else if (s.type === "tabata" || s.type === "long_interval" || s.type === "game") legs++;
+  });
+  workouts.filter(w => w.session_name && w.session_name !== "Treadmill Walk" && new Date(w.logged_at).getTime() >= cutoff)
+    .forEach(w => {
+      let hitLower = false, hitUpper = false;
+      (w.exercises || []).forEach(ex => {
+        if (LOWER_RE.test(ex.name || "")) hitLower = true;
+        else if (UPPER_RE.test(ex.name || "")) hitUpper = true;
+      });
+      if (hitLower) legs++;
+      if (hitUpper) upper++;
+      if (!hitLower && !hitUpper) { legs += 0.5; upper += 0.5; }
+    });
+  legs = Math.round(legs); upper = Math.round(upper);
+  const legHeat = heatFor(legs), upHeat = heatFor(upper);
+
+  // Silhouette leans out as the scale drops: 225 → wide, 200 → trim.
+  const cur = (weightLog && weightLog[0] && Number(weightLog[0].weight)) || 225;
+  const fat = Math.max(0, Math.min(1, (cur - 200) / 25));
+  const waistW = 26 + 16 * fat;                 // half-width at the waist
+  const pctToGoal = Math.round((1 - fat) * 100);
+  const fill = (h) => `${h.color}${h.alpha}`;
+
+  return (
+    <Surface accent={C.rust}>
+      <Eyebrow color={C.rust}>The rebuild · last 4 weeks</Eyebrow>
+      <div style={{ display: "flex", gap: 16, marginTop: 14, alignItems: "center" }}>
+        <svg width="132" height="220" viewBox="0 0 200 330" style={{ flexShrink: 0 }}>
+          {/* head + neck */}
+          <circle cx="100" cy="28" r="19" fill={C.faint} />
+          <rect x="92" y="46" width="16" height="14" rx="5" fill={C.faint} />
+          {/* torso — waist narrows as weight drops */}
+          <path d={`M 54 62 L 146 62 C 150 100, ${100 + waistW} 130, ${100 + waistW} 152 L ${100 + waistW - 6} 176 L ${100 - waistW + 6} 176 L ${100 - waistW} 152 C ${100 - waistW} 130, 50 100, 54 62 Z`} fill={C.raised} stroke={C.line} strokeWidth="2" />
+          {/* chest + shoulders glow with upper-body work */}
+          <ellipse cx="100" cy="88" rx="40" ry="21" fill={fill(upHeat)} />
+          {/* arms */}
+          <rect x="34" y="63" width="17" height="96" rx="9" fill={fill(upHeat)} stroke={C.line} strokeWidth="1.5" />
+          <rect x="149" y="63" width="17" height="96" rx="9" fill={fill(upHeat)} stroke={C.line} strokeWidth="1.5" />
+          {/* legs */}
+          <rect x="68" y="180" width="27" height="128" rx="13" fill={fill(legHeat)} stroke={C.line} strokeWidth="1.5" />
+          <rect x="105" y="180" width="27" height="128" rx="13" fill={fill(legHeat)} stroke={C.line} strokeWidth="1.5" />
+        </svg>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: `1px solid ${C.line}` }}>
+            <span style={{ fontSize: 16 }}>💪</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.bone }}>Upper body</div>
+              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO }}>{upper} session{upper === 1 ? "" : "s"} · {upHeat.label}</div>
+            </div>
+            <div style={{ width: 10, height: 10, borderRadius: 999, background: fill(upHeat), border: `1px solid ${C.line}` }} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: `1px solid ${C.line}` }}>
+            <span style={{ fontSize: 16 }}>🦵</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.bone }}>Legs</div>
+              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO }}>{legs} session{legs === 1 ? "" : "s"} · {legHeat.label}</div>
+            </div>
+            <div style={{ width: 10, height: 10, borderRadius: 999, background: fill(legHeat), border: `1px solid ${C.line}` }} />
+          </div>
+          <div style={{ padding: "10px 0 0" }}>
+            <div className="num-tab h-display" style={{ fontSize: 24, fontWeight: 800, color: C.moss, letterSpacing: "-0.03em", lineHeight: 1 }}>{pctToGoal}%</div>
+            <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, marginTop: 3, letterSpacing: "0.05em" }}>SILHOUETTE → GOAL ({cur} → 200)</div>
+          </div>
+        </div>
+      </div>
+      <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginTop: 12, lineHeight: 1.5 }}>
+        A playful simulation from your logs and weight trend — not a scan. Muscle warms where the work goes; the waistline follows the scale.
+      </div>
+    </Surface>
+  );
+}
+
+function HeartSim({ cardioSessions, workouts }) {
+  const all = normalizeAll(cardioSessions, workouts);
+  const isAerobic = (s) => s.type === "tabata" || s.type === "long_interval" || s.type === "game" || (s.type === "cross_training" && s.focus === "cardio");
+  const minsIn = (from, to) => all.filter(s => { const t = s.date.getTime(); return t >= from && t < to; })
+    .reduce((a, s) => a + (isAerobic(s) ? (s.duration || 0) : s.type === "walk" ? (s.duration || 0) * 0.5 : 0), 0);
+  const now = Date.now(), W = 28 * 86400000;
+  const mins = Math.round(minsIn(now - W, now + 1));
+  const prev = Math.round(minsIn(now - 2 * W, now - W));
+  const growth = Math.min(1, mins / 300);          // 5h hard aerobic / 4 weeks ≈ full marks
+  const scale = 0.72 + 0.38 * growth;              // the chamber literally grows with training
+  const beatDur = (0.85 + 0.45 * growth).toFixed(2); // fitter heart = slower, calmer resting beat
+  const tier = mins >= 300 ? "Athlete's heart" : mins >= 150 ? "Strong pump" : mins >= 60 ? "Warming up" : "Idling";
+  const diff = mins - prev;
+
+  return (
+    <Surface accent={C.red}>
+      <style>{`@keyframes bttdBeat { 0%, 100% { transform: scale(1); } 12% { transform: scale(1.09); } 24% { transform: scale(1); } 36% { transform: scale(1.05); } 48% { transform: scale(1); } }`}</style>
+      <Eyebrow color={C.red}>The engine · your heart on cardio</Eyebrow>
+      <div style={{ display: "flex", gap: 16, marginTop: 14, alignItems: "center" }}>
+        <div style={{ width: 120, height: 120, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ transform: `scale(${scale})`, animation: `bttdBeat ${beatDur}s ease-in-out infinite` }}>
+            <svg width="110" height="100" viewBox="0 0 32 29">
+              <path d="M23.6 0c-3.4 0-6.3 2.7-7.6 5.6C14.7 2.7 11.8 0 8.4 0 3.8 0 0 3.8 0 8.4c0 9.4 9.5 11.9 16 20.4 6.1-8.4 16-11.3 16-20.4C32 3.8 28.2 0 23.6 0z"
+                fill={C.red} opacity={0.5 + 0.5 * growth} />
+            </svg>
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="h-display" style={{ fontSize: 20, fontWeight: 800, color: C.red, letterSpacing: "-0.02em" }}>{tier}</div>
+          <div className="num-tab" style={{ fontSize: 14, color: C.bone, fontFamily: FONT_MONO, fontWeight: 700, marginTop: 6 }}>{fmtDur(mins)} <span style={{ color: C.dim, fontWeight: 400 }}>aerobic · 4 wks</span></div>
+          {prev > 0 && Math.abs(diff) >= 5 && (
+            <div style={{ fontSize: 11, color: diff > 0 ? C.moss : C.amber, fontFamily: FONT_MONO, marginTop: 4, fontWeight: 600 }}>
+              {diff > 0 ? "▲" : "▼"} {fmtDur(Math.abs(diff))} vs the 4 weeks before
+            </div>
+          )}
+        </div>
+      </div>
+      <div style={{ fontSize: 11, color: C.cream, marginTop: 12, lineHeight: 1.55 }} className="h-serif">
+        Yes — it really does get bigger. Endurance work stretches the left ventricle so it holds and pumps more blood per beat (the "athlete's heart"), and your resting rate drops because each beat does more. The pulse here is a simulation of that trend, not a measurement.
+      </div>
+    </Surface>
+  );
+}
+
 /* ── Progress Tab ── */
 function StatsTab({ history, weightLog, cardioSessions, legsLog = {} }) {
   const allActivity = normalizeAll(cardioSessions, history);
@@ -2893,6 +3060,12 @@ function StatsTab({ history, weightLog, cardioSessions, legsLog = {} }) {
               </div>
             </Surface>
           </div>
+          <div className="ease-up-2" style={{ marginBottom: 12 }}>
+            <BodySim cardioSessions={cardioSessions} workouts={history} weightLog={weightLog} />
+          </div>
+          <div className="ease-up-2" style={{ marginBottom: 12 }}>
+            <HeartSim cardioSessions={cardioSessions} workouts={history} />
+          </div>
         </>
       )}
 
@@ -2903,7 +3076,7 @@ function StatsTab({ history, weightLog, cardioSessions, legsLog = {} }) {
       </div>
       <div className="ease-up-1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
         <StatCard kicker="GYM" value={gymSessions.length} color={C.amber} sub="lift sessions" />
-        <StatCard kicker="CROSS" value={crossSessions.length} color={C.pink} sub="classes" />
+        <StatCard kicker="S440" value={crossSessions.length} color={C.pink} sub="classes" />
         <StatCard kicker="WALKS" value={treadmillSessions.length} color={C.plum} sub="treadmill" />
       </div>
 
@@ -3899,6 +4072,12 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
   const [rpe, setRpe] = useState(editing && editing.rpe != null ? Number(editing.rpe) : RECOVERY.TYPES[initType].defaultRPE);
   const [notes, setNotes] = useState(editing ? (editing.notes || "") : "");
   const [legs, setLegs] = useState(state.legs || null);
+  // Sweat440 focus: default follows the class rotation for the session's weekday,
+  // until the user picks one explicitly.
+  const [focus, setFocus] = useState(editing ? (editing.focus || null) : null);
+  const [touchedFocus, setTouchedFocus] = useState(editing ? editing.focus != null : false);
+  const dowFocus = S440_FOCUS[new Date(when).getDay()];
+  const effFocus = touchedFocus ? focus : (dowFocus ? dowFocus.key : null);
 
   const def = RECOVERY.TYPES[type];
   const chooseType = (tk) => { setType(tk); if (!touchedRpe) setRpe(RECOVERY.TYPES[tk].defaultRPE); };
@@ -3912,6 +4091,7 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
       rpe,
       notes: notes.trim() || null,
       legs: type === "game" ? legs : null,
+      focus: type === "cross_training" ? effFocus : null,
     });
   };
 
@@ -3969,6 +4149,31 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
         <input type="range" min="1" max="10" step="1" value={rpe} onChange={e => { setRpe(Number(e.target.value)); setTouchedRpe(true); }}
           style={{ width: "100%", margin: "10px 0 4px", accentColor: C[def.colorKey] }} />
         <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginBottom: 18 }}>Default for {def.label}: {def.defaultRPE}. Adjust if it felt easier or harder.</div>
+
+        {/* Sweat440 focus — follows the Mon legs / Wed cardio / Fri upper rotation */}
+        {type === "cross_training" && (
+          <>
+            <Eyebrow>Class focus</Eyebrow>
+            <div style={{ display: "flex", gap: 8, margin: "8px 0 4px" }}>
+              {S440_FOCUS_OPTIONS.map(o => {
+                const on = effFocus === o.key;
+                return (
+                  <button key={o.key} className="btn" onClick={() => { setFocus(on ? null : o.key); setTouchedFocus(true); }} style={{
+                    flex: 1, padding: "11px 6px", borderRadius: 12, cursor: "pointer",
+                    border: `1px solid ${on ? C.pink : C.line}`, background: on ? `${C.pink}18` : C.raised,
+                    color: on ? C.pink : C.cream, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 12,
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                  }}>
+                    <span style={{ fontSize: 18 }}>{o.emoji}</span>{o.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginBottom: 18 }}>
+              {!touchedFocus && dowFocus ? `Auto-picked from the schedule — ${dowFocus.label.toLowerCase()} day. Tap to change.` : "Mon legs · Wed cardio · Fri upper."}
+            </div>
+          </>
+        )}
 
         {/* Post-game check-in — the real test of game shape */}
         {type === "game" && (
@@ -4150,12 +4355,13 @@ function ProgressHero({ game, cardioSessions, workouts, onOpenAwards, onGoTab })
   const total = game.stats.totalSessions;
 
   // This week vs targets, by type (trailing 7 days).
-  const t7 = trailingSummary(all, today, 7).byType;
+  const sum7 = trailingSummary(all, today, 7);
+  const t7 = sum7.byType;
   const targets = [
     { type: "tabata", done: t7.tabata, goal: RECOVERY.TYPES.tabata.weeklyTarget },
     { type: "long_interval", done: t7.long_interval, goal: RECOVERY.TYPES.long_interval.weeklyTarget },
-    // Cross-training classes are weights + squats — they fill lift slots, matching the engine.
-    { type: "lift", done: t7.lift + t7.cross_training, goal: RECOVERY.TYPES.lift.weeklyTarget },
+    // Legs/upper Sweat440 classes fill lift slots, matching the engine.
+    { type: "lift", done: t7.lift + t7.cross_training - sum7.crossCardio, goal: RECOVERY.TYPES.lift.weeklyTarget },
     { type: "walk", done: t7.walk, goal: RECOVERY.TYPES.walk.weeklyTarget },
   ];
 
@@ -5047,8 +5253,8 @@ export default function App() {
   };
 
   // Create or update a conditioning session (Tabata / Long Interval / Game / Cross).
-  const saveCardio = async ({ id, type, completed_at, duration_min, rpe, notes, legs }) => {
-    const row = { workout_type: type, completed_at, duration_min, rpe, notes };
+  const saveCardio = async ({ id, type, completed_at, duration_min, rpe, notes, legs, focus }) => {
+    const row = { workout_type: type, completed_at, duration_min, rpe, notes, focus };
     if (id != null) {
       const { data, error } = await supabase.from("cardio_sessions").update(row).eq("id", id).select();
       if (!error && data) { setCardioSessions(p => sortCardio(p.map(r => r.id === id ? data[0] : r))); setGameLegs(id, legs); showSave(true); } else showSave(false);
@@ -5449,7 +5655,7 @@ export default function App() {
         {tab === "history" && (() => {
           // One unified feed — every logged activity, newest first.
           const feed = [
-            ...cardioSessions.map(s => ({ kind: "cardio", id: s.id, type: s.workout_type, date: new Date(s.completed_at), duration: s.duration_min, rpe: s.rpe, notes: s.notes, raw: s })),
+            ...cardioSessions.map(s => ({ kind: "cardio", id: s.id, type: s.workout_type, date: new Date(s.completed_at), duration: s.duration_min, rpe: s.rpe, notes: s.notes, focus: s.focus, raw: s })),
             ...history.map(w => {
               const isWalk = w.session_name === "Treadmill Walk";
               return { kind: "workout", id: w.id, type: isWalk ? "walk" : "lift", date: new Date(w.logged_at), title: isWalk ? "Walk" : "Lift", subtitle: (w.exercises && w.exercises[0] && w.exercises[0].name) || w.session_name, volume: w.total_volume || 0, exercises: w.exercises, raw: w };
@@ -5482,8 +5688,9 @@ export default function App() {
               const def = RECOVERY.TYPES[f.type] || {};
               const col = C[def.colorKey] || C.rust;
               const title = f.kind === "cardio" ? (def.label || f.type) : f.title;
+              const focusOpt = f.kind === "cardio" && f.type === "cross_training" ? s440FocusFor(f.focus) : null;
               const detail = f.kind === "cardio"
-                ? [f.duration != null ? `${f.duration} min` : null, f.rpe != null ? `RPE ${f.rpe}` : null].filter(Boolean).join(" · ")
+                ? [focusOpt ? `${focusOpt.emoji} ${focusOpt.label} day` : null, f.duration != null ? `${f.duration} min` : null, f.rpe != null ? `RPE ${f.rpe}` : null].filter(Boolean).join(" · ")
                 : f.subtitle;
               const canExpand = f.kind === "workout" && f.type === "lift" && f.exercises && f.exercises.length;
               const expanded = expandedLog[f.kind + f.id];
@@ -5715,10 +5922,10 @@ export default function App() {
                         </div>
                       </>
                     )}
-                    {/* Cross-training class days */}
+                    {/* Sweat440 class days */}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0 10px", borderTop: `1px solid ${C.line}`, marginTop: schedule.gameNight ? 12 : 0 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>🤸 Cross-training class</div>
+                        <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>💦 Sweat440 class</div>
                         <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Recurring class days — the engine plans around them</div>
                       </div>
                       <Switch on={schedule.crossClass} onToggle={() => updateSchedule({ ...schedule, crossClass: !schedule.crossClass })} />
@@ -6045,6 +6252,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
