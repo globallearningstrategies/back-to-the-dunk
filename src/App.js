@@ -2937,6 +2937,79 @@ function BodySim({ cardioSessions, workouts, weightLog }) {
   );
 }
 
+/* Hex color interpolation for the heart's conditioning stages. */
+function lerpHex(a, b, t) {
+  const pa = [1, 3, 5].map(i => parseInt(a.slice(i, i + 2), 16));
+  const pb = [1, 3, 5].map(i => parseInt(b.slice(i, i + 2), 16));
+  return "#" + pa.map((v, i) => Math.round(v + (pb[i] - v) * t).toString(16).padStart(2, "0")).join("");
+}
+
+/* ── Anatomical heart, parameterized by training (growth 0→1).
+   As the aerobic base builds: the muscle deepens from pale to rich
+   crimson, the chambers grow, the coronary vessels fill in, and the
+   resting beat gets slower and calmer. ── */
+function AnatomicalHeart({ growth, beatDur, size = 150 }) {
+  const g = Math.max(0, Math.min(1, growth));
+  const myo = lerpHex("#D89A90", "#B41E1E", g);        // myocardium: pale → crimson
+  const myoDeep = lerpHex("#C08279", "#7E1010", g);    // shaded muscle
+  const artery = lerpHex("#D8A79B", "#C33A2A", g);     // aorta
+  const vein = lerpHex("#9FB0C4", "#5F7FB2", g);       // vena cava / veins
+  const pulm = lerpHex("#B4A5C4", "#7D5FA8", g);       // pulmonary trunk
+  const scale = 0.78 + 0.26 * g;                       // chambers grow with training
+  return (
+    <div style={{ width: size, height: size, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ transform: `scale(${scale})`, animation: `bttdBeat ${beatDur}s ease-in-out infinite`, filter: g > 0.4 ? `drop-shadow(0 0 ${Math.round(10 * g)}px ${myo}55)` : "none" }}>
+        <svg width={size} height={size} viewBox="0 0 200 200">
+          <defs>
+            <radialGradient id="bttdMyo" cx="38%" cy="32%" r="80%">
+              <stop offset="0%" stopColor={myo} />
+              <stop offset="70%" stopColor={myoDeep} />
+              <stop offset="100%" stopColor={lerpHex(myoDeep, "#000000", 0.25)} />
+            </radialGradient>
+            <linearGradient id="bttdAo" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor={lerpHex(artery, "#FFFFFF", 0.18)} />
+              <stop offset="100%" stopColor={artery} />
+            </linearGradient>
+          </defs>
+
+          {/* superior vena cava (blue, behind the base) */}
+          <path d="M 136 18 C 138 34, 139 48, 138 62 L 120 66 C 121 48, 122 32, 122 18 Z" fill={vein} />
+          {/* aortic arch with three branch stubs */}
+          <path d="M 86 62 C 80 32, 106 16, 124 30 C 134 38, 138 50, 136 60 L 118 58 C 119 48, 115 42, 109 40 C 101 37, 96 46, 99 60 Z" fill="url(#bttdAo)" />
+          <rect x="90" y="18" width="7" height="18" rx="3.5" fill={artery} transform="rotate(-8 93 27)" />
+          <rect x="101" y="14" width="7" height="18" rx="3.5" fill={artery} />
+          <rect x="112" y="16" width="7" height="18" rx="3.5" fill={artery} transform="rotate(8 115 25)" />
+          {/* pulmonary trunk crossing beneath the arch */}
+          <path d="M 74 74 C 66 56, 76 42, 94 44 L 96 56 C 86 55, 80 62, 84 74 Z" fill={pulm} />
+
+          {/* heart body — atria across the base, ventricles tapering to the apex */}
+          <path d="M 62 84
+                   C 50 70, 62 54, 78 60
+                   C 88 50, 108 52, 116 62
+                   C 132 52, 152 62, 154 82
+                   C 158 108, 142 142, 112 166
+                   C 104 176, 94 178, 88 170
+                   C 62 148, 50 112, 62 84 Z" fill="url(#bttdMyo)" />
+
+          {/* interventricular groove — the seam between the ventricles */}
+          <path d="M 105 72 C 101 96, 99 126, 95 156" stroke={lerpHex(myoDeep, "#000000", 0.35)} strokeWidth="3" fill="none" opacity="0.4" strokeLinecap="round" />
+
+          {/* coronary arteries — vascularization fills in as fitness builds */}
+          <g stroke={lerpHex("#E8B8AE", "#E4574A", g)} strokeWidth="1.7" fill="none" strokeLinecap="round" opacity={0.15 + 0.8 * g}>
+            <path d="M 103 74 C 94 82, 85 96, 80 116 C 78 124, 77 130, 78 136" />
+            <path d="M 90 94 C 84 100, 80 108, 78 116" />
+            <path d="M 106 84 C 116 94, 124 110, 122 128 C 121 136, 118 142, 114 148" />
+            <path d="M 116 106 C 122 112, 126 120, 126 128" />
+          </g>
+
+          {/* sheen */}
+          <ellipse cx="82" cy="98" rx="13" ry="26" fill="#FFFFFF" opacity={0.10 + 0.06 * g} transform="rotate(18 82 98)" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 function HeartSim({ cardioSessions, workouts }) {
   const all = normalizeAll(cardioSessions, workouts);
   const isAerobic = (s) => s.type === "tabata" || s.type === "long_interval" || s.type === "game" || (s.type === "cross_training" && s.focus === "cardio");
@@ -2945,8 +3018,10 @@ function HeartSim({ cardioSessions, workouts }) {
   const now = Date.now(), W = 28 * 86400000;
   const mins = Math.round(minsIn(now - W, now + 1));
   const prev = Math.round(minsIn(now - 2 * W, now - W));
-  const growth = Math.min(1, mins / 300);          // 5h hard aerobic / 4 weeks ≈ full marks
-  const scale = 0.72 + 0.38 * growth;              // the chamber literally grows with training
+  const lifetime = Math.round(minsIn(0, now + 1));
+  // Strength blends the current block (can dip on an off month) with the
+  // lifetime base (keeps earned adaptation from vanishing overnight).
+  const growth = Math.min(1, 0.6 * Math.min(1, mins / 300) + 0.4 * Math.min(1, lifetime / 3000));
   const beatDur = (0.85 + 0.45 * growth).toFixed(2); // fitter heart = slower, calmer resting beat
   const tier = mins >= 300 ? "Athlete's heart" : mins >= 150 ? "Strong pump" : mins >= 60 ? "Warming up" : "Idling";
   const diff = mins - prev;
@@ -2956,13 +3031,8 @@ function HeartSim({ cardioSessions, workouts }) {
       <style>{`@keyframes bttdBeat { 0%, 100% { transform: scale(1); } 12% { transform: scale(1.09); } 24% { transform: scale(1); } 36% { transform: scale(1.05); } 48% { transform: scale(1); } }`}</style>
       <Eyebrow color={C.red}>The engine · your heart on cardio</Eyebrow>
       <div style={{ display: "flex", gap: 16, marginTop: 14, alignItems: "center" }}>
-        <div style={{ width: 120, height: 120, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ transform: `scale(${scale})`, animation: `bttdBeat ${beatDur}s ease-in-out infinite` }}>
-            <svg width="110" height="100" viewBox="0 0 32 29">
-              <path d="M23.6 0c-3.4 0-6.3 2.7-7.6 5.6C14.7 2.7 11.8 0 8.4 0 3.8 0 0 3.8 0 8.4c0 9.4 9.5 11.9 16 20.4 6.1-8.4 16-11.3 16-20.4C32 3.8 28.2 0 23.6 0z"
-                fill={C.red} opacity={0.5 + 0.5 * growth} />
-            </svg>
-          </div>
+        <div style={{ flexShrink: 0 }}>
+          <AnatomicalHeart growth={growth} beatDur={beatDur} size={140} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="h-display" style={{ fontSize: 20, fontWeight: 800, color: C.red, letterSpacing: "-0.02em" }}>{tier}</div>
@@ -6252,6 +6322,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
