@@ -3082,19 +3082,19 @@ function BodySim({ cardioSessions, workouts, weightLog }) {
               <div key={g.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5.5px 0", borderBottom: `1px solid ${C.line}` }}>
                 <div style={{ width: 9, height: 9, borderRadius: 999, background: `${f.color}${f.alpha}`, border: `1px solid ${C.line}`, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: n > 0 ? C.bone : C.dim }}>{g.label}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: n > 0 ? C.bone : C.dim }}>{g.label}</span>
                 </div>
-                <span style={{ fontSize: 9.5, color: C.dim, fontFamily: FONT_MONO, whiteSpace: "nowrap" }}>{n}× 4wk{grownPct > 0 ? ` · +${grownPct}%` : ""}</span>
+                <span style={{ fontSize: 11.5, color: C.dim, fontFamily: FONT_MONO, whiteSpace: "nowrap" }}>{n}× 4wk{grownPct > 0 ? ` · +${grownPct}%` : ""}</span>
               </div>
             );
           })}
           <div style={{ paddingTop: 8, display: "flex", alignItems: "baseline", gap: 6 }}>
             <span className="num-tab h-display" style={{ fontSize: 20, fontWeight: 800, color: C.moss, letterSpacing: "-0.03em" }}>{pctToGoal}%</span>
-            <span style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO }}>TO {200} LBS ({cur})</span>
+            <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO }}>TO {200} LBS ({cur})</span>
           </div>
         </div>
       </div>
-      <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginTop: 12, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 12, color: C.mute, fontFamily: FONT_MONO, marginTop: 12, lineHeight: 1.55 }}>
         Color = worked in the last 4 weeks · +% = how much bigger that muscle is drawn from your lifetime volume. A simulation from your logs, not a scan.
       </div>
     </Surface>
@@ -3231,65 +3231,65 @@ function HeartSim({ cardioSessions, workouts }) {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="h-display" style={{ fontSize: 20, fontWeight: 800, color: C.red, letterSpacing: "-0.02em" }}>{tier}</div>
-          <div className="num-tab" style={{ fontSize: 13, color: C.bone, fontFamily: FONT_MONO, fontWeight: 700, marginTop: 6, lineHeight: 1.4 }}>{fmtDur(mins)} <span style={{ color: C.dim, fontWeight: 400 }}>of hard cardio in the last 4 weeks</span></div>
+          <div className="num-tab" style={{ fontSize: 14.5, color: C.bone, fontFamily: FONT_MONO, fontWeight: 700, marginTop: 6, lineHeight: 1.45 }}>{fmtDur(mins)} <span style={{ color: C.dim, fontWeight: 400 }}>of hard cardio in the last 4 weeks</span></div>
           {prev > 0 && Math.abs(diff) >= 5 && (
-            <div style={{ fontSize: 11, color: diff > 0 ? C.moss : C.amber, fontFamily: FONT_MONO, marginTop: 4, fontWeight: 600, lineHeight: 1.4 }}>
+            <div style={{ fontSize: 12.5, color: diff > 0 ? C.moss : C.amber, fontFamily: FONT_MONO, marginTop: 5, fontWeight: 600, lineHeight: 1.45 }}>
               {diff > 0 ? "▲" : "▼"} {fmtDur(Math.abs(diff))} {diff > 0 ? "more" : "less"} than the 4 weeks before that
             </div>
           )}
           {nextTier && (
-            <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 5 }}>{fmtDur(nextTier.min - mins)} more → {nextTier.name}</div>
+            <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO, marginTop: 6 }}>{fmtDur(nextTier.min - mins)} more → {nextTier.name}</div>
           )}
         </div>
       </div>
 
       {/* The full explanation, for anyone asking "what does all this mean?" */}
       <button onClick={() => setShowInfo(v => !v)} className="btn" style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, marginTop: 12 }}>
-        <span style={{ fontSize: 10, color: C.electric, fontFamily: FONT_MONO, letterSpacing: "0.1em", fontWeight: 700 }}>ⓘ WHAT DO THESE NUMBERS MEAN?</span>
+        <span style={{ fontSize: 12, color: C.electric, fontFamily: FONT_MONO, letterSpacing: "0.08em", fontWeight: 700 }}>ⓘ WHAT DO THESE NUMBERS MEAN?</span>
         <span style={{ fontSize: 9, color: C.dim }}>{showInfo ? "▲" : "▼"}</span>
       </button>
       {showInfo && (
         <div className="ease-up" style={{ marginTop: 10, padding: "12px 14px", background: C.raised, borderRadius: 12, border: `1px solid ${C.line}` }}>
-          <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em" }}>WHERE YOUR {fmtDur(mins).toUpperCase()} CAME FROM (LAST 28 DAYS)</div>
+          <div style={{ fontSize: 11.5, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", fontWeight: 700 }}>WHERE YOUR {fmtDur(mins).toUpperCase()} CAME FROM (LAST 28 DAYS)</div>
           <div style={{ marginTop: 8 }}>
             {Object.keys(RECEIPT_LABELS).filter(k => receipt[k]).map(k => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "4px 0", fontSize: 12 }}>
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "5px 0", fontSize: 14 }}>
                 <span style={{ color: C.cream }}>{RECEIPT_LABELS[k].emoji} {receipt[k].n}× {RECEIPT_LABELS[k].label}</span>
                 <span className="num-tab" style={{ color: C.bone, fontFamily: FONT_MONO, fontWeight: 700, flexShrink: 0 }}>{fmtDur(Math.round(receipt[k].min))}</span>
               </div>
             ))}
-            {Object.keys(receipt).length === 0 && <div style={{ fontSize: 12, color: C.dim }}>Nothing yet this block — the next hard cardio session starts the clock.</div>}
+            {Object.keys(receipt).length === 0 && <div style={{ fontSize: 14, color: C.dim }}>Nothing yet this block — the next hard cardio session starts the clock.</div>}
           </div>
-          <p style={{ fontSize: 11.5, color: C.cream, margin: "10px 0 0", lineHeight: 1.55 }} className="h-serif">
+          <p style={{ fontSize: 13.5, color: C.cream, margin: "10px 0 0", lineHeight: 1.6 }} className="h-serif">
             Only work that pushes your heart counts: Tabatas, long intervals and fast-break drills, basketball games, and cardio-focused Sweat440 classes at full value — easy walks at half value. Lifts and strength classes build muscle, so they feed the body card instead.
           </p>
 
-          <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginTop: 14 }}>THE COMPARISON</div>
-          <p style={{ fontSize: 11.5, color: C.cream, margin: "6px 0 0", lineHeight: 1.55 }} className="h-serif">
+          <div style={{ fontSize: 11.5, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginTop: 16, fontWeight: 700 }}>THE COMPARISON</div>
+          <p style={{ fontSize: 13.5, color: C.cream, margin: "6px 0 0", lineHeight: 1.6 }} className="h-serif">
             {prev > 0
               ? <>The little arrow compares this rolling 4-week block against the 4 weeks before it: {fmtDur(mins)} now vs {fmtDur(prev)} then{Math.abs(diff) >= 5 ? ` — so you're ${fmtDur(Math.abs(diff))} ${diff > 0 ? "ahead of" : "behind"} your previous pace` : " — essentially even"}. It's a trend check, not a judgement — a lighter month after a heavy one is often exactly what the plan wants.</>
               : <>The arrow (when it appears) compares this rolling 4-week block against the 4 weeks before it. Your previous block has no logged cardio, so there's nothing to compare yet — it shows up once two blocks exist.</>}
           </p>
 
-          <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginTop: 14 }}>THE TIERS</div>
+          <div style={{ fontSize: 11.5, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginTop: 16, fontWeight: 700 }}>THE TIERS</div>
           <div style={{ marginTop: 6 }}>
             {TIERS.map((t, i) => (
               <div key={t.name} style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "3px 0" }}>
-                <span style={{ fontSize: 12, fontWeight: i === tierIdx ? 800 : 500, color: i === tierIdx ? C.red : C.dim, minWidth: 110 }}>{i === tierIdx ? "→ " : ""}{t.name}</span>
-                <span style={{ fontSize: 10.5, color: C.dim, fontFamily: FONT_MONO }}>{t.blurb}</span>
+                <span style={{ fontSize: 14, fontWeight: i === tierIdx ? 800 : 500, color: i === tierIdx ? C.red : C.dim, minWidth: 122 }}>{i === tierIdx ? "→ " : ""}{t.name}</span>
+                <span style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>{t.blurb}</span>
               </div>
             ))}
           </div>
 
-          <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginTop: 14 }}>WHY THE HEART CHANGES</div>
-          <p style={{ fontSize: 11.5, color: C.cream, margin: "6px 0 0", lineHeight: 1.55 }} className="h-serif">
+          <div style={{ fontSize: 11.5, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginTop: 16, fontWeight: 700 }}>WHY THE HEART CHANGES</div>
+          <p style={{ fontSize: 13.5, color: C.cream, margin: "6px 0 0", lineHeight: 1.6 }} className="h-serif">
             The drawing grows and deepens in color as your aerobic base builds — 60% from this 4-week block, 40% from everything you've ever logged ({fmtDur(lifetime)} lifetime), so one quiet week dims it a little but never erases what you've built. The coronary vessels fill in as it strengthens, and the beat slows down, because that's the real adaptation: endurance work stretches the left ventricle so it holds and pumps more blood per stroke — the classic "athlete's heart." A bigger, more efficient pump needs fewer beats at rest, which is why trained resting heart rates drift down over months of this. All of it here is a simulation drawn from your logs — a mirror of your training, not a medical measurement.
           </p>
         </div>
       )}
 
       {!showInfo && (
-        <div style={{ fontSize: 11, color: C.cream, marginTop: 10, lineHeight: 1.55 }} className="h-serif">
+        <div style={{ fontSize: 13.5, color: C.cream, marginTop: 10, lineHeight: 1.6 }} className="h-serif">
           Yes — it really does get bigger. Endurance work stretches the left ventricle so it holds and pumps more blood per beat (the "athlete's heart"), and your resting rate drops because each beat does more.
         </div>
       )}
@@ -5124,6 +5124,14 @@ function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, constrai
         <TimeTrainedCard cardioSessions={cardioSessions} workouts={history} />
       </div>
 
+      {/* ── THE REBUILD + THE ENGINE — the digital twin, front and center ── */}
+      <div className="ease-up-3">
+        <BodySim cardioSessions={cardioSessions} workouts={history} weightLog={weightLog} />
+      </div>
+      <div className="ease-up-3">
+        <HeartSim cardioSessions={cardioSessions} workouts={history} />
+      </div>
+
       {/* ── SUNDAY RECAP — weeks run Mon → Sun, so Sunday closes this week ── */}
       {new Date().getDay() === 0 && (
         <div className="ease-up-3">
@@ -6583,6 +6591,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
