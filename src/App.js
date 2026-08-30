@@ -3174,6 +3174,40 @@ function AnatomicalHeart({ growth, beatDur, size = 150 }) {
   );
 }
 
+/* ── Engine score — a Banister/CTL-style fitness model over the logs.
+   Each aerobic session earns a load (minutes × RPE, the session-RPE method);
+   the score is a 42-day rolling build of daily load: every session tops it
+   up by load÷42, and it drains ~2.4% on any day you don't feed it. ── */
+const ENGINE_TAU = 42;
+function engineLoadOf(s) {
+  if (s.type === "walk") return (s.duration || 0) * 0.5 * (s.rpe || 3);
+  if (s.type === "cross_training") return s.focus === "cardio" ? (s.duration || 0) * (s.rpe || 8) : 0;
+  if (s.type === "tabata" || s.type === "long_interval" || s.type === "game") return (s.duration || 0) * (s.rpe || 8);
+  return 0;
+}
+function engineModel(all) {
+  const sessions = all.map(s => ({ s, day: startOfDay(s.date).getTime(), load: engineLoadOf(s) }))
+    .filter(x => x.load > 0).sort((a, b) => a.day - b.day);
+  if (!sessions.length) return { score: 0, weekPct: null, bumps: [] };
+  const today = startOfDay(new Date());
+  let F = 0, i = 0;
+  const daily = new Map();
+  const bumps = [];
+  for (let d = new Date(sessions[0].day); d.getTime() <= today.getTime(); d = addDays(d, 1)) {
+    const t = d.getTime();
+    F *= 1 - 1 / ENGINE_TAU;
+    while (i < sessions.length && sessions[i].day === t) {
+      const dF = sessions[i].load / ENGINE_TAU;
+      bumps.push({ s: sessions[i].s, day: t, pct: F > 0 ? (dF / F) * 100 : 100 });
+      F += dF; i++;
+    }
+    daily.set(t, F);
+  }
+  const weekAgo = daily.get(addDays(today, -7).getTime());
+  const weekPct = weekAgo > 0 ? ((F - weekAgo) / weekAgo) * 100 : null;
+  return { score: F, weekPct, bumps };
+}
+
 function HeartSim({ cardioSessions, workouts }) {
   const all = normalizeAll(cardioSessions, workouts);
   const isAerobic = (s) => s.type === "tabata" || s.type === "long_interval" || s.type === "game" || (s.type === "cross_training" && s.focus === "cardio");
@@ -3243,6 +3277,33 @@ function HeartSim({ cardioSessions, workouts }) {
         </div>
       </div>
 
+      {/* Engine score — the number that answers "how's my motor?" */}
+      {(() => {
+        const eng = engineModel(all);
+        if (eng.score <= 0) return null;
+        const recent = eng.bumps.slice(-3).reverse();
+        return (
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11.5, color: C.red, fontFamily: FONT_MONO, letterSpacing: "0.08em", fontWeight: 700 }}>ENGINE SCORE</span>
+              <span className="num-tab h-display" style={{ fontSize: 30, fontWeight: 800, color: C.bone, letterSpacing: "-0.03em", lineHeight: 1 }}>{Math.round(eng.score)}</span>
+              {eng.weekPct != null && Math.abs(eng.weekPct) >= 0.5 && (
+                <span style={{ fontSize: 13, color: eng.weekPct > 0 ? C.moss : C.amber, fontFamily: FONT_MONO, fontWeight: 700 }}>
+                  {eng.weekPct > 0 ? "▲" : "▼"} {Math.abs(eng.weekPct).toFixed(1)}% this week
+                </span>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+              {recent.map((b, i) => (
+                <span key={i} style={{ fontSize: 11.5, fontFamily: FONT_MONO, color: C.cream, background: C.raised, border: `1px solid ${C.line}`, borderRadius: 999, padding: "4px 10px" }}>
+                  {(RECOVERY.TYPES[b.s.type] || {}).emoji} {new Date(b.day).toLocaleDateString("en-US", { weekday: "short" })} +{b.pct.toFixed(1)}%
+                </span>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* The full explanation, for anyone asking "what does all this mean?" */}
       <button onClick={() => setShowInfo(v => !v)} className="btn" style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, marginTop: 12 }}>
         <span style={{ fontSize: 12, color: C.electric, fontFamily: FONT_MONO, letterSpacing: "0.08em", fontWeight: 700 }}>ⓘ WHAT DO THESE NUMBERS MEAN?</span>
@@ -3280,6 +3341,30 @@ function HeartSim({ cardioSessions, workouts }) {
               </div>
             ))}
           </div>
+
+          <div style={{ fontSize: 11.5, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginTop: 16, fontWeight: 700 }}>THE ENGINE SCORE — YOUR % IMPROVEMENTS</div>
+          {(() => {
+            const eng = engineModel(all);
+            const last = eng.bumps.slice(-6).reverse();
+            return (
+              <>
+                <p style={{ fontSize: 13.5, color: C.cream, margin: "6px 0 0", lineHeight: 1.6 }} className="h-serif">
+                  Every aerobic session earns a training load — minutes × how hard it felt (RPE), the "session-RPE" method sports scientists use. Your Engine score is a 42-day rolling build-up of that load (what coaching platforms call CTL, chronic training load): each session tops it up by its load ÷ 42, and it drains about 2.4% on any day you don't feed it — because real fitness fades without work. The percentages below are how much each session grew your score the moment you logged it. Longer and harder = bigger bump: a full game lifts you far more than a 10-minute fast break.
+                </p>
+                <div style={{ marginTop: 8 }}>
+                  {last.map((b, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "5px 0", fontSize: 14 }}>
+                      <span style={{ color: C.cream }}>{(RECOVERY.TYPES[b.s.type] || {}).emoji} {new Date(b.day).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {(RECOVERY.TYPES[b.s.type] || {}).label}{b.s.duration ? ` · ${Math.round(b.s.duration)}m` : ""}</span>
+                      <span className="num-tab" style={{ color: C.moss, fontFamily: FONT_MONO, fontWeight: 700, flexShrink: 0 }}>+{b.pct.toFixed(1)}%</span>
+                    </div>
+                  ))}
+                </div>
+                <p style={{ fontSize: 13.5, color: C.cream, margin: "8px 0 0", lineHeight: 1.6 }} className="h-serif">
+                  It's a consistency engine, not a lab test — a model of your aerobic base built purely from what you log, so it can't know your actual VO₂max. But its direction is trustworthy: weeks it climbs, your motor is genuinely building.
+                </p>
+              </>
+            );
+          })()}
 
           <div style={{ fontSize: 11.5, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginTop: 16, fontWeight: 700 }}>WHY THE HEART CHANGES</div>
           <p style={{ fontSize: 13.5, color: C.cream, margin: "6px 0 0", lineHeight: 1.6 }} className="h-serif">
@@ -6591,6 +6676,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
