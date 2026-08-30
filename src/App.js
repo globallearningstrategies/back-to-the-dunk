@@ -3300,6 +3300,29 @@ function HeartSim({ cardioSessions, workouts }) {
                 </span>
               ))}
             </div>
+            {/* Game-ready target: a full 40-min game is ~320 load; it stops
+               feeling like a spike once it's ≤ ~3× your chronic daily load. */}
+            {(() => {
+              const GAME_READY = 110;
+              const pct = Math.min(100, Math.round((eng.score / GAME_READY) * 100));
+              const there = eng.score >= GAME_READY;
+              return (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                    <span style={{ fontSize: 11.5, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.06em" }}>🏀 GAME-READY · TWO 20-MIN HALVES</span>
+                    <span className="num-tab" style={{ fontSize: 12.5, color: there ? C.moss : C.bone, fontFamily: FONT_MONO, fontWeight: 700 }}>{Math.round(eng.score)} / {GAME_READY}</span>
+                  </div>
+                  <div style={{ background: C.raised, borderRadius: 999, height: 7, overflow: "hidden", border: `1px solid ${C.line}`, marginTop: 6 }}>
+                    <div style={{ width: pct + "%", height: "100%", background: there ? C.moss : `linear-gradient(90deg, ${C.red}, ${C.rustHi})`, borderRadius: 999, transition: "width 0.8s cubic-bezier(0.22,1,0.36,1)" }} />
+                  </div>
+                  <div style={{ fontSize: 11.5, color: C.dim, fontFamily: FONT_MONO, marginTop: 6, lineHeight: 1.5 }}>
+                    {there
+                      ? "Above game-ready — a full 40-minute game is routine load for your engine now."
+                      : `At ${GAME_READY}, a full game (~320 load) is only ~3× your daily base — hard but routine, not a Q2 gas-out.`}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         );
       })()}
@@ -6676,6 +6699,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
