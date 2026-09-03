@@ -6659,6 +6659,18 @@ export default function App() {
                 ))}
               </div>
 
+              {/* Fast break drill — ran it phone-down? One tap logs it, done. */}
+              <Eyebrow>🏃 Fast break · already ran it?</Eyebrow>
+              <div style={{ display: "flex", gap: 8, margin: "8px 0 18px" }}>
+                {[10, 12, 15].map(m => (
+                  <button key={m} className="btn" onClick={() => { logFastBreak(m); close(); if (navigator.vibrate) navigator.vibrate(10); }} style={{
+                    flex: 1, padding: "13px 8px", borderRadius: 12, cursor: "pointer",
+                    border: `1px solid ${C.electric}40`, background: `${C.electric}12`, color: C.electric,
+                    fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14,
+                  }}>{m} min</button>
+                ))}
+              </div>
+
               {/* Shortcuts */}
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn" onClick={() => { setTab("workout"); close(); window.scrollTo({ top: 0 }); }} style={{
