@@ -5362,6 +5362,14 @@ function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, constrai
         </p>
       </div>
 
+      {/* ── THE REBUILD + THE ENGINE — the digital twin opens the app ── */}
+      <div className="ease-up-1">
+        <BodySim cardioSessions={cardioSessions} workouts={history} weightLog={weightLog} />
+      </div>
+      <div className="ease-up-1">
+        <HeartSim cardioSessions={cardioSessions} workouts={history} />
+      </div>
+
       {/* ── LEVEL / XP / BADGES — progression spine ── */}
       <div className="ease-up-1" style={{ marginBottom: 14 }}>
         <ProgressHero game={game} cardioSessions={cardioSessions} workouts={history} onOpenAwards={onOpenAwards} onGoTab={onGoTab} />
@@ -5463,14 +5471,6 @@ function HomeTab({ bodyStats, history, cardioSessions, weightLog, game, constrai
       {/* ── TIME TRAINED — weekly minutes vs your average ── */}
       <div className="ease-up-3">
         <TimeTrainedCard cardioSessions={cardioSessions} workouts={history} />
-      </div>
-
-      {/* ── THE REBUILD + THE ENGINE — the digital twin, front and center ── */}
-      <div className="ease-up-3">
-        <BodySim cardioSessions={cardioSessions} workouts={history} weightLog={weightLog} />
-      </div>
-      <div className="ease-up-3">
-        <HeartSim cardioSessions={cardioSessions} workouts={history} />
       </div>
 
       {/* ── SUNDAY RECAP — weeks run Mon → Sun, so Sunday closes this week ── */}
@@ -6964,6 +6964,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
