@@ -775,6 +775,10 @@ const ACHIEVEMENTS = [
   { id: "game10",   emoji: "🔟", name: "Run It Back",     desc: "10 games played",             goal: 10,  val: s => s.byType.game },
   { id: "walk20",   emoji: "🚶", name: "Active Recovery", desc: "20 recovery walks",           goal: 20,  val: s => s.byType.walk },
   { id: "cross10",  emoji: "💦", name: "Class Act",       desc: "10 Sweat440 classes",         goal: 10,  val: s => s.byType.cross_training },
+  { id: "eng85",    emoji: "🚗", name: "Tuned Up",        desc: "Engine score 85",             goal: 85,  val: s => s.enginePeak },
+  { id: "eng95",    emoji: "🏎️", name: "New Redline",     desc: "Engine 95 — beat your July peak", goal: 95, val: s => s.enginePeak },
+  { id: "eng100",   emoji: "💯", name: "Century Motor",   desc: "Engine score 100",            goal: 100, val: s => s.enginePeak },
+  { id: "eng110",   emoji: "🏁", name: "Game-Ready",      desc: "Engine 110 — built for two full halves", goal: 110, val: s => s.enginePeak },
   { id: "early",    emoji: "🌅", name: "Early Bird",      desc: "Train before 7am",            goal: 1,   val: s => (s.earlyBird ? 1 : 0) },
   { id: "night",    emoji: "🌙", name: "Night Owl",       desc: "Train after 9pm",             goal: 1,   val: s => (s.nightOwl ? 1 : 0) },
   { id: "comeback", emoji: "🔄", name: "Comeback Kid",    desc: "Train after a 7+ day break",  goal: 1,   val: s => (s.comeback ? 1 : 0) },
@@ -816,6 +820,7 @@ function computeGameState(history, cardioSessions, weightLog) {
       walk: all.filter(s => s.type === "walk").length,
       cross_training: all.filter(s => s.type === "cross_training").length,
     },
+    enginePeak: Math.round(engineModel(all).peak),
     bestStreak: best, currentStreak: streak,
     earlyBird: all.some(s => s.date.getHours() < 7),
     nightOwl: all.some(s => s.date.getHours() >= 21),
@@ -2447,7 +2452,7 @@ function TabataTimer({ onLog, loggedToday }) {
 /* ── Fast Break timer — 15s sprint / 45s float, 10–15 min.
    Matches the stop-start pace of a real game; logs as a Long Interval. ── */
 const FASTBREAK_CONFIG = { sprintSec: 15, floatSec: 45, choices: [10, 12, 15] };
-function FastBreakTimer({ onLog }) {
+function FastBreakTimer({ onLog, cardioSessions = [] }) {
   const [minutes, setMinutes] = useState(12);   // one round = 60s, so rounds = minutes
   const [phase, setPhase] = useState("idle");   // idle | sprint | float | done
   const [round, setRound] = useState(1);
@@ -2506,6 +2511,12 @@ function FastBreakTimer({ onLog }) {
     return () => clearInterval(interval);
   }, [phase, minutes]);
 
+  // Progression nudge: after 5 short drills without a long one, push for 15 min.
+  const fbDrills = cardioSessions.filter(s => (s.notes || "").startsWith("Fast break"));
+  const shortDone = fbDrills.filter(s => (s.duration_min || 0) <= 12).length;
+  const longDone = fbDrills.filter(s => (s.duration_min || 0) >= 14).length;
+  const nudge15 = shortDone >= 5 && longDone === 0;
+
   const isSprint = phase === "sprint";
   const isFloat = phase === "float";
   const activeColor = isSprint ? C.electric : C.amber;
@@ -2535,6 +2546,18 @@ function FastBreakTimer({ onLog }) {
               color: minutes === m ? C.electric : C.dim, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 13,
             }}>{m} min</button>
           ))}
+        </div>
+      )}
+
+      {phase === "idle" && countdown === null && nudge15 && (
+        <div style={{
+          marginTop: 12, padding: "12px 14px", borderRadius: 12,
+          background: `${C.amber}14`, border: `1px solid ${C.amber}44`,
+          fontSize: 14, color: C.cream, lineHeight: 1.55,
+        }}>
+          <b style={{ color: C.amber }}>🔓 Level up:</b> you've banked {shortDone} short
+          drills — your engine can handle the full <b>15 minutes</b>. Fifteen sprints
+          ≈ one real half of stop-and-go. Tap 15 min and find out.
         </div>
       )}
 
@@ -2604,6 +2627,105 @@ function FastBreakTimer({ onLog }) {
               </div>
             </div>
           )}
+        </div>
+      )}
+    </Surface>
+  );
+}
+
+/* ── Dyno Day — Cooper 12-minute test. Run/walk as far as you can in 12
+   minutes; distance maps to an estimated VO₂max (Cooper, 1968). Re-test
+   every 6 weeks (one engine time-constant) to see the motor actually grow. ── */
+const LS_DYNO = "bttd_dyno_v1";
+const DYNO_RETEST_DAYS = 42;
+const cooperVo2 = (miles) => 35.97 * miles - 11.29;
+function DynoCard({ onLog }) {
+  const [tests, setTests] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(LS_DYNO) || "[]"); } catch (e) { return []; }
+  });
+  const [open, setOpen] = useState(false);
+  const [miles, setMiles] = useState("");
+
+  const last = tests.length ? tests[tests.length - 1] : null;
+  const prev = tests.length > 1 ? tests[tests.length - 2] : null;
+  const daysSince = last ? Math.floor((Date.now() - new Date(last.date)) / 86400000) : null;
+  const due = !last || daysSince >= DYNO_RETEST_DAYS;
+
+  const save = () => {
+    const mi = parseFloat(miles);
+    if (!mi || mi <= 0 || mi > 3.5) return;
+    const vo2 = +cooperVo2(mi).toFixed(1);
+    const next = [...tests, { date: new Date().toISOString(), miles: mi, vo2 }];
+    setTests(next);
+    try { localStorage.setItem(LS_DYNO, JSON.stringify(next)); } catch (e) {}
+    onLog(mi, vo2);
+    setMiles(""); setOpen(false);
+  };
+
+  return (
+    <Surface accent={C.amber} style={{ background: C.panel }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div>
+          <Pill color={C.amber}>Every 6 weeks</Pill>
+          <h2 className="h-display" style={{ fontSize: 26, margin: "10px 0 4px", color: C.bone }}>🧪 Dyno Day</h2>
+          <div style={{ fontSize: 13, color: C.dim }}>12 min — cover as much ground as you can. That's the whole test.</div>
+        </div>
+        {!open && <Btn color={C.amber} onClick={() => setOpen(true)}>{last ? "Re-test" : "First test"}</Btn>}
+      </div>
+
+      {last && !open && (
+        <div style={{ marginTop: 14, background: C.raised, border: `1px solid ${C.line}`, borderRadius: 14, padding: "14px 16px" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+            <span className="num-tab h-display" style={{ fontSize: 34, fontWeight: 800, color: C.amber, letterSpacing: "-0.03em" }}>{last.vo2}</span>
+            <span style={{ fontSize: 14, color: C.cream, fontWeight: 600 }}>est. VO₂max</span>
+            {prev && (
+              <span style={{ fontSize: 14, fontWeight: 700, color: last.vo2 >= prev.vo2 ? C.moss : C.rust }}>
+                {last.vo2 >= prev.vo2 ? "▲" : "▼"} {Math.abs(last.vo2 - prev.vo2).toFixed(1)} vs last test
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 13, color: C.dim, marginTop: 6 }}>
+            {last.miles} mi on {new Date(last.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {daysSince === 0 ? "today" : `${daysSince}d ago`}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, marginTop: 8, color: due ? C.amber : C.dim, fontFamily: FONT_MONO }}>
+            {due ? "🔔 RE-TEST IS DUE — see what 6 weeks of work bought you" : `Next dyno day in ${DYNO_RETEST_DAYS - daysSince} days`}
+          </div>
+        </div>
+      )}
+      {!last && !open && (
+        <div style={{ fontSize: 13, color: C.dim, marginTop: 12, lineHeight: 1.6 }}>
+          This is the dyno pull for your engine: one honest number (VO₂max) you can watch
+          climb test over test. Do it fresh, count laps or use your phone's distance.
+        </div>
+      )}
+
+      {open && (
+        <div className="ease-up" style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 14, color: C.cream, lineHeight: 1.6, marginBottom: 12 }}>
+            Warm up 5 min, then <b>run/walk as far as you can in exactly 12 minutes</b>.
+            Enter the distance you covered:
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <input
+              type="number" inputMode="decimal" step="0.01" min="0" max="3.5" placeholder="e.g. 1.25"
+              value={miles} onChange={(e) => setMiles(e.target.value)}
+              style={{
+                flex: 1, background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12,
+                padding: "14px 14px", color: C.bone, fontSize: 20, fontFamily: FONT_MONO, fontWeight: 700,
+              }}
+            />
+            <span style={{ fontSize: 15, color: C.dim, fontWeight: 700 }}>miles</span>
+          </div>
+          {parseFloat(miles) > 0 && parseFloat(miles) <= 3.5 && (
+            <div style={{ fontSize: 14, color: C.amber, fontWeight: 700, marginTop: 10 }}>
+              → est. VO₂max {cooperVo2(parseFloat(miles)).toFixed(1)}
+              {last ? ` (last test: ${last.vo2})` : ""}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+            <Btn ghost color={C.dim} onClick={() => { setOpen(false); setMiles(""); }} style={{ flex: 1 }}>Cancel</Btn>
+            <Btn color={C.amber} onClick={save} style={{ flex: 1 }}>Save test</Btn>
+          </div>
         </div>
       )}
     </Surface>
@@ -3188,25 +3310,41 @@ function engineLoadOf(s) {
 function engineModel(all) {
   const sessions = all.map(s => ({ s, day: startOfDay(s.date).getTime(), load: engineLoadOf(s) }))
     .filter(x => x.load > 0).sort((a, b) => a.day - b.day);
-  if (!sessions.length) return { score: 0, weekPct: null, bumps: [] };
+  if (!sessions.length) return { score: 0, weekPct: null, bumps: [], series: [], peak: 0, peakDay: null, fedStreak: 0 };
   const today = startOfDay(new Date());
   let F = 0, i = 0;
   const daily = new Map();
+  const fedDays = new Set();
   const bumps = [];
+  const series = [];
   for (let d = new Date(sessions[0].day); d.getTime() <= today.getTime(); d = addDays(d, 1)) {
     const t = d.getTime();
     F *= 1 - 1 / ENGINE_TAU;
     while (i < sessions.length && sessions[i].day === t) {
       const dF = sessions[i].load / ENGINE_TAU;
       bumps.push({ s: sessions[i].s, day: t, pct: F > 0 ? (dF / F) * 100 : 100 });
-      F += dF; i++;
+      F += dF; fedDays.add(t); i++;
     }
     daily.set(t, F);
+    series.push({ t, F });
   }
   const weekAgo = daily.get(addDays(today, -7).getTime());
   const weekPct = weekAgo > 0 ? ((F - weekAgo) / weekAgo) * 100 : null;
-  return { score: F, weekPct, bumps };
+  // All-time high, and how many consecutive days the engine has been fed
+  // (today not yet fed doesn't break the streak until tomorrow).
+  let peak = 0, peakDay = null;
+  series.forEach(p => { if (p.F > peak) { peak = p.F; peakDay = p.t; } });
+  let fedStreak = 0;
+  for (let k = fedDays.has(today.getTime()) ? 0 : 1; ; k++) {
+    if (fedDays.has(addDays(today, -k).getTime())) fedStreak++;
+    else break;
+  }
+  return { score: F, weekPct, bumps, series, peak, peakDay, fedStreak };
 }
+
+// Projected engine bump for a session you haven't done yet.
+const engineBumpPreview = (score, mins, rpe = 9) =>
+  score > 0 ? ((mins * rpe) / ENGINE_TAU / score) * 100 : 0;
 
 function HeartSim({ cardioSessions, workouts }) {
   const all = normalizeAll(cardioSessions, workouts);
@@ -3293,6 +3431,13 @@ function HeartSim({ cardioSessions, workouts }) {
                 </span>
               )}
             </div>
+            {/* All-time high + fed streak */}
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 7, fontSize: 12, fontFamily: FONT_MONO }}>
+              {eng.score >= eng.peak - 0.05
+                ? <span style={{ color: C.moss, fontWeight: 700 }}>🏁 ALL-TIME HIGH</span>
+                : <span style={{ color: C.dim }}>peak {Math.round(eng.peak)} · {(eng.peak - eng.score).toFixed(1)} pts to reclaim</span>}
+              {eng.fedStreak > 0 && <span style={{ color: C.amber, fontWeight: 600 }}>⛽ fed {eng.fedStreak} day{eng.fedStreak === 1 ? "" : "s"} straight</span>}
+            </div>
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
               {recent.map((b, i) => (
                 <span key={i} style={{ fontSize: 11.5, fontFamily: FONT_MONO, color: C.cream, background: C.raised, border: `1px solid ${C.line}`, borderRadius: 999, padding: "4px 10px" }}>
@@ -3300,6 +3445,32 @@ function HeartSim({ cardioSessions, workouts }) {
                 </span>
               ))}
             </div>
+            {/* Engine history — the line you can't stop watching */}
+            {eng.series.length >= 14 && (() => {
+              const window = eng.series.slice(-120);
+              const maxY = Math.max(115, eng.peak * 1.08);
+              const X = (i) => (i / (window.length - 1)) * 316 + 2;
+              const Y = (v) => 78 - (v / maxY) * 74;
+              const pts = window.map((p, i) => `${X(i).toFixed(1)},${Y(p.F).toFixed(1)}`).join(" ");
+              const peakIdx = window.reduce((a, p, i) => (p.F > window[a].F ? i : a), 0);
+              const last = window[window.length - 1];
+              return (
+                <div style={{ marginTop: 12 }}>
+                  <svg viewBox="0 0 320 84" style={{ width: "100%", height: "auto", display: "block" }}>
+                    <line x1="2" y1={Y(110)} x2="318" y2={Y(110)} stroke={C.moss} strokeWidth="1" strokeDasharray="4 4" opacity="0.7" />
+                    <text x="316" y={Y(110) - 3} textAnchor="end" fontSize="8" fill={C.moss} fontFamily="monospace">110 GAME-READY</text>
+                    <polyline points={pts} fill="none" stroke={C.red} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+                    <circle cx={X(peakIdx)} cy={Y(window[peakIdx].F)} r="3" fill={C.amber} />
+                    <text x={Math.min(290, Math.max(24, X(peakIdx)))} y={Math.max(9, Y(window[peakIdx].F) - 6)} textAnchor="middle" fontSize="8" fill={C.amber} fontFamily="monospace">peak {Math.round(eng.peak)}</text>
+                    <circle cx={X(window.length - 1)} cy={Y(last.F)} r="3.5" fill={C.bone} />
+                  </svg>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: C.mute, fontFamily: FONT_MONO }}>
+                    <span>{new Date(window[0].t).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                    <span>TODAY</span>
+                  </div>
+                </div>
+              );
+            })()}
             {/* Game-ready target: a full 40-min game is ~320 load; it stops
                feeling like a spike once it's ≤ ~3× your chronic daily load. */}
             {(() => {
@@ -3546,6 +3717,28 @@ function StatsTab({ history, weightLog, cardioSessions, legsLog = {} }) {
               {verdict
                 ? <p className="h-serif" style={{ fontSize: 14.5, color: verdict.col, margin: "12px 0 0", lineHeight: 1.4 }}>{verdict.txt}</p>
                 : <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginTop: 10 }}>Log "fourth-quarter legs" when you log a game — the trend shows up here.</div>}
+              {/* Proof the engine shows up on the court: engine level on each kind of game night */}
+              {(() => {
+                const eng = engineModel(allActivity);
+                const byDay = new Map(eng.series.map(p => [p.t, p.F]));
+                const grp = { strong: [], okay: [], gassed: [] };
+                checked.forEach(g => {
+                  const e = byDay.get(startOfDay(new Date(g.completed_at)).getTime());
+                  if (e != null && grp[legsLog[g.id]]) grp[legsLog[g.id]].push(e);
+                });
+                const avg = (a) => a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null;
+                const parts = [
+                  avg(grp.strong) != null ? `💪 strong-legs games: ${avg(grp.strong)}` : null,
+                  avg(grp.okay) != null ? `😮‍💨 okay: ${avg(grp.okay)}` : null,
+                  avg(grp.gassed) != null ? `💨 gassed: ${avg(grp.gassed)}` : null,
+                ].filter(Boolean);
+                if (parts.length < 2) return null;
+                return (
+                  <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO, marginTop: 10, lineHeight: 1.5 }}>
+                    ⛽ Avg engine at tip-off — {parts.join(" · ")}
+                  </div>
+                );
+              })()}
             </Surface>
           </div>
         );
@@ -4339,6 +4532,21 @@ function TodayCard({ cardioSessions, workouts, constraints, onOpenLogger, onChoo
   const s14 = trailingSummary(engine, today, 14);
   const s30 = trailingSummary(engine, today, 30);
   const { streak, layoff } = streakInfo(engine, today);
+  const engStat = engineModel(engine);
+
+  // Projected engine bump for one scheduled item, using type defaults.
+  const itemBumpPct = (it) => {
+    const def = RECOVERY.TYPES[it.type];
+    if (!def) return 0;
+    let mins = def.defaultDurationMin, rpe = def.defaultRPE;
+    if (it.type === "walk") mins *= 0.5;
+    else if (it.type === "lift") return 0;
+    else if (it.type === "cross_training") {
+      const cls = S440_CLASSES[today.getDay()];
+      if (!cls || cls.focus !== "cardio") return 0;
+    }
+    return engineBumpPreview(engStat.score, mins, rpe);
+  };
 
   // Short label for one scheduled item (lifts show their A/B/C day).
   const itemLabel = (it) => RECOVERY.TYPES[it.type].short;
@@ -4409,13 +4617,25 @@ function TodayCard({ cardioSessions, workouts, constraints, onOpenLogger, onChoo
 
       {/* Primary action(s) — one button per scheduled item (e.g. Tabata + Lift) */}
       {trained ? (
-        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-          {items.map((it, i) => (
-            <Btn key={i} color={C[RECOVERY.TYPES[it.type].colorKey]} full={items.length === 1} size="lg" style={{ flex: 1 }} onClick={() => actOn(it)}>
-              {actLabel(it)}
-            </Btn>
-          ))}
-        </div>
+        <>
+          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+            {items.map((it, i) => (
+              <Btn key={i} color={C[RECOVERY.TYPES[it.type].colorKey]} full={items.length === 1} size="lg" style={{ flex: 1 }} onClick={() => actOn(it)}>
+                {actLabel(it)}
+              </Btn>
+            ))}
+          </div>
+          {/* What today's plan is worth to the engine — see the points before you spend the sweat */}
+          {(() => {
+            const totalPct = items.reduce((a, it) => a + itemBumpPct(it), 0);
+            if (totalPct < 0.1) return null;
+            return (
+              <div style={{ marginTop: 8, fontSize: 12.5, color: C.moss, fontFamily: FONT_MONO, fontWeight: 700, textAlign: "center" }}>
+                ⛽ do this → engine +{totalPct.toFixed(1)}% ({Math.round(engStat.score)} → {Math.round(engStat.score * (1 + totalPct / 100))})
+              </div>
+            );
+          })()}
+        </>
       ) : (
         <>
           <Btn color={C.dim} ghost full style={{ marginTop: 16 }} onClick={() => setShowOverride(v => !v)}>
@@ -4456,6 +4676,19 @@ function TodayCard({ cardioSessions, workouts, constraints, onOpenLogger, onChoo
           })}
         </div>
         <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginTop: 8 }}>Tentative — updates every time you log.</div>
+        {/* Tip-off forecast — where the engine will idle to by game day */}
+        {(() => {
+          if (constraints.gameDow == null || engStat.score <= 0) return null;
+          const days = (constraints.gameDow - today.getDay() + 7) % 7;
+          const gameDay = addDays(today, days);
+          if (constraints.skipGameWeekStart === startOfWeek(gameDay).getTime()) return null;
+          const forecast = engStat.score * Math.pow(1 - 1 / ENGINE_TAU, days);
+          return (
+            <div style={{ marginTop: 10, fontSize: 12, color: C.dim, fontFamily: FONT_MONO, lineHeight: 1.5 }}>
+              🏀 {days === 0 ? "Tonight's game" : `${gameDay.toLocaleDateString("en-US", { weekday: "long" })}'s game`}: engine ≈ <b style={{ color: C.bone }}>{Math.round(forecast)}</b> at tip-off on idle alone — every session before then raises it.
+            </div>
+          );
+        })()}
       </div>
 
       {/* Trailing summaries */}
@@ -5698,6 +5931,15 @@ export default function App() {
     if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); setConfetti(true); showSave(true); toast("🏃 Fast break drill logged — game shape"); } else showSave(false);
   };
 
+  // Dyno Day (Cooper 12-min test) logs as a max-effort Long Interval.
+  const logDyno = async (miles, vo2) => {
+    const { data, error } = await supabase.from("cardio_sessions").insert([{
+      workout_type: "long_interval", completed_at: new Date().toISOString(),
+      duration_min: 12, rpe: 10, notes: `Dyno day · Cooper 12-min test · ${miles} mi · est VO₂max ${vo2}`,
+    }]).select();
+    if (!error && data) { setCardioSessions(p => sortCardio([data[0], ...p])); setConfetti(true); showSave(true); toast(`🧪 Dyno day logged — VO₂max ${vo2}`); } else showSave(false);
+  };
+
   // Create or update a conditioning session (Tabata / Long Interval / Game / Cross).
   const saveCardio = async ({ id, type, completed_at, duration_min, rpe, notes, legs, focus, class_name }) => {
     const row = { workout_type: type, completed_at, duration_min, rpe, notes, focus, class_name };
@@ -5997,7 +6239,8 @@ export default function App() {
             </div>
 
             <div className="ease-up-1"><TabataTimer onLog={logTabata} loggedToday={tabataToday} /></div>
-            <div className="ease-up-2"><FastBreakTimer onLog={logFastBreak} /></div>
+            <div className="ease-up-2"><FastBreakTimer onLog={logFastBreak} cardioSessions={cardioSessions} /></div>
+            <div className="ease-up-2"><DynoCard onLog={logDyno} /></div>
             <div className="ease-up-2">
               <Surface accent={C.plum}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -6659,17 +6902,27 @@ export default function App() {
                 ))}
               </div>
 
-              {/* Fast break drill — ran it phone-down? One tap logs it, done. */}
+              {/* Fast break drill — ran it phone-down? One tap logs it, done.
+                 Each button shows what it pays the engine. */}
               <Eyebrow>🏃 Fast break · already ran it?</Eyebrow>
-              <div style={{ display: "flex", gap: 8, margin: "8px 0 18px" }}>
-                {[10, 12, 15].map(m => (
-                  <button key={m} className="btn" onClick={() => { logFastBreak(m); close(); if (navigator.vibrate) navigator.vibrate(10); }} style={{
-                    flex: 1, padding: "13px 8px", borderRadius: 12, cursor: "pointer",
-                    border: `1px solid ${C.electric}40`, background: `${C.electric}12`, color: C.electric,
-                    fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14,
-                  }}>{m} min</button>
-                ))}
-              </div>
+              {(() => {
+                const engScore = engineModel(normalizeAll(cardioSessions, history)).score;
+                return (
+                  <div style={{ display: "flex", gap: 8, margin: "8px 0 18px" }}>
+                    {[10, 12, 15].map(m => (
+                      <button key={m} className="btn" onClick={() => { logFastBreak(m); close(); if (navigator.vibrate) navigator.vibrate(10); }} style={{
+                        flex: 1, padding: "11px 8px", borderRadius: 12, cursor: "pointer",
+                        border: `1px solid ${C.electric}40`, background: `${C.electric}12`, color: C.electric,
+                        fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14,
+                        display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+                      }}>
+                        {m} min
+                        {engScore > 0 && <span style={{ fontSize: 10.5, color: C.moss, fontFamily: FONT_MONO, fontWeight: 700 }}>⛽ +{engineBumpPreview(engScore, m, 9).toFixed(1)}%</span>}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
 
               {/* Shortcuts */}
               <div style={{ display: "flex", gap: 8 }}>
@@ -6711,6 +6964,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
