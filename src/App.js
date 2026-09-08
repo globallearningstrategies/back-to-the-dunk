@@ -3576,6 +3576,109 @@ function HeartSim({ cardioSessions, workouts }) {
   );
 }
 
+/* ── Box score — points + rebounds per league game, season averages,
+   and the engine level that produced each stat line. ── */
+function BoxScoreCard({ gameSessions, allActivity }) {
+  const stat = gameSessions
+    .filter(g => g.points != null || g.rebounds != null)
+    .sort((a, b) => new Date(a.completed_at) - new Date(b.completed_at));
+  if (!stat.length) return null;
+
+  const eng = engineModel(allActivity);
+  const byDay = new Map(eng.series.map(p => [p.t, p.F]));
+  const engAt = (g) => {
+    const e = byDay.get(startOfDay(new Date(g.completed_at)).getTime());
+    return e != null ? Math.round(e) : null;
+  };
+
+  const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+  const pts = stat.filter(g => g.points != null).map(g => g.points);
+  const rbs = stat.filter(g => g.rebounds != null).map(g => g.rebounds);
+  const ppg = avg(pts), rpg = avg(rbs);
+  const fmt1 = (n) => n == null ? "—" : (Math.round(n * 10) / 10).toString();
+
+  // Recent-half vs early-half trend, once there's enough of a season.
+  const trendOf = (vals) => {
+    if (vals.length < 4) return null;
+    const half = Math.floor(vals.length / 2);
+    return avg(vals.slice(-half)) - avg(vals.slice(0, half));
+  };
+  const pTrend = trendOf(pts), rTrend = trendOf(rbs);
+
+  // Does a bigger engine produce a bigger stat line?
+  const withEng = stat.map(g => ({ g, e: engAt(g), line: (g.points || 0) + (g.rebounds || 0) })).filter(x => x.e != null);
+  let engVerdict = null;
+  if (withEng.length >= 4) {
+    const med = [...withEng].sort((a, b) => a.e - b.e)[Math.floor(withEng.length / 2)].e;
+    const hi = withEng.filter(x => x.e >= med), lo = withEng.filter(x => x.e < med);
+    if (hi.length >= 2 && lo.length >= 2) {
+      const hAvg = avg(hi.map(x => x.line)), lAvg = avg(lo.map(x => x.line));
+      engVerdict = `⛽ Big-engine nights (score ${med}+) average ${fmt1(hAvg)} pts+reb · smaller-engine nights ${fmt1(lAvg)}.`;
+    }
+  }
+
+  const recent = stat.slice(-8);
+  return (
+    <div className="ease-up-2" style={{ marginBottom: 12 }}>
+      <Surface accent={C.rust}>
+        <Eyebrow color={C.rust}>Box score · Thursday nights</Eyebrow>
+
+        {/* Season averages — the headline */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 14 }}>
+          <div>
+            <div className="num-tab h-display" style={{ fontSize: 36, fontWeight: 800, color: C.rust, letterSpacing: "-0.04em", lineHeight: 1 }}>{fmt1(ppg)}</div>
+            <div style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, marginTop: 6 }}>PTS / GAME</div>
+            {pTrend != null && <div style={{ fontSize: 12, fontWeight: 700, color: pTrend >= 0 ? C.moss : C.amber, fontFamily: FONT_MONO, marginTop: 4 }}>{pTrend >= 0 ? "▲" : "▼"} {fmt1(Math.abs(pTrend))}</div>}
+          </div>
+          <div>
+            <div className="num-tab h-display" style={{ fontSize: 36, fontWeight: 800, color: C.electric, letterSpacing: "-0.04em", lineHeight: 1 }}>{fmt1(rpg)}</div>
+            <div style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, marginTop: 6 }}>REB / GAME</div>
+            {rTrend != null && <div style={{ fontSize: 12, fontWeight: 700, color: rTrend >= 0 ? C.moss : C.amber, fontFamily: FONT_MONO, marginTop: 4 }}>{rTrend >= 0 ? "▲" : "▼"} {fmt1(Math.abs(rTrend))}</div>}
+          </div>
+          <div>
+            <div className="num-tab h-display" style={{ fontSize: 36, fontWeight: 800, color: C.bone, letterSpacing: "-0.04em", lineHeight: 1 }}>{stat.length}</div>
+            <div style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, marginTop: 6 }}>GAMES</div>
+          </div>
+        </div>
+
+        {/* Game-by-game stat lines */}
+        <div style={{ marginTop: 16, borderTop: `1px solid ${C.line}` }}>
+          {recent.map(g => (
+            <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 0", borderBottom: `1px solid ${C.line}` }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.bone }}>
+                  {new Date(g.completed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                </div>
+                {g.notes && <div style={{ fontSize: 10.5, color: C.mute, fontFamily: FONT_MONO, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.notes}</div>}
+              </div>
+              <div style={{ textAlign: "center", width: 52 }}>
+                <div className="num-tab h-display" style={{ fontSize: 22, fontWeight: 800, color: C.rust, lineHeight: 1 }}>{g.points != null ? g.points : "—"}</div>
+                <div style={{ fontSize: 8.5, color: C.dim, fontFamily: FONT_MONO, marginTop: 2 }}>PTS</div>
+              </div>
+              <div style={{ textAlign: "center", width: 52 }}>
+                <div className="num-tab h-display" style={{ fontSize: 22, fontWeight: 800, color: C.electric, lineHeight: 1 }}>{g.rebounds != null ? g.rebounds : "—"}</div>
+                <div style={{ fontSize: 8.5, color: C.dim, fontFamily: FONT_MONO, marginTop: 2 }}>REB</div>
+              </div>
+              {engAt(g) != null && (
+                <div style={{ textAlign: "center", width: 52 }}>
+                  <div className="num-tab h-display" style={{ fontSize: 16, fontWeight: 700, color: C.amber, lineHeight: 1, marginTop: 3 }}>⛽{engAt(g)}</div>
+                  <div style={{ fontSize: 8.5, color: C.dim, fontFamily: FONT_MONO, marginTop: 4 }}>ENGINE</div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {engVerdict
+          ? <p className="h-serif" style={{ fontSize: 14.5, color: C.cream, margin: "12px 0 0", lineHeight: 1.5 }}>{engVerdict}</p>
+          : <div style={{ fontSize: 11, color: C.mute, fontFamily: FONT_MONO, marginTop: 12, lineHeight: 1.5 }}>
+              Log points + rebounds with each game. Once a few are in, this card shows whether a bigger engine shows up in the stat line.
+            </div>}
+      </Surface>
+    </div>
+  );
+}
+
 /* ── Progress Tab ── */
 function StatsTab({ history, weightLog, cardioSessions, legsLog = {} }) {
   const allActivity = normalizeAll(cardioSessions, history);
@@ -3677,6 +3780,9 @@ function StatsTab({ history, weightLog, cardioSessions, legsLog = {} }) {
         <StatCard kicker="S440" value={crossSessions.length} color={C.pink} sub="classes" />
         <StatCard kicker="WALKS" value={treadmillSessions.length} color={C.plum} sub="treadmill" />
       </div>
+
+      {/* Box score — Thursday-night stat lines, and what the engine produced */}
+      <BoxScoreCard gameSessions={gameSessions} allActivity={allActivity} />
 
       {/* Game shape — fourth-quarter legs over the season */}
       {gameSessions.length > 0 && (() => {
@@ -4732,6 +4838,9 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
   const [rpe, setRpe] = useState(editing && editing.rpe != null ? Number(editing.rpe) : RECOVERY.TYPES[initType].defaultRPE);
   const [notes, setNotes] = useState(editing ? (editing.notes || "") : "");
   const [legs, setLegs] = useState(state.legs || null);
+  // Box score — Thursday-night stat line, points and boards.
+  const [points, setPoints] = useState(editing && editing.points != null ? String(editing.points) : "");
+  const [rebounds, setRebounds] = useState(editing && editing.rebounds != null ? String(editing.rebounds) : "");
   // Sweat440 focus: default follows the class rotation for the session's weekday,
   // until the user picks one explicitly.
   const [focus, setFocus] = useState(editing ? (editing.focus || null) : null);
@@ -4761,6 +4870,8 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
       rpe,
       notes: notes.trim() || null,
       legs: type === "game" ? legs : null,
+      points: type === "game" && points !== "" ? Number(points) : null,
+      rebounds: type === "game" && rebounds !== "" ? Number(rebounds) : null,
       focus: type === "cross_training" ? effFocus : null,
       class_name: type === "cross_training" ? effClassName : null,
     });
@@ -4866,6 +4977,22 @@ function ConditioningLogger({ state, onClose, onSave, onDelete }) {
               })}
             </div>
             <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginBottom: 18 }}>How were the legs late in the game? Tracked over the season as your game-shape trend.</div>
+
+            {/* Stat line — what the engine actually produced tonight */}
+            <Eyebrow>Box score (optional)</Eyebrow>
+            <div style={{ display: "flex", gap: 10, margin: "8px 0 4px" }}>
+              <div style={{ flex: 1 }}>
+                <input type="number" inputMode="numeric" min="0" placeholder="—" value={points} onChange={e => setPoints(e.target.value)}
+                  style={{ width: "100%", boxSizing: "border-box", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 18, outline: "none", fontFamily: FONT_MONO, fontWeight: 700, textAlign: "center" }} />
+                <div style={{ textAlign: "center", fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 5, letterSpacing: "0.08em" }}>POINTS</div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <input type="number" inputMode="numeric" min="0" placeholder="—" value={rebounds} onChange={e => setRebounds(e.target.value)}
+                  style={{ width: "100%", boxSizing: "border-box", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 18, outline: "none", fontFamily: FONT_MONO, fontWeight: 700, textAlign: "center" }} />
+                <div style={{ textAlign: "center", fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 5, letterSpacing: "0.08em" }}>REBOUNDS</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginBottom: 18 }}>Log your stat line and watch season averages track your engine. FG/FT detail can go in notes.</div>
           </>
         )}
 
@@ -5941,8 +6068,8 @@ export default function App() {
   };
 
   // Create or update a conditioning session (Tabata / Long Interval / Game / Cross).
-  const saveCardio = async ({ id, type, completed_at, duration_min, rpe, notes, legs, focus, class_name }) => {
-    const row = { workout_type: type, completed_at, duration_min, rpe, notes, focus, class_name };
+  const saveCardio = async ({ id, type, completed_at, duration_min, rpe, notes, legs, points, rebounds, focus, class_name }) => {
+    const row = { workout_type: type, completed_at, duration_min, rpe, notes, points, rebounds, focus, class_name };
     if (id != null) {
       const { data, error } = await supabase.from("cardio_sessions").update(row).eq("id", id).select();
       if (!error && data) { setCardioSessions(p => sortCardio(p.map(r => r.id === id ? data[0] : r))); setGameLegs(id, legs); showSave(true); } else showSave(false);
@@ -6380,7 +6507,7 @@ export default function App() {
               const focusOpt = f.kind === "cardio" && f.type === "cross_training" ? s440FocusFor(f.focus) : null;
               const clsName = f.kind === "cardio" && f.type === "cross_training" && f.raw.class_name ? f.raw.class_name.replace("SWEAT440 ", "") : null;
               const detail = f.kind === "cardio"
-                ? [clsName ? `${focusOpt ? focusOpt.emoji + " " : ""}${clsName}` : focusOpt ? `${focusOpt.emoji} ${focusOpt.label} day` : null, f.duration != null ? `${f.duration} min` : null, f.rpe != null ? `RPE ${f.rpe}` : null].filter(Boolean).join(" · ")
+                ? [clsName ? `${focusOpt ? focusOpt.emoji + " " : ""}${clsName}` : focusOpt ? `${focusOpt.emoji} ${focusOpt.label} day` : null, f.raw.points != null ? `🏀 ${f.raw.points} pts` : null, f.raw.rebounds != null ? `${f.raw.rebounds} reb` : null, f.duration != null ? `${f.duration} min` : null, f.rpe != null ? `RPE ${f.rpe}` : null].filter(Boolean).join(" · ")
                 : f.subtitle;
               const canExpand = f.kind === "workout" && f.type === "lift" && f.exercises && f.exercises.length;
               const expanded = expandedLog[f.kind + f.id];
@@ -6964,6 +7091,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
