@@ -1,0 +1,10 @@
+project_id = "back-to-the-dunk"
+
+[functions.wg-sync]
+verify_jwt = true
+[functions.d3-reminder]
+verify_jwt = true
+[functions.s440-schedule]
+verify_jwt = true
+[functions.engine-reminder]
+verify_jwt = true
