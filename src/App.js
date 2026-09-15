@@ -4,14 +4,20 @@ import { fetchAll, mutateRecord, restorePayload } from './data/records';
 import { UserDataProvider, useUserData } from './data/UserData';
 import { accountKey, readJSON, writeJSON, DEFAULT_BODY } from './data/storage';
 import { useWorkoutDraft } from './data/useWorkoutDraft';
-import { C, LS_THEME, loadThemePref, applyThemePalette, FONT_DISPLAY, FONT_MONO, injectStyles, SESSIONS, RECOVERY, s440FocusFor, startOfWeek, normalizeAll, weightProjection, computeGameState, DEFAULT_SCHEDULE, DOW_NAMES, PHASES, calcProteinTarget, requestNotificationPermission, VAPID_PUBLIC_KEY, urlBase64ToUint8Array, pushSupported, daysAgo, calcVolume, fmtNum, calcStreak, getLastPerformance, platesToReach, greeting, todayKey, engineModel, engineBumpPreview } from './model';
+import { C, LS_THEME, loadThemePref, applyThemePalette, FONT_DISPLAY, FONT_MONO, injectStyles, SESSIONS, RECOVERY, s440FocusFor, startOfWeek, normalizeAll, weightProjection, computeGameState, DEFAULT_SCHEDULE, DOW_NAMES, requestNotificationPermission, VAPID_PUBLIC_KEY, urlBase64ToUint8Array, pushSupported, daysAgo, fmtNum, getLastPerformance, platesToReach, todayKey, engineModel } from './model';
 import { Surface, Eyebrow, Pill, NavItem, Btn, PageTitle, toast, ToastHost, Confetti } from './ui';
-import { RepsEditor, RestTimer, ExRow, TabataTimer, FastBreakTimer, DynoCard } from './training';
+import { RestTimer, DynoCard } from './training';
 import { StatCard, StatsTab } from './statistics';
 import { NutritionTab } from './nutrition';
 import { toLocalInput, ConditioningLogger, WalkLogger, LiftDateSheet } from './logging';
-import { AchievementsSheet, CelebrationOverlay, HomeTab } from './home';
+import { AchievementsSheet, CelebrationOverlay } from './home';
 import { AuthGate } from './auth';
+import { EngineHome, EngineProgress, GoalSettings, WeeklyPlan, PlanOverview } from './engine-ui';
+import { DEFAULT_PREFERENCES, engineAchievements, exerciseRecord, formatEngine, nutritionTotals, weekKey } from './engine';
+import { TrainWorkspace } from './WorkoutFlow';
+import { FoodJournal, newFoodId } from './FoodJournal';
+import { setFeedbackPreferences, vibrate } from './model';
+import './engine.css';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -42,7 +48,7 @@ export default function App() {
 export function AccountApp({ userId, userEmail }) {
   const cloud = useUserData();
   const draft = useWorkoutDraft(userId, toLocalInput(new Date()));
-  const { activeSession, setActiveSession, checked, setChecked, vals, setVals, liftDate, setLiftDate } = draft;
+  const { activeSession, checked, setChecked, vals, setVals, liftDate, setLiftDate } = draft;
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const busyRef = useRef(false);
@@ -68,7 +74,6 @@ export function AccountApp({ userId, userEmail }) {
     injectStyles(true);
     try { localStorage.setItem(LS_THEME, theme); } catch (e) {}
   }, [theme]);
-  const toggleTheme = () => setTheme(t => (t === "dark" ? "light" : "dark"));
 
   const [tab, setTab] = useState("home");
   const [loading, setLoading] = useState(true);
@@ -95,7 +100,38 @@ export function AccountApp({ userId, userEmail }) {
   const [walkState, setWalkState] = useState({ open: false }); // { open, editing? }
   const [liftEdit, setLiftEdit] = useState(null); // workout row being date-edited
 
-  const [restEnabled, setRestEnabled] = useState(true);
+  const preferences = cloud.get('preferences', DEFAULT_PREFERENCES);
+  const weeklyGoals = cloud.get('weeklyGoals', {});
+  const courtRatings = cloud.get('court', {});
+  const foodEntries = cloud.get('foodEntries', {});
+  const foodFavorites = cloud.get('foodFavorites', {});
+  const setPreferences = next => cloud.set('preferences', next, DEFAULT_PREFERENCES);
+  const updatePreferences = patch => setPreferences(prev => ({...prev,...patch}));
+  const setFoodEntry = (id, value) => cloud.set('foodEntries', prev => ({...prev,[id]:value}), {});
+  const setFavorite = (id, value) => cloud.set('foodFavorites', prev => ({...prev,[id]:value}), {});
+  const rateCourt = (id, rating) => {cloud.set('court', prev => ({...prev,[id]:rating}), {});toast('Court check-in recorded');};
+  const saveGoals = patch => {
+    updatePreferences(patch);
+    cloud.set('weeklyGoals', prev => ({...prev,[weekKey(new Date())]:patch.weeklyGoal}), {});
+  };
+  const restEnabled = preferences.restTimer !== false;
+  const setRestEnabled = value => updatePreferences({restTimer:value});
+  const [sessionResult,setSessionResult] = useState(null);
+  setFeedbackPreferences(preferences);
+  const thisWeekKey = weekKey(new Date());
+  useEffect(() => {
+    if (cloud.ready && !weeklyGoals[thisWeekKey]) cloud.set('weeklyGoals', prev => ({...prev,[thisWeekKey]:preferences.weeklyGoal}), {});
+  }, [cloud.ready, thisWeekKey]);
+  const startTraining = (type, short = false) => {
+    if (type === 'walk') {setWalkState({open:true});return;}
+    if (type === 'game' || type === 'cross_training') {setLoggerState({open:true,prefillType:type});return;}
+    draft.setFlow({active:true,mode:type==='lift'?'lift':type==='tabata'?'tabata':'long_interval',short,index:0,
+      minutes:type==='tabata'?(short?2:4):(short?10:12)});
+    setTab('workout');window.scrollTo({top:0,behavior:'auto'});
+  };
+  const hasLiftDraft = Object.values(checked).some(Boolean) || Object.values(vals).some(v => Number(v.setsDone)>0 || Object.values(v.completedSets || {}).some(Boolean));
+  const hasDraft = !!draft.flow?.active || !!draft.flow?.timer?.elapsed || !!draft.flow?.timer?.startedAt || hasLiftDraft;
+  const resumeTraining = () => {draft.setFlow({...draft.flow,active:true,mode:draft.flow?.mode || 'lift'});setTab('workout');draft.dismissResume();window.scrollTo({top:0,behavior:'auto'});};
   const [notifEnabled, setNotifEnabled] = useState(false);
 
   // Body stats + protein log + calorie log (localStorage-backed)
@@ -105,13 +141,13 @@ export function AccountApp({ userId, userEmail }) {
   const setProteinLog = next => cloud.set('protein', next, {});
   const calorieLog = cloud.get('calories', {});
   const setCalorieLog = next => cloud.set('calories', next, {});
+  const nutrition = nutritionTotals(proteinLog,calorieLog,foodEntries);
   const vitaminD3Log = cloud.get('vitaminD3', {});
   const setVitaminD3Log = next => cloud.set('vitaminD3', next, {});
   const creatineLog = cloud.get('creatine', {});
   const setCreatineLog = next => cloud.set('creatine', next, {});
 
   // Reps editor state
-  const [repsEditor, setRepsEditor] = useState(null); // { exId, sk, setIndex, currentReps, defaultReps, exerciseName }
 
   // Track when session is active for visibility-change banner
   const sessionActiveRef = useRef(false);
@@ -141,7 +177,7 @@ export function AccountApp({ userId, userEmail }) {
   const showSave = (ok) => { setSaveMsg(ok ? "Saved" : "Failed"); setTimeout(() => setSaveMsg(""), 2400); };
 
   // Gamification state, derived purely from logged data.
-  const game = useMemo(() => computeGameState(history, cardioSessions, weightLog), [history, cardioSessions, weightLog]);
+  const game = useMemo(() => engineAchievements(computeGameState(history, cardioSessions, weightLog), normalizeAll(cardioSessions,history), preferences, weeklyGoals), [history, cardioSessions, weightLog, preferences, weeklyGoals]);
 
   // Post-game legs check-ins, keyed by cardio session id.
   const legsLog = cloud.get('legs', {});
@@ -282,34 +318,6 @@ export function AccountApp({ userId, userEmail }) {
 
   const session = SESSIONS[activeSession];
   const sk = session.id;
-  const anyChecked = session.exercises.some(ex => checked[sk+"_"+ex.id]);
-  const volume = calcVolume(
-    session.exercises,
-    Object.fromEntries(session.exercises.map(ex => [ex.id, checked[sk+"_"+ex.id]])),
-    Object.fromEntries(session.exercises.map(ex => [ex.id, vals[sk+"_"+ex.id] || {}]))
-  );
-
-  const toggleCheck = id => setChecked(p => ({...p, [id]: !p[id]}));
-  const setVal = (id, f, v) => setVals(p => ({...p, [id]: {...(p[id]||{}), [f]: v}}));
-
-  // Reps editor handlers
-  const openRepsEditor = (exId, ex, setIndex, currentReps) => {
-    setRepsEditor({
-      exId, sk, setIndex, currentReps,
-      defaultReps: ex.reps,
-      exerciseName: ex.name,
-    });
-  };
-
-  const saveCustomReps = (newReps) => {
-    if (!repsEditor) return;
-    const fullId = repsEditor.sk + "_" + repsEditor.exId;
-    const currentVals = vals[fullId] || {};
-    const customReps = { ...(currentVals.customReps || {}) };
-    customReps[repsEditor.setIndex] = newReps;
-    setVals(p => ({...p, [fullId]: {...currentVals, customReps}}));
-  };
-
   // Save body stats to localStorage when changed
   const updateBodyStats = (next) => {
     setBodyStats(next);
@@ -349,30 +357,13 @@ export function AccountApp({ userId, userEmail }) {
   const sortCardio = rows => [...rows].sort((a,b) => new Date(b.completed_at)-new Date(a.completed_at));
   const sortByLogged = rows => [...rows].sort((a,b) => new Date(b.logged_at)-new Date(a.logged_at));
   const logSession = () => run(async () => {
-    if (!anyChecked) throw new Error('Check at least one exercise first.');
-    const exVols = session.exercises.filter(ex => checked[sk+"_"+ex.id]).map(ex => {
-      const exVals = vals[sk+"_"+ex.id] || {};
-      const w = ex.barbell ? 45+(parseFloat(exVals.perSide)||0)*2 : parseFloat(exVals.weight)||0;
-      const s = parseInt(exVals.setsDone || ex.sets);
-      const customReps = exVals.customReps || {};
-
-      // Compute total reps & per-set breakdown
-      let totalReps = 0;
-      const repsBreakdown = [];
-      for (let i = 0; i < s; i++) {
-        const r = customReps[i] !== undefined ? parseFloat(customReps[i]) : (parseFloat(ex.reps) || 0);
-        totalReps += r;
-        repsBreakdown.push(r);
-      }
-      const repsDisplay = repsBreakdown.length > 0 && repsBreakdown.some(r => r !== parseFloat(ex.reps))
-        ? repsBreakdown.join(",")
-        : ex.reps;
-
-      return {
-        name: ex.name, sets: s, reps: repsDisplay, weight: w,
-        volume: (ex.noWeight||ex.timed||ex.bodyweight) ? 0 : w*totalReps,
-      };
-    });
+    const exVols = session.exercises.map(ex => {
+      const value = vals[sk+"_"+ex.id] || {};
+      return exerciseRecord(value.swap || ex, value, checked[sk+"_"+ex.id]);
+    }).filter(Boolean);
+    if (!exVols.length) throw new Error('Complete at least one set first.');
+    if (!liftDate || !Number.isFinite(new Date(liftDate).getTime()) || new Date(liftDate)>new Date()) throw new Error('Choose a valid workout date.');
+    if (exVols.some(ex => ex.set_details.some(set => !Number.isFinite(set.reps) || set.reps<=0 || set.reps>10000 || !Number.isFinite(set.weight) || set.weight<0 || set.weight>2000))) throw new Error('Check the reps and weights of your completed sets.');
     const payload = { session_name: session.code+": "+session.name, color: session.color, total_volume: exVols.reduce((a,e)=>a+e.volume,0), exercises: exVols };
     if (liftDate) payload.logged_at = new Date(liftDate).toISOString();
     const row = await write('workouts', 'insert', payload);
@@ -380,20 +371,31 @@ export function AccountApp({ userId, userEmail }) {
     setChecked(p => Object.fromEntries(Object.entries(p).filter(([key]) => !key.startsWith(sk + '_'))));
     setVals(p => Object.fromEntries(Object.entries(p).filter(([key]) => !key.startsWith(sk + '_'))));
     setLiftDate(toLocalInput(new Date())); setRestTimer(null); setConfetti(true);
+    draft.setFlow({active:false,mode:'lift'});draft.dismissResume();setTab('home');
+    setSessionResult({title:'Workout recorded',detail:`${exVols.reduce((sum,e)=>sum+e.sets,0)} completed sets. Strength supports your game and counts toward your weekly goal.`});
     showSave(true); toast('Lift logged');
   });
   const logConditioning = payload => run(async () => {
+    if (!Number.isFinite(payload.duration_min) || payload.duration_min<=0 || !Number.isInteger(payload.rpe) || payload.rpe<1 || payload.rpe>10) throw new Error('Enter a positive duration and effort from 1 to 10.');
+    const before = engineModel(normalizeAll(cardioSessions,history)).score;
     const row = await write('cardio_sessions', 'insert', { completed_at: new Date().toISOString(), ...payload });
+    const after = engineModel(normalizeAll([row,...cardioSessions],history)).score;
     setCardioSessions(p => sortCardio([row, ...p])); setConfetti(true); showSave(true); toast('Session logged');
+    draft.setFlow({active:false});draft.dismissResume();setTab('home');
+    setSessionResult({title:'Session recorded',detail:`${payload.duration_min} min · effort ${payload.rpe}/10. Engine ${formatEngine(before)} → ${formatEngine(after)} (+${formatEngine(after-before)} points).`});
   });
-  const logTabata = () => logConditioning({ workout_type: 'tabata', duration_min: RECOVERY.TYPES.tabata.defaultDurationMin, rpe: RECOVERY.TYPES.tabata.defaultRPE });
-  const logFastBreak = minutes => logConditioning({ workout_type: 'long_interval', duration_min: minutes, rpe: 9, notes: `Fast break drill · 15s sprint / 45s float × ${minutes}` });
   const logDyno = (miles, vo2) => logConditioning({ workout_type: 'long_interval', duration_min: 12, rpe: 10, notes: `Dyno day · Cooper 12-min test · ${miles} mi · est VO₂max ${vo2}` });
   const saveCardio = ({ id, type, completed_at, duration_min, rpe, notes, legs, points, rebounds, focus, class_name }) => run(async () => {
     if (!Number.isFinite(duration_min) || duration_min <= 0 || rpe < 1 || rpe > 10) throw new Error('Enter a positive duration and effort from 1 to 10.');
     const row = await write('cardio_sessions', id != null ? 'update' : 'insert', { workout_type: type, completed_at, duration_min, rpe, notes, points, rebounds, focus, class_name }, id);
     setCardioSessions(p => sortCardio(id != null ? p.map(r => r.id === id ? row : r) : [row, ...p]));
     setGameLegs(row.id, legs); showSave(true); setLoggerState({ open: false });
+    if (id == null) {
+      const before=engineModel(normalizeAll(cardioSessions,history)).score;
+      const after=engineModel(normalizeAll([row,...cardioSessions],history)).score;
+      setSessionResult({title:type==='game'?'Game recorded':'Session recorded',detail:`${duration_min} min · effort ${rpe}/10. Engine ${formatEngine(before)} → ${formatEngine(after)}.`});
+      setTab('home');
+    }
   });
   const deleteEntry = (table, id, rows, setRows, sort, after) => run(async () => {
     const row = rows.find(r => r.id === id);
@@ -441,19 +443,16 @@ export function AccountApp({ userId, userEmail }) {
     }
   };
 
-  const thisWeek = history.filter(h => (Date.now()-new Date(h.logged_at)) < 7*86400000).length;
   const totalLbs = history.reduce((a,h) => a+(h.total_volume||0), 0);
-  const lastGym = history.find(h => h.session_name && h.session_name !== "Treadmill Walk");
-  const restDay = lastGym && Math.floor((Date.now()-new Date(lastGym.logged_at))/86400000) < 1;
 
   // Did today's 4-minute tabata get logged?
-  const tabataToday = cardioSessions.some(s => s.workout_type === "tabata" && new Date(s.completed_at).toDateString() === new Date().toDateString());
 
   // Primary navigation — three groups, each fronting a set of sub-tabs.
   const GROUPS = [
     { id: "today",    label: "Today",    icon: "🔥", tabs: ["home"] },
-    { id: "train",    label: "Train",    icon: "🏋️", tabs: ["workout", "history", "goals"] },
-    { id: "progress", label: "Progress", icon: "📊", tabs: ["stats", "weight", "nutrition"] },
+    { id: "train",    label: "Train",    icon: "🏋️", tabs: ["workout", "goals"] },
+    { id: "fuel", label: "Fuel", icon: "🥣", tabs: ["nutrition"] },
+    { id: "progress", label: "Progress", icon: "📈", tabs: ["stats", "history", "weight"] },
   ];
   const SUB_LABELS = {
     home: "Today", workout: "Train", history: "Log", goals: "Plan",
@@ -482,15 +481,15 @@ export function AccountApp({ userId, userEmail }) {
   );
 
   return (
-    <div className="court-bg" style={{ minHeight: "100vh", paddingBottom: 80 }}>
+    <div className="court-bg engine-app" data-theme={theme} data-motion={preferences.motion ? "on" : "off"} style={{ minHeight: "100vh", paddingBottom: 80 }}>
 
-      <div role="status" aria-live="polite" style={{ padding: '8px 20px', color: C.bone, background: C.panel }}>
+      {(cloud.error || cloud.pendingCount || draft.error || cloud.legacyAvailable) && <div role="status" aria-live="polite" style={{ padding: '8px 20px', color: C.bone, background: C.panel }}>
         {busy ? 'Saving…' : cloud.syncing ? 'Syncing…' : cloud.error || cloud.pendingCount ? 'Changes waiting to sync.' : 'Synced'}
         {cloud.error && <><span> {cloud.error} </span><button onClick={cloud.retry}>Retry sync</button></>}
         {draft.error && <p role="alert">{draft.error}</p>}
-        {draft.resumed && <p>Your unfinished workout is ready. <button onClick={() => { setTab('workout'); draft.dismissResume(); }}>Resume workout</button></p>}
+
         {cloud.legacyAvailable && <p>Training and nutrition data was found in this browser. Import it only if it belongs to this account. <button onClick={cloud.importLegacy}>Import my saved data</button></p>}
-      </div>
+      </div>}
       {/* HEADER */}
       <header style={{
         position: "sticky", top: 0, zIndex: 100,
@@ -503,8 +502,12 @@ export function AccountApp({ userId, userEmail }) {
             <div style={{ width: 32, height: 32, borderRadius: 10, background: `linear-gradient(135deg, ${C.rust}, ${C.amber})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>💪</div>
             <div>
               <div className="h-display" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.02em", color: C.bone, lineHeight: 1.1 }}>The Work</div>
-              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.1em", marginTop: 2 }}>SHOW UP · DO THE WORK</div>
+              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.1em", marginTop: 2 }}>BUILD YOUR ENGINE</div>
             </div>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <span role="status" style={{fontSize:12,color:C.dim}}>{busy?'Saving…':cloud.syncing?'Syncing…':cloud.pendingCount?'Pending':'Synced'}</span>
+            <button className="engine-button" aria-label="Settings" onClick={()=>{setTab('settings');window.scrollTo({top:0,behavior:'auto'});}}>⚙</button>
           </div>
           {saveMsg && (
             <div className="ease-in" style={{
@@ -524,12 +527,12 @@ export function AccountApp({ userId, userEmail }) {
       <main style={{ padding: "20px 16px 100px", maxWidth: 480, margin: "0 auto" }}>
 
         {/* ── SUB-RAIL — switch within a group ── */}
-        {activeGroup.tabs.length > 1 && (
+        {tab!=="settings" && activeGroup.tabs.length > 1 && !(tab==="workout" && draft.flow?.active) && (
           <div className="tab-rail" style={{ marginBottom: 18, padding: 4, background: C.raised, borderRadius: 14, border: `1px solid ${C.line}` }}>
             {activeGroup.tabs.map(id => {
               const on = tab === id;
               return (
-                <button key={id} className="btn" onClick={() => { setTab(id); window.scrollTo({ top: 0, behavior: "smooth" }); if (navigator.vibrate) navigator.vibrate(5); }}
+                <button key={id} className="btn" onClick={() => { setTab(id); window.scrollTo({ top: 0, behavior: "smooth" }); vibrate(5); }}
                   style={{
                     flex: 1, whiteSpace: "nowrap", padding: "9px 14px", border: "none", borderRadius: 10,
                     background: on ? C.panel : "transparent", color: on ? C.bone : C.dim,
@@ -543,195 +546,19 @@ export function AccountApp({ userId, userEmail }) {
           </div>
         )}
 
-        {/* ── HOME (consistency-first) ── */}
-        {tab === "home" && (
-          <HomeTab
-            bodyStats={bodyStats}
-            history={history}
-            cardioSessions={cardioSessions}
-            weightLog={weightLog}
-            game={game}
-            constraints={constraints}
-            proteinLog={proteinLog}
-            vitaminD3Log={vitaminD3Log}
-            creatineLog={creatineLog}
-            onGoTab={setTab}
-            onOpenLogger={(opts) => setLoggerState({ open: true, ...opts })}
-            onOpenAwards={() => setAwardsOpen(true)}
-            onChooseLift={() => { setTab("workout"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-            onGoWalk={() => setWalkState({ open: true })}
-            theme={theme}
-            onToggleTheme={toggleTheme}
-          />
-        )}
+        {tab === "home" && <>
+          {sessionResult && <section className="engine-card" role="status"><div className="engine-row"><strong>{sessionResult.title}</strong><button className="engine-link" onClick={()=>setSessionResult(null)}>Dismiss</button></div><p>{sessionResult.detail}</p></section>}
+          <EngineHome history={history} cardioSessions={cardioSessions} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} courtRatings={courtRatings} onRate={rateCourt} hasDraft={hasDraft} onResume={resumeTraining} onStart={startTraining} onGoTab={setTab} onQuickAdd={()=>setQuickAddOpen(true)} onOpenAwards={()=>setAwardsOpen(true)}/>
+        </>}
 
-        {/* ── TRAIN ── */}
-        {tab === "workout" && (() => {
-          const streak = calcStreak(history);
-          const todaySessions = history.filter(h => new Date(h.logged_at).toDateString() === new Date().toDateString()).length;
-          const todayCardio = cardioSessions.filter(s => new Date(s.completed_at).toDateString() === new Date().toDateString()).length;
-          const todayTotal = todaySessions + todayCardio;
-          const dateStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-          return (
-          <>
-            {/* ── Today Hero ── */}
-            <div className="ease-up" style={{ marginBottom: 20 }}>
-              <Eyebrow>{dateStr}</Eyebrow>
-              <h1 className="h-display" style={{ fontSize: 36, margin: "8px 0 4px", color: C.bone, letterSpacing: "-0.04em", lineHeight: 1 }}>
-                {greeting()}.
-              </h1>
-              <p className="h-serif" style={{ fontSize: 17, color: C.dim, margin: "6px 0 0", lineHeight: 1.4 }}>
-                {todayTotal === 0 ? (restDay ? "Recovery is part of the work." : "Let's get to work.") : todayTotal === 1 ? "One down. Strong start." : `${todayTotal} sessions in today. Beast.`}
-              </p>
-
-              {/* Notification permission prompt — non-intrusive */}
-              {!notifEnabled && "Notification" in window && Notification.permission === "default" && (
-                <div onClick={enableNotifications} className="card-tap" style={{
-                  marginTop: 14, padding: "10px 14px", borderRadius: 12,
-                  background: C.electric + "15", border: `1px solid ${C.electric}40`,
-                  display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
-                }}>
-                  <span style={{ fontSize: 18 }}>🔔</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: C.bone }}>Get timer alerts</div>
-                    <div style={{ fontSize: 11, color: C.dim, marginTop: 1 }}>Banner notifications when you switch apps mid-rest</div>
-                  </div>
-                  <span style={{ fontSize: 11, color: C.electric, fontFamily: FONT_MONO, fontWeight: 600 }}>ENABLE →</span>
-                </div>
-              )}
-
-              {/* Weight reminder if 7+ days since last weigh-in */}
-              {(() => {
-                const lastW = weightLog[0];
-                const daysSinceWeight = lastW ? Math.floor((Date.now() - new Date(lastW.logged_at)) / 86400000) : null;
-                if (daysSinceWeight !== null && daysSinceWeight >= 7) {
-                  return (
-                    <div onClick={() => setTab("weight")} className="card-tap" style={{
-                      marginTop: 14, padding: "10px 14px", borderRadius: 12,
-                      background: C.amber + "15", border: `1px solid ${C.amber}40`,
-                      display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
-                    }}>
-                      <span style={{ fontSize: 18 }}>⚖️</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: C.bone }}>Time to weigh in</div>
-                        <div style={{ fontSize: 11, color: C.dim, marginTop: 1 }}>{daysSinceWeight} days since last check</div>
-                      </div>
-                      <span style={{ fontSize: 12, color: C.amber, fontFamily: FONT_MONO }}>→</span>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-
-              {/* Streak + today stats row */}
-              <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-                <div style={{ flex: 1, background: C.panel, border: `1px solid ${streak > 0 ? C.rust + "40" : C.line}`, borderRadius: 14, padding: "12px 14px" }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                    {streak > 0 && <span style={{ fontSize: 18 }}>🔥</span>}
-                    <span className="num-tab h-display" style={{ fontSize: 26, fontWeight: 700, color: streak > 0 ? C.rust : C.dim, letterSpacing: "-0.03em", lineHeight: 1 }}>{streak}</span>
-                  </div>
-                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4, letterSpacing: "0.08em" }}>DAY STREAK</div>
-                </div>
-                <div style={{ flex: 1, background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, padding: "12px 14px" }}>
-                  <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 700, color: todayTotal > 0 ? C.moss : C.dim, letterSpacing: "-0.03em", lineHeight: 1 }}>{todayTotal}</div>
-                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4, letterSpacing: "0.08em" }}>TODAY</div>
-                </div>
-                <div style={{ flex: 1, background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, padding: "12px 14px" }}>
-                  <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 700, color: thisWeek > 0 ? C.amber : C.dim, letterSpacing: "-0.03em", lineHeight: 1 }}>{thisWeek}</div>
-                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4, letterSpacing: "0.08em" }}>THIS WEEK</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="ease-up-1"><TabataTimer onLog={logTabata} loggedToday={tabataToday} /></div>
-            <div className="ease-up-2"><FastBreakTimer onLog={logFastBreak} cardioSessions={cardioSessions} /></div>
-            <div className="ease-up-2"><DynoCard onLog={logDyno} /></div>
-            <div className="ease-up-2">
-              <Surface accent={C.plum}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <Pill color={C.plum}>Anytime · Recovery</Pill>
-                    <h2 className="h-display" style={{ fontSize: 22, margin: "10px 0 2px", color: C.bone }}>Walk</h2>
-                    <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>minutes · speed · incline</div>
-                  </div>
-                  <Btn color={C.plum} onClick={() => setWalkState({ open: true })}>Log a walk</Btn>
-                </div>
-              </Surface>
-            </div>
-
-            {/* Status banners */}
-            <div className="ease-up-3" style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr", marginBottom: 14 }}>
-              <Surface accent={restDay ? C.faint : session.color} padding={14} style={{ marginBottom: 0 }}>
-                <Eyebrow color={restDay ? C.dim : session.color}>Lift</Eyebrow>
-                <div style={{ marginTop: 8, fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em", color: C.bone }}>
-                  {restDay ? "Recover" : session.name}
-                </div>
-                <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>
-                  {restDay ? `Last: ${daysAgo(lastGym.logged_at)}` : "Ready when you are"}
-                </div>
-              </Surface>
-              <Surface accent={tabataToday ? C.moss : C.amber} padding={14} style={{ marginBottom: 0 }}>
-                <Eyebrow color={tabataToday ? C.moss : C.amber}>Tabata</Eyebrow>
-                <div style={{ marginTop: 8, fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em", color: C.bone }}>
-                  {tabataToday ? "✓ Done today" : "🔥 4-min Tabata"}
-                </div>
-                <div style={{ fontSize: 11, color: tabataToday ? C.moss : C.dim, marginTop: 2, fontFamily: FONT_MONO }}>
-                  {tabataToday ? "Logged today" : "2×/week · per the plan"}
-                </div>
-              </Surface>
-            </div>
-
-            <div className="ease-up-4">
-              <Surface accent={session.color}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
-                  <div>
-                    <Pill color={session.color}>{session.location}</Pill>
-                    <h3 className="h-display" style={{ fontSize: 28, margin: "10px 0 4px", color: C.bone, letterSpacing: "-0.03em" }}>{session.name}</h3>
-                    <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>{session.exercises.length} exercises</div>
-                  </div>
-                  {volume > 0 && (
-                    <div style={{ textAlign: "right" }}>
-                      <Eyebrow>Volume</Eyebrow>
-                      <div className="num-tab h-display" style={{ fontSize: 30, fontWeight: 700, color: session.color, letterSpacing: "-0.03em", lineHeight: 1, marginTop: 4 }}>{fmtNum(volume)}</div>
-                      <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 2 }}>LBS</div>
-                    </div>
-                  )}
-                </div>
-                {session.exercises.map(ex => (
-                  <ExRow key={ex.id} ex={ex}
-                    checked={checked[sk+"_"+ex.id]}
-                    onCheck={() => toggleCheck(sk+"_"+ex.id)}
-                    vals={vals[sk+"_"+ex.id] || {}}
-                    onVal={(f,v) => setVal(sk+"_"+ex.id, f, v)}
-                    color={session.color}
-                    onRest={restEnabled && !ex.timed && !ex.noWeight ? () => setRestTimer({ seconds: 90 }) : null}
-                    lastPerf={getLastPerformance(history, ex.name)}
-                    onEditReps={(setIndex, currentReps) => openRepsEditor(ex.id, ex, setIndex, currentReps)}
-                  />
-                ))}
-                <div style={{ marginTop: 16 }}>
-                  <Eyebrow>Workout date</Eyebrow>
-                  <input type="datetime-local" value={liftDate} max={toLocalInput(new Date())} onChange={e => setLiftDate(e.target.value)}
-                    style={{ width: "100%", marginTop: 6, background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "11px 14px", fontSize: 14, outline: "none", fontFamily: FONT_DISPLAY, boxSizing: "border-box" }} />
-                </div>
-                <Btn color={session.color} onClick={logSession} disabled={!anyChecked || busy} full size="lg" style={{ marginTop: 12 }}>
-                  {anyChecked ? "End Workout & Log" : "Check an exercise to log"}
-                </Btn>
-              </Surface>
-            </div>
-
-
-            <p className="h-serif" style={{ textAlign: "center", color: C.dim, fontSize: 16, margin: "24px 0 0" }}>
-              "I am someone who never misses a workout."
-              <span style={{ display: "block", fontFamily: FONT_MONO, fontStyle: "normal", fontSize: 10, letterSpacing: "0.15em", marginTop: 6 }}>— JAMES CLEAR</span>
-            </p>
-          </>
-          );
-        })()}
+        {(tab === "workout" || draft.flow?.active) && <div hidden={tab!=="workout"}>
+          <TrainWorkspace draft={draft} history={history} onStart={startTraining} onRest={restEnabled?()=>setRestTimer({seconds:90,startedAt:Date.now()}):null} onSaveLift={logSession} onSaveConditioning={logConditioning} onLog={type=>setLoggerState({open:true,prefillType:type})} onWalk={()=>setWalkState({open:true})} onDyno={<DynoCard onLog={logDyno}/>} busy={busy}/>
+        </div>}
 
         {/* ── NUTRITION ── */}
         {tab === "nutrition" && (
-          <NutritionTab
+          <FoodJournal entries={foodEntries} favorites={foodFavorites} onEntry={setFoodEntry} onFavorite={setFavorite} proteinLog={nutrition.protein} calorieLog={nutrition.calories} bodyStats={bodyStats}>
+          <NutritionTab guideOnly onLogFood={food=>{const id=newFoodId();setFoodEntry(id,{name:food.name,protein:food.protein||food.totalProtein||0,calories:food.calories||0,portions:1,day:todayKey(),createdAt:new Date().toISOString()});toast('Food added',{actionLabel:'UNDO',onAction:()=>setFoodEntry(id,null)});}}
             bodyStats={bodyStats}
             onUpdateBody={updateBodyStats}
             proteinLog={proteinLog}
@@ -743,6 +570,7 @@ export function AccountApp({ userId, userEmail }) {
             creatineLog={creatineLog}
             onCreatineToggle={toggleCreatine}
           />
+          </FoodJournal>
         )}
 
         {/* ── HISTORY ── */}
@@ -836,7 +664,7 @@ export function AccountApp({ userId, userEmail }) {
         })()}
 
         {/* ── STATS ── */}
-        {tab === "stats" && <StatsTab history={history} weightLog={weightLog} cardioSessions={cardioSessions} legsLog={legsLog} />}
+        {tab === "stats" && <EngineProgress history={history} cardioSessions={cardioSessions} preferences={preferences} courtRatings={courtRatings} onRate={rateCourt} onSettings={()=>setTab("settings")}><StatsTab history={history} weightLog={weightLog} cardioSessions={cardioSessions} legsLog={legsLog} /></EngineProgress>}
 
         {/* ── WEIGHT ── */}
         {tab === "weight" && (() => {
@@ -969,6 +797,8 @@ export function AccountApp({ userId, userEmail }) {
           <>
             <div className="ease-up"><PageTitle kicker="Consistency · compounds">The Plan</PageTitle></div>
 
+            <PlanOverview all={normalizeAll(cardioSessions,history)} constraints={constraints} onStart={startTraining}/>
+            <details className="engine-card"><summary style={{minHeight:44,cursor:"pointer",paddingTop:10,fontWeight:600}}>Schedule settings</summary>
             {/* Weekly schedule — Shabbat + game night the engine plans around */}
             {(() => {
               const wkNow = startOfWeek(new Date()).getTime();
@@ -1046,6 +876,20 @@ export function AccountApp({ userId, userEmail }) {
               );
             })()}
 
+            </details>
+            <WeeklyPlan all={normalizeAll(cardioSessions,history)} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} onPlan={()=>setTab('settings')}/>
+            <button className="engine-button" onClick={()=>setTab('settings')}>Edit Engine & weekly goals</button>
+          </>
+        )}
+
+        {tab === "settings" && <>
+          <PageTitle kicker="The Work">Settings</PageTitle>
+          <GoalSettings preferences={preferences} onSave={saveGoals}/>
+          <section className="engine-card"><h2>Make it yours</h2>
+            <label className="engine-field">Coaching tone<select aria-label="Coaching tone" value={preferences.coachingTone} onChange={e=>updatePreferences({coachingTone:e.target.value})}><option value="calm">Calm</option><option value="encouraging">Encouraging</option><option value="intense">Intense</option></select></label>
+            <label className="engine-field">Appearance<select aria-label="Appearance" value={theme} onChange={e=>setTheme(e.target.value)}><option value="light">Light</option><option value="dark">Dark</option></select></label>
+            {['sound','vibration','motion'].map(key=><div key={key} className="engine-row" style={{padding:'10px 0'}}><span>{key==='sound'?'Sounds & voice':key==='vibration'?'Vibration':'Animations & celebrations'}</span><button className="engine-button" aria-label={key} aria-pressed={!!preferences[key]} onClick={()=>updatePreferences({[key]:!preferences[key]})}>{preferences[key]?'On':'Off'}</button></div>)}
+          </section>
             {/* Quick Settings */}
             <div className="ease-up-1">
               <Surface>
@@ -1056,7 +900,7 @@ export function AccountApp({ userId, userEmail }) {
                       <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>Rest timer</div>
                       <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Auto-start after each set</div>
                     </div>
-                    <button onClick={() => setRestEnabled(!restEnabled)} className="btn"
+                    <button onClick={() => setRestEnabled(!restEnabled)} aria-label="Rest timer" aria-pressed={restEnabled} className="btn"
                       style={{
                         width: 50, height: 28, borderRadius: 14, border: "none",
                         background: restEnabled ? C.moss : C.faint,
@@ -1087,7 +931,7 @@ export function AccountApp({ userId, userEmail }) {
                       <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>💊 Daily D3 reminder</div>
                       <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Push to this phone every morning at 9</div>
                     </div>
-                    <button onClick={toggleD3Push} className="btn"
+                    <button onClick={toggleD3Push} aria-label="Daily D3 reminder" aria-pressed={d3Push} className="btn"
                       style={{
                         width: 50, height: 28, borderRadius: 14, border: "none",
                         background: d3Push ? C.moss : C.faint,
@@ -1113,89 +957,19 @@ export function AccountApp({ userId, userEmail }) {
               </Surface>
             </div>
 
-            {PHASES.map((p, i) => (
-              <div key={i} className={`ease-up-${Math.min(i+1, 4)}`}>
-                <Surface accent={p.color}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
-                    <div>
-                      <Eyebrow color={p.color}>Weeks {p.weeks}</Eyebrow>
-                      <div className="num-tab h-display" style={{ fontSize: 28, fontWeight: 700, color: p.color, letterSpacing: "-0.03em", marginTop: 6 }}>
-                        {p.weight} <span style={{ fontSize: 12, color: C.dim, fontWeight: 500, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>LBS</span>
-                      </div>
-                    </div>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: p.color + "22", border: `1px solid ${p.color}55`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: p.color, fontFamily: FONT_MONO }}>{i+1}</div>
-                  </div>
-                  <p className="h-serif" style={{ fontSize: 18, color: C.cream, margin: "0 0 14px", lineHeight: 1.4 }}>{p.focus}</p>
-                  <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>
-                    {p.goals.map((g, j) => (
-                      <div key={j} style={{ display: "flex", gap: 10, padding: "5px 0", fontSize: 13, color: C.cream, alignItems: "baseline" }}>
-                        <span style={{ color: p.color, fontFamily: FONT_MONO, fontSize: 11 }}>0{j+1}</span>
-                        <span style={{ flex: 1 }}>{g}</span>
-                      </div>
-                    ))}
-                  </div>
-                </Surface>
-              </div>
-            ))}
-
-            <Surface accent={C.amber} padding={22}>
-              <Eyebrow color={C.amber}>Nutrition</Eyebrow>
-              <p className="h-serif" style={{ fontSize: 17, color: C.cream, margin: "12px 0 0", lineHeight: 1.6 }}>
-                Target {calcProteinTarget(bodyStats.weightLbs)}g protein/day. Whole foods first. Carbs around training. Cut alcohol to weekends. 3L water minimum on training days. <strong style={{ color: C.amber }}>Detailed kosher food guide + protein tracker on the Fuel tab.</strong>
-              </p>
-            </Surface>
-
-            <Surface accent={C.electric} padding={22}>
-              <Eyebrow color={C.electric}>Atomic Habits · 4 Laws</Eyebrow>
-              <div style={{ marginTop: 14 }}>
-                {[
-                  ["1.", "Make It Obvious", C.rust, "Gym bag packed the night before. Shoes by the door."],
-                  ["2.", "Make It Attractive", C.amber, "Hype playlist only during training. Pair it with something you enjoy."],
-                  ["3.", "Make It Easy", C.moss, "2-Minute Rule: just lace up. The rest follows."],
-                  ["4.", "Make It Satisfying", C.plum, "Log every session. The streak is the reward."],
-                ].map(([n, law, color, tip]) => (
-                  <div key={law} style={{ padding: "12px 0", borderBottom: `1px solid ${C.line}` }}>
-                    <div style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
-                      <span className="mono" style={{ color: color, fontSize: 11, fontWeight: 700 }}>{n}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color, letterSpacing: "-0.01em" }}>{law}</div>
-                        <p className="h-serif" style={{ fontSize: 14, color: C.cream, margin: "4px 0 0", lineHeight: 1.5 }}>{tip}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="h-serif" style={{ fontSize: 16, color: C.dim, margin: "16px 0 0", textAlign: "center" }}>
-                "I am someone who never misses a workout."
-                <span className="mono" style={{ display: "block", fontStyle: "normal", fontSize: 10, letterSpacing: "0.15em", marginTop: 6, color: C.mute }}>— JAMES CLEAR</span>
-              </p>
-            </Surface>
-          </>
-        )}
+        </>}
 
       </main>
 
       {/* ── Floating overlays ── */}
-      <Confetti show={confetti} onDone={() => setConfetti(false)} />
+      <Confetti show={confetti && preferences.motion} onDone={() => setConfetti(false)} />
       {restTimer && (
-        <RestTimer
+        <RestTimer key={restTimer.startedAt}
           seconds={restTimer.seconds}
           onClose={() => setRestTimer(null)}
           onSkip={() => setRestTimer(null)}
         />
       )}
-      {repsEditor && (
-        <RepsEditor
-          open={true}
-          currentReps={repsEditor.currentReps}
-          defaultReps={repsEditor.defaultReps}
-          exerciseName={repsEditor.exerciseName}
-          setIndex={repsEditor.setIndex}
-          onSave={saveCustomReps}
-          onClose={() => setRepsEditor(null)}
-        />
-      )}
-
       {/* ── Bottom Navigation ── */}
       <nav style={{
         position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 90,
@@ -1204,148 +978,14 @@ export function AccountApp({ userId, userEmail }) {
         padding: "8px 4px calc(8px + env(safe-area-inset-bottom)) 4px",
         display: "flex", justifyContent: "space-around",
       }}>
-        {GROUPS.slice(0, 2).map(g => <NavItem key={g.id} g={g} active={activeGroup.id === g.id} onGo={goGroup} />)}
-
-        {/* Quick-add FAB */}
-        <button className="btn" onClick={() => { setQuickAddOpen(true); if (navigator.vibrate) navigator.vibrate(10); }}
-          aria-label="Quick add"
-          style={{
-            flex: "0 0 auto", width: 52, height: 52, marginTop: -18, borderRadius: 999, border: "none",
-            background: `linear-gradient(135deg, ${C.rust}, ${C.amber})`, color: "#fff",
-            fontSize: 26, fontWeight: 700, lineHeight: 1, cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: `0 6px 18px ${C.rust}55`,
-          }}>
-          +
-        </button>
-
-        {GROUPS.slice(2).map(g => <NavItem key={g.id} g={g} active={activeGroup.id === g.id} onGo={goGroup} />)}
+        {GROUPS.map(g => <NavItem key={g.id} g={g} active={tab!=='settings' && activeGroup.id===g.id} onGo={goGroup}/>)}
       </nav>
 
       {/* ── QUICK ADD bottom sheet ── */}
-      {quickAddOpen && (() => {
-        const tk = todayKey();
-        const curProtein = proteinLog[tk] || 0;
-        const pTarget = calcProteinTarget(bodyStats.weightLbs);
-        const d3 = !!vitaminD3Log[tk];
-        const cr = !!creatineLog[tk];
-        const addProtein = (g) => { updateProtein(tk, curProtein + g); if (navigator.vibrate) navigator.vibrate(8); };
-        const close = () => setQuickAddOpen(false);
-        const chip = (label, on, onTap, color) => (
-          <button className="btn" onClick={onTap} style={{
-            flex: 1, padding: "12px 8px", borderRadius: 12, cursor: "pointer",
-            border: `1px solid ${on ? color : C.line}`,
-            background: on ? `${color}18` : C.raised, color: on ? color : C.cream,
-            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-            display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-          }}>
-            <span style={{ fontSize: 18 }}>{on ? "✓" : "○"}</span>{label}
-          </button>
-        );
-        return (
-          <div className="backdrop" style={{ alignItems: "flex-end", padding: 0 }} onClick={close}>
-            <div className="slide-up" onClick={e => e.stopPropagation()} style={{
-              width: "100%", maxWidth: 480, margin: "0 auto",
-              background: C.panel, borderRadius: "22px 22px 0 0",
-              borderTop: `1px solid ${C.line}`, padding: "10px 18px calc(24px + env(safe-area-inset-bottom))",
-              maxHeight: "85vh", overflowY: "auto",
-            }}>
-              <div style={{ width: 38, height: 4, borderRadius: 999, background: C.faint, margin: "0 auto 16px" }} />
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
-                <h2 className="h-display" style={{ fontSize: 22, fontWeight: 700, color: C.bone, margin: 0, letterSpacing: "-0.03em" }}>Quick add</h2>
-                <button onClick={close} className="btn" style={{ border: "none", background: "transparent", color: C.dim, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
-              </div>
-
-              {/* Protein */}
-              <Eyebrow>Protein · {Math.round(curProtein)}/{pTarget}g</Eyebrow>
-              <div style={{ display: "flex", gap: 8, margin: "8px 0 18px" }}>
-                {[20, 30, 40].map(g => (
-                  <button key={g} className="btn" onClick={() => addProtein(g)} style={{
-                    flex: 1, padding: "13px 8px", borderRadius: 12, cursor: "pointer",
-                    border: `1px solid ${C.amber}40`, background: `${C.amber}12`, color: C.amber,
-                    fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 15,
-                  }}>+{g}g</button>
-                ))}
-              </div>
-
-              {/* Supplements */}
-              <Eyebrow>Supplements</Eyebrow>
-              <div style={{ display: "flex", gap: 8, margin: "8px 0 18px" }}>
-                {chip("Vitamin D3", d3, () => { toggleVitaminD3(tk); if (navigator.vibrate) navigator.vibrate(8); }, C.electric)}
-                {chip("Creatine", cr, () => { toggleCreatine(tk); if (navigator.vibrate) navigator.vibrate(8); }, C.plum)}
-              </div>
-
-              {/* Weight */}
-              <Eyebrow>Bodyweight</Eyebrow>
-              <div style={{ display: "flex", gap: 8, margin: "8px 0 18px" }}>
-                <input type="number" inputMode="decimal" value={weightInput} onChange={e => setWeightInput(e.target.value)}
-                  placeholder="lbs" style={{
-                    flex: 1, padding: "13px 14px", borderRadius: 12, border: `1px solid ${C.line}`,
-                    background: C.raised, color: C.bone, fontSize: 16, fontFamily: FONT_MONO, outline: "none",
-                  }} />
-                <button className="btn" onClick={async () => { await logWeight(); }} style={{
-                  padding: "13px 22px", borderRadius: 12, border: "none", cursor: "pointer",
-                  background: C.moss, color: "#fff", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14,
-                }}>Log</button>
-              </div>
-
-              {/* Log a workout — routes to the right logger per type */}
-              <Eyebrow>Log a workout</Eyebrow>
-              <div style={{ display: "flex", gap: 6, margin: "8px 0 18px" }}>
-                {Object.values(RECOVERY.TYPES).map(t => (
-                  <button key={t.key} className="btn" onClick={() => {
-                    close();
-                    if (t.key === "walk") setWalkState({ open: true });
-                    else if (t.key === "lift") { setTab("workout"); window.scrollTo({ top: 0 }); }
-                    else setLoggerState({ open: true, prefillType: t.key });
-                  }} style={{
-                    flex: 1, padding: "12px 4px", borderRadius: 12, cursor: "pointer",
-                    border: `1px solid ${C[t.colorKey]}40`, background: `${C[t.colorKey]}12`, color: C[t.colorKey],
-                    fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 11,
-                    display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-                  }}><span style={{ fontSize: 18 }}>{t.emoji}</span>{t.short}</button>
-                ))}
-              </div>
-
-              {/* Fast break drill — ran it phone-down? One tap logs it, done.
-                 Each button shows what it pays the engine. */}
-              <Eyebrow>🏃 Fast break · already ran it?</Eyebrow>
-              {(() => {
-                const engScore = engineModel(normalizeAll(cardioSessions, history)).score;
-                return (
-                  <div style={{ display: "flex", gap: 8, margin: "8px 0 18px" }}>
-                    {[10, 12, 15].map(m => (
-                      <button key={m} className="btn" onClick={() => { logFastBreak(m); close(); if (navigator.vibrate) navigator.vibrate(10); }} style={{
-                        flex: 1, padding: "11px 8px", borderRadius: 12, cursor: "pointer",
-                        border: `1px solid ${C.electric}40`, background: `${C.electric}12`, color: C.electric,
-                        fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14,
-                        display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
-                      }}>
-                        {m} min
-                        {engScore > 0 && <span style={{ fontSize: 10.5, color: C.moss, fontFamily: FONT_MONO, fontWeight: 700 }}>⛽ +{engineBumpPreview(engScore, m, 9).toFixed(1)}%</span>}
-                      </button>
-                    ))}
-                  </div>
-                );
-              })()}
-
-              {/* Shortcuts */}
-              <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn" onClick={() => { setTab("workout"); close(); window.scrollTo({ top: 0 }); }} style={{
-                  flex: 1, padding: "13px 8px", borderRadius: 12, cursor: "pointer",
-                  border: `1px solid ${C.rust}40`, background: `${C.rust}12`, color: C.rust,
-                  fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14,
-                }}>🏋️ Start a workout</button>
-                <button className="btn" onClick={() => { setTab("nutrition"); close(); window.scrollTo({ top: 0 }); }} style={{
-                  flex: 1, padding: "13px 8px", borderRadius: 12, cursor: "pointer",
-                  border: `1px solid ${C.line}`, background: C.raised, color: C.cream,
-                  fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14,
-                }}>🥤 Full nutrition</button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {quickAddOpen && <div className="backdrop" onClick={()=>setQuickAddOpen(false)}><section className="engine-card" role="dialog" aria-modal="true" aria-label="Quick add" onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:440}}><div className="engine-row"><h2>Log your work</h2><button className="engine-link" onClick={()=>setQuickAddOpen(false)}>Close</button></div><div className="engine-actions">
+        {[['game','Basketball'],['cross_training','Class'],['tabata','Tabata'],['long_interval','Conditioning']].map(([type,label])=><button className="engine-button" key={type} onClick={()=>{setQuickAddOpen(false);setLoggerState({open:true,prefillType:type});}}>{label}</button>)}
+        <button className="engine-button" onClick={()=>{setQuickAddOpen(false);setWalkState({open:true});}}>Walk</button><button className="engine-button" onClick={()=>{setQuickAddOpen(false);setTab('nutrition');}}>Food</button><button className="engine-button" onClick={()=>{setQuickAddOpen(false);setTab('weight');}}>Weight</button>
+      </div></section></div>}
 
       {/* ── CONDITIONING LOGGER sheet ── */}
       {loggerState.open && (
@@ -1363,7 +1003,7 @@ export function AccountApp({ userId, userEmail }) {
 
       {/* ── GAMIFICATION overlays ── */}
       {awardsOpen && <AchievementsSheet game={game} onClose={() => setAwardsOpen(false)} />}
-      {celebration && <CelebrationOverlay queue={celebration} onClose={() => setCelebration(null)} />}
+      {celebration && preferences.motion && <CelebrationOverlay queue={celebration} onClose={() => setCelebration(null)} />}
 
       <ToastHost />
     </div>

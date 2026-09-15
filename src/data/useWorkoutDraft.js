@@ -10,7 +10,7 @@ export function useWorkoutDraft(userId, initialDate) {
   });
   const current = useRef(draft);
   const [error, setError] = useState('');
-  const [resumed, setResumed] = useState(() => Object.values(draft.checked).some(Boolean));
+  const [resumed, setResumed] = useState(() => !!draft.flow?.active || Object.values(draft.checked).some(Boolean) || Object.values(draft.vals).some(v => Number(v.setsDone) > 0));
   const setField = field => next => {
     const value = typeof next === 'function' ? next(current.current[field]) : next;
     current.current = { ...current.current, [field]: value };
@@ -19,6 +19,6 @@ export function useWorkoutDraft(userId, initialDate) {
     setDraft(current.current);
   };
   return { ...draft, setActiveSession: setField('activeSession'), setChecked: setField('checked'),
-    setVals: setField('vals'), setLiftDate: setField('liftDate'), error, resumed,
+    setVals: setField('vals'), setLiftDate: setField('liftDate'), setFlow: setField('flow'), error, resumed,
     dismissResume: () => setResumed(false) };
 }

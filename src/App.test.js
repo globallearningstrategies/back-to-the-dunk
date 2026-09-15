@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import { supabase } from './data/client';
 import { fetchAll } from './data/records';
+import { weekKey } from './engine';
 jest.mock('./data/client', () => ({ supabase: { auth: { onAuthStateChange: jest.fn(), getSession: jest.fn(), signOut: jest.fn() }, from: jest.fn() } }));
 jest.mock('./data/records', () => ({ ...jest.requireActual('./data/records'), fetchAll: jest.fn() }));
 let root, div, authChange;
@@ -12,7 +13,7 @@ beforeEach(() => {
   localStorage.clear(); window.scrollTo = jest.fn();
   supabase.auth.onAuthStateChange.mockImplementation(fn => { authChange=fn; return { data: { subscription: { unsubscribe: jest.fn() } } }; });
   supabase.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'alice', email: 'alice@example.test' } } } });
-  fetchAll.mockImplementation(async (_client,table) => table === 'user_state' ? [{ key: 'protein:2026-09-15', value: 150 }] : []);
+  fetchAll.mockImplementation(async (_client,table) => table === 'user_state' ? [{ key: 'protein:2026-09-15', value: 150 }, {key:`weeklyGoals:${weekKey(new Date())}`,value:3}] : []);
   div=document.createElement('div'); document.body.appendChild(div); root=createRoot(div);
 });
 afterEach(async () => { await act(async () => root.unmount()); div.remove(); });
@@ -20,13 +21,13 @@ async function click(label) {
   const button=[...div.querySelectorAll('button')].find(b=>b.textContent.trim()===label || b.textContent.trim().endsWith(label));
   expect(button).toBeTruthy(); await flush(()=>button.click());
 }
-test('signed-in app renders Today, Train, Progress, and Fuel after module extraction', async () => {
+test('Engine navigation exposes Today, Train, Fuel, Progress and separate account settings', async () => {
   await flush(()=>root.render(<App />));
   expect(div.textContent).toContain('Synced');
   await click('Train'); expect(div.textContent).toContain('Log');
   await click('Progress');
-  await click('Fuel'); expect(div.textContent).toContain('Nutrition');
-  await click('Train'); await click('Plan'); expect(div.textContent).toContain('alice@example.test');
+  await click('Fuel'); expect(div.textContent).toContain('Food, made simple');
+  await flush(()=>div.querySelector('[aria-label="Settings"]').click()); expect(div.textContent).toContain('alice@example.test');
   await flush(()=>authChange('SIGNED_OUT',null));
   expect(div.textContent).toContain('Sign in to continue');
   expect(div.textContent).not.toContain('alice@example.test');

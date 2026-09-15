@@ -9,7 +9,7 @@ export function toLocalInput(d) {
 
 export function TodayCard({ cardioSessions, workouts, constraints, onOpenLogger, onChooseLift, onGoWalk }) {
   const [showOverride, setShowOverride] = useState(false);
-  const [showSci, setShowSci] = useState(true);
+  const [showSci, setShowSci] = useState(false);
   const engine = normalizeAll(cardioSessions, workouts);
   const today = startOfDay(new Date());
   const plan = buildPlan(engine, today, 7, constraints);
@@ -77,7 +77,7 @@ export function TodayCard({ cardioSessions, workouts, constraints, onOpenLogger,
       {rec.science && (
         <div style={{ marginTop: 12 }}>
           <button onClick={() => setShowSci(v => !v)} className="btn" style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 10, color: C.electric, fontFamily: FONT_MONO, letterSpacing: "0.1em", fontWeight: 700 }}>🧬 WHAT'S HAPPENING</span>
+            <span style={{ fontSize: 10, color: C.electric, fontFamily: FONT_MONO, letterSpacing: "0.1em", fontWeight: 700 }}>🧬 PLAN DETAILS</span>
             <span style={{ fontSize: 9, color: C.dim }}>{showSci ? "▲" : "▼"}</span>
           </button>
           {showSci && (
@@ -117,7 +117,7 @@ export function TodayCard({ cardioSessions, workouts, constraints, onOpenLogger,
             if (totalPct < 0.1) return null;
             return (
               <div style={{ marginTop: 8, fontSize: 12.5, color: C.moss, fontFamily: FONT_MONO, fontWeight: 700, textAlign: "center" }}>
-                ⛽ do this → engine +{totalPct.toFixed(1)}% ({Math.round(engStat.score)} → {Math.round(engStat.score * (1 + totalPct / 100))})
+                ⛽ Estimated score contribution +{totalPct.toFixed(1)}% ({Math.round(engStat.score)} → {Math.round(engStat.score * (1 + totalPct / 100))})
               </div>
             );
           })()}

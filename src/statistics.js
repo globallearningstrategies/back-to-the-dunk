@@ -634,7 +634,6 @@ export function HeartSim({ cardioSessions, workouts }) {
               {eng.score >= eng.peak - 0.05
                 ? <span style={{ color: C.moss, fontWeight: 700 }}>🏁 ALL-TIME HIGH</span>
                 : <span style={{ color: C.dim }}>peak {Math.round(eng.peak)} · {(eng.peak - eng.score).toFixed(1)} pts to reclaim</span>}
-              {eng.fedStreak > 0 && <span style={{ color: C.amber, fontWeight: 600 }}>⛽ fed {eng.fedStreak} day{eng.fedStreak === 1 ? "" : "s"} straight</span>}
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
               {recent.map((b, i) => (
@@ -734,14 +733,14 @@ export function HeartSim({ cardioSessions, workouts }) {
             ))}
           </div>
 
-          <div style={{ fontSize: 11.5, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginTop: 16, fontWeight: 700 }}>THE ENGINE SCORE — YOUR % IMPROVEMENTS</div>
+          <div style={{ fontSize: 11.5, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginTop: 16, fontWeight: 700 }}>THE ENGINE SCORE — SESSION CONTRIBUTIONS</div>
           {(() => {
             const eng = engineModel(all);
             const last = eng.bumps.slice(-6).reverse();
             return (
               <>
                 <p style={{ fontSize: 13.5, color: C.cream, margin: "6px 0 0", lineHeight: 1.6 }} className="h-serif">
-                  Every aerobic session earns a training load — minutes × how hard it felt (RPE), the "session-RPE" method sports scientists use. Your Engine score is a 42-day rolling build-up of that load (what coaching platforms call CTL, chronic training load): each session tops it up by its load ÷ 42, and it drains about 2.4% on any day you don't feed it — because real fitness fades without work. The percentages below are how much each session grew your score the moment you logged it. Longer and harder = bigger bump: a full game lifts you far more than a 10-minute fast break.
+                  Every aerobic session earns a training load — minutes × how hard it felt (RPE), the "session-RPE" method sports scientists use. Your Engine score is a 42-day rolling build-up of that load (what coaching platforms call CTL, chronic training load): each session tops it up by its load ÷ 42, and the previous score is multiplied by 41/42 each day before new activity is added. This is a training-load model, not a daily measurement of fitness. The percentages below are how much each session grew your score the moment you logged it. Record actual duration and effort. Follow planned recovery even when the score decreases.
                 </p>
                 <div style={{ marginTop: 8 }}>
                   {last.map((b, i) => (
@@ -1036,7 +1035,7 @@ export function StatsTab({ history, weightLog, cardioSessions, legsLog = {} }) {
                 if (parts.length < 2) return null;
                 return (
                   <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO, marginTop: 10, lineHeight: 1.5 }}>
-                    ⛽ Avg engine at tip-off — {parts.join(" · ")}
+                    ⛽ Average end-of-day Engine — {parts.join(" · ")}
                   </div>
                 );
               })()}
@@ -1124,7 +1123,7 @@ export function TimeTrainedCard({ cardioSessions, workouts }) {
   const today = startOfDay(new Date());
   const wkStart = startOfWeek(today);
 
-  // Last 8 calendar weeks (Sun–Sat), oldest first; last entry is this week.
+  // Last 8 calendar weeks (Mon–Sun), oldest first; last entry is this week.
   const WEEKS = 8;
   const weeks = [];
   for (let i = WEEKS - 1; i >= 0; i--) {

@@ -6,12 +6,24 @@ grant select on test_accounts to authenticated;
 insert into auth.users(id) select a from test_accounts union all select b from test_accounts;
 insert into public.user_state(user_id,key,value) select a,'protein:test','150'::jsonb from test_accounts;
 insert into public.user_state(user_id,key,value) select b,'protein:test','80'::jsonb from test_accounts;
+insert into public.user_state(user_id,key,value)
+select a,key,value from test_accounts cross join (values
+  ('preferences:engineTarget','120'::jsonb),
+  ('weeklyGoals:2026-09-14','3'::jsonb),
+  ('court:test-game','"strong"'::jsonb),
+  ('foodEntries:test-food','{"name":"Test meal","protein":20,"calories":200,"portions":2,"day":"2026-09-15"}'::jsonb)
+) as fixtures(key,value);
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub',(select a::text from test_accounts),true);
 do $$ begin
   if (select count(*) from public.user_state where key='protein:test') <> 1 then raise exception 'Cross-account read'; end if;
   if (select value from public.user_state where key='protein:test') <> '150'::jsonb then raise exception 'Wrong owner data'; end if;
+  if (select count(*) from public.user_state where key in ('preferences:engineTarget','weeklyGoals:2026-09-14','court:test-game','foodEntries:test-food')) <> 4 then raise exception 'Engine records missing'; end if;
+  update public.user_state set value=null where key='foodEntries:test-food';
+  if not found then raise exception 'Food deletion failed'; end if;
+  update public.user_state set value='{"name":"Test meal","protein":20,"calories":200,"portions":2,"day":"2026-09-15"}'::jsonb where key='foodEntries:test-food';
+  if not found then raise exception 'Food undo failed'; end if;
   update public.user_state set value='160'::jsonb where key='protein:test';
   if not found then raise exception 'Owner update failed'; end if;
   begin
@@ -31,6 +43,7 @@ end $$;
 select set_config('request.jwt.claim.sub',(select b::text from test_accounts),true);
 do $$ begin
   if (select value from public.user_state where key='protein:test') <> '80'::jsonb then raise exception 'Other account changed'; end if;
+  if exists(select 1 from public.user_state where key in ('preferences:engineTarget','weeklyGoals:2026-09-14','court:test-game','foodEntries:test-food')) then raise exception 'Engine records crossed accounts'; end if;
   delete from public.user_state where key='protein:test';
   if not found then raise exception 'Owner delete failed'; end if;
 end $$;
