@@ -1,0 +1,694 @@
+{
+  "columns": [
+    {
+      "table_name": "app_config",
+      "column_name": "key",
+      "data_type": "text",
+      "column_default": null,
+      "is_nullable": "NO",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "app_config",
+      "column_name": "value",
+      "data_type": "text",
+      "column_default": null,
+      "is_nullable": "NO",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "cardio_sessions",
+      "column_name": "id",
+      "data_type": "uuid",
+      "column_default": "gen_random_uuid()",
+      "is_nullable": "NO",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "cardio_sessions",
+      "column_name": "workout_type",
+      "data_type": "text",
+      "column_default": null,
+      "is_nullable": "NO",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "cardio_sessions",
+      "column_name": "completed_at",
+      "data_type": "timestamp with time zone",
+      "column_default": "now()",
+      "is_nullable": "NO",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "cardio_sessions",
+      "column_name": "notes",
+      "data_type": "text",
+      "column_default": null,
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "cardio_sessions",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "column_default": "now()",
+      "is_nullable": "NO",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "cardio_sessions",
+      "column_name": "duration_min",
+      "data_type": "numeric",
+      "column_default": null,
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "cardio_sessions",
+      "column_name": "rpe",
+      "data_type": "smallint",
+      "column_default": null,
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "cardio_sessions",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "column_default": "auth.uid()",
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "cardio_sessions",
+      "column_name": "focus",
+      "data_type": "text",
+      "column_default": null,
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "cardio_sessions",
+      "column_name": "class_name",
+      "data_type": "text",
+      "column_default": null,
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "cardio_sessions",
+      "column_name": "points",
+      "data_type": "integer",
+      "column_default": null,
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "cardio_sessions",
+      "column_name": "rebounds",
+      "data_type": "integer",
+      "column_default": null,
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "push_subscriptions",
+      "column_name": "id",
+      "data_type": "bigint",
+      "column_default": null,
+      "is_nullable": "NO",
+      "is_identity": "YES",
+      "identity_generation": "ALWAYS",
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "push_subscriptions",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "column_default": "auth.uid()",
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "push_subscriptions",
+      "column_name": "subscription",
+      "data_type": "jsonb",
+      "column_default": null,
+      "is_nullable": "NO",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "push_subscriptions",
+      "column_name": "endpoint",
+      "data_type": "text",
+      "column_default": null,
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "ALWAYS",
+      "generation_expression": "(subscription ->> 'endpoint'::text)"
+    },
+    {
+      "table_name": "push_subscriptions",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "column_default": "now()",
+      "is_nullable": "NO",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "supplement_log",
+      "column_name": "id",
+      "data_type": "bigint",
+      "column_default": null,
+      "is_nullable": "NO",
+      "is_identity": "YES",
+      "identity_generation": "ALWAYS",
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "supplement_log",
+      "column_name": "supplement_id",
+      "data_type": "bigint",
+      "column_default": null,
+      "is_nullable": "NO",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "supplement_log",
+      "column_name": "taken_on",
+      "data_type": "date",
+      "column_default": "CURRENT_DATE",
+      "is_nullable": "NO",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "supplement_log",
+      "column_name": "logged_at",
+      "data_type": "timestamp with time zone",
+      "column_default": "now()",
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "supplement_log",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "column_default": "auth.uid()",
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "supplements",
+      "column_name": "id",
+      "data_type": "bigint",
+      "column_default": null,
+      "is_nullable": "NO",
+      "is_identity": "YES",
+      "identity_generation": "ALWAYS",
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "supplements",
+      "column_name": "name",
+      "data_type": "text",
+      "column_default": null,
+      "is_nullable": "NO",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "supplements",
+      "column_name": "active",
+      "data_type": "boolean",
+      "column_default": "true",
+      "is_nullable": "NO",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "supplements",
+      "column_name": "sort_order",
+      "data_type": "integer",
+      "column_default": "0",
+      "is_nullable": "NO",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "supplements",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "column_default": "now()",
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "supplements",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "column_default": "auth.uid()",
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "weight_log",
+      "column_name": "id",
+      "data_type": "bigint",
+      "column_default": null,
+      "is_nullable": "NO",
+      "is_identity": "YES",
+      "identity_generation": "ALWAYS",
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "weight_log",
+      "column_name": "weight",
+      "data_type": "numeric",
+      "column_default": null,
+      "is_nullable": "NO",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "weight_log",
+      "column_name": "logged_at",
+      "data_type": "timestamp with time zone",
+      "column_default": "now()",
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "weight_log",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "column_default": "auth.uid()",
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "workouts",
+      "column_name": "id",
+      "data_type": "bigint",
+      "column_default": null,
+      "is_nullable": "NO",
+      "is_identity": "YES",
+      "identity_generation": "ALWAYS",
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "workouts",
+      "column_name": "session_name",
+      "data_type": "text",
+      "column_default": null,
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "workouts",
+      "column_name": "color",
+      "data_type": "text",
+      "column_default": null,
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "workouts",
+      "column_name": "total_volume",
+      "data_type": "numeric",
+      "column_default": "0",
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "workouts",
+      "column_name": "exercises",
+      "data_type": "jsonb",
+      "column_default": null,
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "workouts",
+      "column_name": "logged_at",
+      "data_type": "timestamp with time zone",
+      "column_default": "now()",
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    },
+    {
+      "table_name": "workouts",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "column_default": "auth.uid()",
+      "is_nullable": "YES",
+      "is_identity": "NO",
+      "identity_generation": null,
+      "is_generated": "NEVER",
+      "generation_expression": null
+    }
+  ],
+  "constraints": [
+    {
+      "table_name": "app_config",
+      "conname": "app_config_pkey",
+      "definition": "PRIMARY KEY (key)"
+    },
+    {
+      "table_name": "cardio_sessions",
+      "conname": "cardio_sessions_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "cardio_sessions",
+      "conname": "cardio_sessions_rpe_check",
+      "definition": "CHECK (((rpe IS NULL) OR ((rpe >= 1) AND (rpe <= 10))))"
+    },
+    {
+      "table_name": "cardio_sessions",
+      "conname": "cardio_sessions_user_id_fkey",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id)"
+    },
+    {
+      "table_name": "cardio_sessions",
+      "conname": "cardio_sessions_workout_type_check",
+      "definition": "CHECK ((workout_type = ANY (ARRAY['tabata'::text, 'long_interval'::text, 'game'::text, 'cross_training'::text])))"
+    },
+    {
+      "table_name": "push_subscriptions",
+      "conname": "push_subscriptions_endpoint_key",
+      "definition": "UNIQUE (endpoint)"
+    },
+    {
+      "table_name": "push_subscriptions",
+      "conname": "push_subscriptions_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "push_subscriptions",
+      "conname": "push_subscriptions_user_id_fkey",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id)"
+    },
+    {
+      "table_name": "supplement_log",
+      "conname": "supplement_log_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "supplement_log",
+      "conname": "supplement_log_supplement_id_fkey",
+      "definition": "FOREIGN KEY (supplement_id) REFERENCES supplements(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "supplement_log",
+      "conname": "supplement_log_supplement_id_taken_on_key",
+      "definition": "UNIQUE (supplement_id, taken_on)"
+    },
+    {
+      "table_name": "supplement_log",
+      "conname": "supplement_log_user_id_fkey",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id)"
+    },
+    {
+      "table_name": "supplements",
+      "conname": "supplements_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "supplements",
+      "conname": "supplements_user_id_fkey",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id)"
+    },
+    {
+      "table_name": "weight_log",
+      "conname": "weight_log_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "weight_log",
+      "conname": "weight_log_user_id_fkey",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id)"
+    },
+    {
+      "table_name": "workouts",
+      "conname": "workouts_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "workouts",
+      "conname": "workouts_user_id_fkey",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id)"
+    }
+  ],
+  "policies": [
+    {
+      "schemaname": "public",
+      "tablename": "workouts",
+      "policyname": "owner all",
+      "roles": [
+        "public"
+      ],
+      "cmd": "ALL",
+      "qual": "(auth.uid() = user_id)",
+      "with_check": "(auth.uid() = user_id)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "weight_log",
+      "policyname": "owner all",
+      "roles": [
+        "public"
+      ],
+      "cmd": "ALL",
+      "qual": "(auth.uid() = user_id)",
+      "with_check": "(auth.uid() = user_id)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "push_subscriptions",
+      "policyname": "own subscriptions delete",
+      "roles": [
+        "public"
+      ],
+      "cmd": "DELETE",
+      "qual": "(auth.uid() = user_id)",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "push_subscriptions",
+      "policyname": "own subscriptions insert",
+      "roles": [
+        "public"
+      ],
+      "cmd": "INSERT",
+      "qual": null,
+      "with_check": "(auth.uid() = user_id)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "push_subscriptions",
+      "policyname": "own subscriptions select",
+      "roles": [
+        "public"
+      ],
+      "cmd": "SELECT",
+      "qual": "(auth.uid() = user_id)",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "supplements",
+      "policyname": "owner all",
+      "roles": [
+        "public"
+      ],
+      "cmd": "ALL",
+      "qual": "(auth.uid() = user_id)",
+      "with_check": "(auth.uid() = user_id)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "supplement_log",
+      "policyname": "owner all",
+      "roles": [
+        "public"
+      ],
+      "cmd": "ALL",
+      "qual": "(auth.uid() = user_id)",
+      "with_check": "(auth.uid() = user_id)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "cardio_sessions",
+      "policyname": "owner all",
+      "roles": [
+        "public"
+      ],
+      "cmd": "ALL",
+      "qual": "(auth.uid() = user_id)",
+      "with_check": "(auth.uid() = user_id)"
+    }
+  ],
+  "indexes": [
+    {
+      "tablename": "workouts",
+      "indexname": "workouts_pkey",
+      "indexdef": "CREATE UNIQUE INDEX workouts_pkey ON public.workouts USING btree (id)"
+    },
+    {
+      "tablename": "weight_log",
+      "indexname": "weight_log_pkey",
+      "indexdef": "CREATE UNIQUE INDEX weight_log_pkey ON public.weight_log USING btree (id)"
+    },
+    {
+      "tablename": "push_subscriptions",
+      "indexname": "push_subscriptions_pkey",
+      "indexdef": "CREATE UNIQUE INDEX push_subscriptions_pkey ON public.push_subscriptions USING btree (id)"
+    },
+    {
+      "tablename": "push_subscriptions",
+      "indexname": "push_subscriptions_endpoint_key",
+      "indexdef": "CREATE UNIQUE INDEX push_subscriptions_endpoint_key ON public.push_subscriptions USING btree (endpoint)"
+    },
+    {
+      "tablename": "app_config",
+      "indexname": "app_config_pkey",
+      "indexdef": "CREATE UNIQUE INDEX app_config_pkey ON public.app_config USING btree (key)"
+    },
+    {
+      "tablename": "supplements",
+      "indexname": "supplements_pkey",
+      "indexdef": "CREATE UNIQUE INDEX supplements_pkey ON public.supplements USING btree (id)"
+    },
+    {
+      "tablename": "supplement_log",
+      "indexname": "supplement_log_pkey",
+      "indexdef": "CREATE UNIQUE INDEX supplement_log_pkey ON public.supplement_log USING btree (id)"
+    },
+    {
+      "tablename": "supplement_log",
+      "indexname": "supplement_log_supplement_id_taken_on_key",
+      "indexdef": "CREATE UNIQUE INDEX supplement_log_supplement_id_taken_on_key ON public.supplement_log USING btree (supplement_id, taken_on)"
+    },
+    {
+      "tablename": "supplement_log",
+      "indexname": "supplement_log_taken_on_idx",
+      "indexdef": "CREATE INDEX supplement_log_taken_on_idx ON public.supplement_log USING btree (taken_on)"
+    },
+    {
+      "tablename": "cardio_sessions",
+      "indexname": "cardio_sessions_pkey",
+      "indexdef": "CREATE UNIQUE INDEX cardio_sessions_pkey ON public.cardio_sessions USING btree (id)"
+    },
+    {
+      "tablename": "cardio_sessions",
+      "indexname": "cardio_sessions_completed_at_idx",
+      "indexdef": "CREATE INDEX cardio_sessions_completed_at_idx ON public.cardio_sessions USING btree (completed_at DESC)"
+    }
+  ]
+}

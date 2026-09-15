@@ -1,0 +1,12 @@
+{
+  "env": { "browser": true, "es2022": true, "jest": true },
+  "globals": { "process": "readonly" },
+  "parserOptions": { "ecmaVersion": "latest", "sourceType": "module", "ecmaFeatures": { "jsx": true } },
+  "plugins": ["react", "react-hooks"],
+  "rules": {
+    "no-undef": "error",
+    "no-unreachable": "error",
+    "react/jsx-no-undef": "error",
+    "react-hooks/rules-of-hooks": "error"
+  }
+}
