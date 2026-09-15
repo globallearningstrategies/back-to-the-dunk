@@ -71,3 +71,25 @@ test('interval reload uses persisted elapsed time and saves actual duration and 
   expect(div.textContent).toContain('Record what you did');
   const draft=JSON.parse(localStorage.getItem(accountKey('test-account','workout-draft')));expect(draft.flow.timer.running).toBe(false);expect(draft.flow.timer.elapsed).toBe(30);
 });
+
+test.each([
+  ['running fast break','long_interval',30,true],
+  ['paused Tabata','tabata',30,false],
+  ['completed fast break','long_interval',600,false],
+  ['unstarted Tabata','tabata',0,false],
+])('exit closes a %s without saving, preserves lifts, and stays closed after reload',async(_label,mode,elapsed,running)=>{
+  const key=accountKey('test-account','workout-draft');
+  const vals={lift_a1:{setsDone:'1',setWeights:{0:110},completedSets:{0:true}}};
+  localStorage.setItem(key,JSON.stringify({version:1,activeSession:0,checked:{},vals,liftDate:toLocalInput(new Date()),flow:{active:true,mode,minutes:mode==='tabata'?4:10,timer:{elapsed,startedAt:running?Date.now():null,running}}}));
+  const save=jest.fn();
+  await flush(()=>root.render(<WorkoutHarness save={save}/>));
+  await click('Exit timer');
+  expect(save).not.toHaveBeenCalled();
+  expect(div.textContent).toContain('Timer closed. No session was logged.');
+  const saved=JSON.parse(localStorage.getItem(key));
+  expect(saved.flow).toEqual({active:false,mode:'lift'}); expect(saved.vals).toEqual(vals);
+  await flush(()=>root.unmount());root=createRoot(div);await flush(()=>root.render(<WorkoutHarness save={save}/>));
+  expect(button('Exit timer')).toBeUndefined();
+  expect(button('Log 10 sprints')).toBeTruthy();
+  expect(div.querySelector('details').open).toBe(false);
+});

@@ -126,9 +126,13 @@ export function AccountApp({ userId, userEmail }) {
   }, [cloud.ready, thisWeekKey]);
   const startTraining = (type, short = false) => {
     if (type === 'walk') {setWalkState({open:true});return;}
-    if (type === 'game' || type === 'cross_training') {setLoggerState({open:true,prefillType:type});return;}
-    draft.setFlow({active:true,mode:type==='lift'?'lift':type==='tabata'?'tabata':'long_interval',short,index:0,
-      minutes:type==='tabata'?(short?2:4):10});
+    if (type === 'long_interval') {setFastBreakOpen(true);return;}
+    if (type === 'game' || type === 'cross_training' || type === 'tabata') {setLoggerState({open:true,prefillType:type});return;}
+    draft.setFlow({active:true,mode:'lift',short,index:0});
+    setTab('workout');window.scrollTo({top:0,behavior:'auto'});
+  };
+  const startTimer = type => {
+    draft.setFlow({active:true,mode:type,minutes:type==='tabata'?4:10});
     setTab('workout');window.scrollTo({top:0,behavior:'auto'});
   };
   const hasLiftDraft = Object.values(checked).some(Boolean) || Object.values(vals).some(v => Number(v.setsDone)>0 || Object.values(v.completedSets || {}).some(Boolean));
@@ -554,7 +558,7 @@ export function AccountApp({ userId, userEmail }) {
         </>}
 
         {(tab === "workout" || draft.flow?.active) && <div hidden={tab!=="workout"}>
-          <TrainWorkspace draft={draft} history={history} onStart={startTraining} onRest={restEnabled?()=>setRestTimer({seconds:90,startedAt:Date.now()}):null} onSaveLift={logSession} onSaveConditioning={logConditioning} onFastBreak={()=>setFastBreakOpen(true)} onLog={type=>setLoggerState({open:true,prefillType:type})} onWalk={()=>setWalkState({open:true})} onDyno={<DynoCard onLog={logDyno}/>} busy={busy}/>
+          <TrainWorkspace draft={draft} history={history} onStart={startTraining} onStartTimer={startTimer} onRest={restEnabled?()=>setRestTimer({seconds:90,startedAt:Date.now()}):null} onSaveLift={logSession} onSaveConditioning={logConditioning} onFastBreak={()=>setFastBreakOpen(true)} onLog={type=>setLoggerState({open:true,prefillType:type})} onWalk={()=>setWalkState({open:true})} onDyno={<DynoCard onLog={logDyno}/>} busy={busy}/>
         </div>}
 
         {/* ── NUTRITION ── */}
