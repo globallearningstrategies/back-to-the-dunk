@@ -78,7 +78,7 @@ function IntervalFlow({ draft, onSave, busy }) {
   const [review,setReview] = useState(false);
   const [error,setError] = useState('');
   const timer = flow.timer || { elapsed:0,startedAt:null,running:false };
-  const target = (flow.minutes || (flow.mode==='tabata' ? 4 : 12))*60;
+  const target = (flow.minutes || (flow.mode==='tabata' ? 4 : 10))*60;
   const elapsed = Math.min(target,Math.max(0,(timer.elapsed || 0) + (timer.running ? (now-timer.startedAt)/1000 : 0)));
   const completed = elapsed>=target;
   const cycle = flow.mode==='tabata' ? 30 : 60;
@@ -108,7 +108,7 @@ function IntervalFlow({ draft, onSave, busy }) {
   const clock = value => `${Math.floor(value/60)}:${String(value%60).padStart(2,'0')}`;
   return <section className="engine-card"><span className="engine-label">Conditioning</span><h2>{flow.mode==='tabata' ? 'Tabata intervals' : 'Fast break intervals'}</h2>
     <p className="engine-muted">{flow.mode==='tabata' ? '20 seconds work · 10 seconds easy' : '15 seconds work · 45 seconds easy'}. Choose your pace.</p>
-    {!elapsed && !timer.running && <div className="engine-actions" aria-label="Session duration">{(flow.mode==='tabata'?[2,4]:[10,12,20]).map(m => <button className="engine-button" key={m} aria-pressed={target===m*60} onClick={()=>setFlow({...flow,minutes:m})}>{m} min</button>)}</div>}
+    {!elapsed && !timer.running && <div className="engine-actions" aria-label="Session duration">{(flow.mode==='tabata'?[2,4]:[10,12,15]).map(m => <button className="engine-button" key={m} aria-pressed={target===m*60} onClick={()=>setFlow({...flow,minutes:m})}>{m} min</button>)}</div>}
     <div style={{textAlign:'center',padding:'24px 0'}}><div className="engine-label">{completed ? 'Session complete' : timer.running ? phase : 'Paused'}</div><div className="engine-number" style={{marginTop:8}}>{clock(remaining)}</div><p className="engine-muted">{completed ? 'Review your time and effort below.' : `${Math.ceil((work ? workSeconds : cycle)-phaseSeconds)} sec ${work?'work':'easy'} · round ${Math.floor(elapsed/cycle)+1}`}</p></div>
     {!completed && !review && <div className="engine-actions"><button className="engine-button primary" onClick={timer.running?pause:begin}>{timer.running?'Pause':elapsed?'Resume timer':'Start timer'}</button>{elapsed>0 && <button className="engine-button" onClick={()=>{pause();setReview(true);}}>Finish early</button>}</div>}
     {(review || completed) && <div className="engine-mini"><h3>Record what you did</h3><p>{(elapsed/60).toFixed(1)} minutes completed</p><label className="engine-field">How hard did it feel? (1–10)<input aria-label="Session effort" type="number" min="1" max="10" step="1" value={effort} onChange={e=>setEffort(e.target.value)}/></label>
@@ -121,14 +121,14 @@ function IntervalFlow({ draft, onSave, busy }) {
   </section>;
 }
 
-export function TrainWorkspace({ draft, history, onStart, onRest, onSaveLift, onSaveConditioning, onLog, onWalk, onDyno, busy }) {
+export function TrainWorkspace({ draft, history, onStart, onRest, onSaveLift, onSaveConditioning, onFastBreak, onLog, onWalk, onDyno, busy }) {
   const {flow,setFlow,setActiveSession} = draft;
   const [confirmDiscard,setConfirmDiscard] = useState(false);
   if(flow?.active) return <><div className="engine-row" style={{marginBottom:12}}><span className="engine-label">Workout in progress</span><button className="engine-link" onClick={()=>setConfirmDiscard(!confirmDiscard)}>Change session</button></div>
     {confirmDiscard && <section className="engine-card"><p>Your lift sets stay saved. Pause a running timer before choosing another session.</p><button className="engine-button" disabled={!!flow.timer?.running} onClick={()=>{setFlow({...flow,active:false});setConfirmDiscard(false);}}>Back to session choices</button></section>}
     {flow.mode==='lift' ? <LiftFlow draft={draft} history={history} onRest={onRest} onSave={onSaveLift} busy={busy}/> : <IntervalFlow draft={draft} onSave={onSaveConditioning} busy={busy}/>}
   </>;
-  return <><section className="engine-card"><span className="engine-label">Build your Engine</span><h2>Choose your session</h2><p className="engine-muted">Start a guided session, or log training you’ve already completed.</p><div className="engine-actions"><button className="engine-button primary" onClick={()=>onStart('tabata')}>Tabata</button><button className="engine-button" onClick={()=>onStart('long_interval')}>Fast break</button></div><div className="engine-actions"><button className="engine-button" onClick={()=>onLog('game')}>Log basketball</button><button className="engine-button" onClick={()=>onLog('cross_training')}>Log class</button><button className="engine-button" onClick={onWalk}>Log walk</button><button className="engine-button" onClick={()=>onLog('long_interval')}>Log conditioning</button></div></section>
+  return <><section className="engine-card"><span className="engine-label">Fast breaks</span><h2>10 sprints</h2><p className="engine-muted">Sprint, then walk back to your starting spot. Repeat 10 times.</p><div className="engine-actions"><button className="engine-button primary" onClick={onFastBreak}>Log 10 sprints</button><button className="engine-button" onClick={()=>onStart('long_interval')}>Use a timer</button></div></section><section className="engine-card"><span className="engine-label">Build your Engine</span><h2>Choose your session</h2><p className="engine-muted">Start a guided session, or log training you’ve already completed.</p><div className="engine-actions"><button className="engine-button primary" onClick={()=>onStart('tabata')}>Tabata</button></div><div className="engine-actions"><button className="engine-button" onClick={()=>onLog('game')}>Log basketball</button><button className="engine-button" onClick={()=>onLog('cross_training')}>Log class</button><button className="engine-button" onClick={onWalk}>Log walk</button><button className="engine-button" onClick={()=>onLog('long_interval')}>Log conditioning</button></div></section>
     <section className="engine-card"><span className="engine-label">Strength supports your game</span><h2>Lift</h2><p className="engine-muted">Strength sessions count toward your weekly goal. They don’t add directly to the Engine formula.</p>{SESSIONS.map((s,i)=><div className="engine-row" key={s.id} style={{borderBottom:'1px solid var(--line)',padding:'10px 0'}}><div><strong>{s.code} · {s.name}</strong><div className="engine-muted">{s.exercises.length} exercises · {s.location}</div></div><button className="engine-button" onClick={()=>{setActiveSession(i);onStart('lift');}}>Start {s.code}</button></div>)}</section>
     <details className="engine-card"><summary style={{minHeight:44,cursor:'pointer'}}>Conditioning benchmark</summary>{onDyno}</details>
   </>;
