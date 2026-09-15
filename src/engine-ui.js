@@ -49,8 +49,8 @@ export function TodayAction({ all, constraints, preferences, hasDraft, onResume,
     <h2>{title}</h2>
     <p className="engine-muted">{hasDraft ? 'Your completed sets and edits are saved on this device.' : coachMessage({ tone: preferences.coachingTone, recovery, complete: logged.length > 0, returning: rec.band === 'restart' })}</p>
     {!hasDraft && first && !recovery && <p className="engine-muted">About {items.reduce((sum,i) => sum + RECOVERY.TYPES[i.type].defaultDurationMin,0)} min · adjust to the time you have</p>}
-    <button className="engine-button primary" style={{ width: '100%', marginTop: 10 }} onClick={hasDraft ? onResume : recovery ? onPlan : () => onStart(first.type)}>{hasDraft ? 'Resume workout' : recovery ? 'View recovery plan' : first.type === 'game' || first.type === 'cross_training' ? 'Log this session' : 'Start workout'}</button>
-    <div className="engine-row engine-wrap"><button className="engine-link" onClick={onChange}>Choose another session</button>{first && ['lift','tabata','long_interval'].includes(first.type) && !hasDraft && <button className="engine-link" onClick={() => onStart(first.type, true)}>Shorter session</button>}{recovery && <button className="engine-link" onClick={() => onStart('walk')}>Log an easy walk</button>}</div>
+    <button className="engine-button primary" style={{ width: '100%', marginTop: 10 }} onClick={hasDraft ? onResume : recovery ? onPlan : () => onStart(first.type)}>{hasDraft ? 'Resume workout' : recovery ? 'View recovery plan' : first.type === 'tabata' ? 'Log Tabata' : first.type === 'lift' ? 'Start workout' : 'Log this session'}</button>
+    <div className="engine-row engine-wrap"><button className="engine-link" onClick={onChange}>Choose another session</button>{first?.type === 'lift' && !hasDraft && <button className="engine-link" onClick={() => onStart(first.type, true)}>Shorter session</button>}{recovery && <button className="engine-link" onClick={() => onStart('walk')}>Log an easy walk</button>}</div>
     <details className="engine-details"><summary>Why this plan?</summary><p className="engine-muted">{rec.reason}</p>{(rec.flags || []).map(flag => <p key={flag} className="engine-muted">{flag}</p>)}</details>
   </section>;
 }
@@ -129,7 +129,7 @@ export function PlanOverview({ all, constraints, onStart }) {
       const items=p.items||[],recovery=!items.length||items.every(it=>it.type==='walk');
       return <div key={p.date.getTime()} style={{padding:'14px 0',borderTop:'1px solid var(--line)'}}><div className="engine-label">{i===0?'Today':p.date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'})}</div><h3>{recovery?'Recovery':items.map(it=>RECOVERY.TYPES[it.type].label).join(' + ')}</h3>
         <p className="engine-muted">{p.reason}</p>{(p.flags||[]).map(flag=><p className="engine-muted" key={flag}>{flag}</p>)}
-        {i===0 && <div className="engine-actions">{items.map(it=><button className={`engine-button ${recovery?'':'primary'}`} key={it.type} onClick={()=>onStart(it.type)}>{it.type==='walk'?'Log an easy walk':it.type==='game'?'Log basketball':it.type==='cross_training'?'Log class':`Start ${RECOVERY.TYPES[it.type].label}`}</button>)}</div>}
+        {i===0 && <div className="engine-actions">{items.map(it=><button className={`engine-button ${recovery?'':'primary'}`} key={it.type} onClick={()=>onStart(it.type)}>{it.type==='walk'?'Log an easy walk':it.type==='game'?'Log basketball':it.type==='cross_training'?'Log class':it.type==='long_interval'?'Log 10 sprints':it.type==='tabata'?'Log Tabata':`Start ${RECOVERY.TYPES[it.type].label}`}</button>)}</div>}
       </div>;
     })}
     <p className="engine-muted">Recovery is part of this plan. A small Engine dip on a rest day is expected in the formula.</p>

@@ -55,6 +55,19 @@ test('Today and Train expose timer-free sprint logging and save it to account hi
   expect(div.textContent).toContain('Engine 0.0 → 2.1');
   await click('Progress'); await click('Log'); expect(div.textContent).toContain('Fast break · 10 sprints');
 });
+test('a previously running timer can be exited and ordinary conditioning actions open logging',async()=>{
+  localStorage.setItem('bttd:user:alice:workout-draft',JSON.stringify({version:1,activeSession:0,checked:{},vals:{},liftDate:'2026-09-15T12:00',flow:{active:true,mode:'long_interval',minutes:10,timer:{elapsed:30,startedAt:Date.now(),running:true}}}));
+  await flush(()=>root.render(<App/>));await click('Resume workout');await click('Exit timer');
+  await click('Today');expect(div.textContent).not.toContain('Resume workout');
+  await click('Train');await click('Log Tabata');
+  expect(div.textContent).toContain('Log a session');expect(div.textContent).not.toContain('Start timer');
+  await flush(()=>div.querySelector('.slide-up button').click());
+  await flush(()=>[...div.querySelectorAll('summary')].find(s=>s.textContent==='Optional timers').click());
+  await click('Fast break timer');expect(div.textContent).toContain('Start timer');
+  await click('Start timer');await click('Exit timer');
+  expect(div.textContent).toContain('Log 10 sprints');
+  expect(JSON.parse(localStorage.getItem('bttd:user:alice:workout-draft')).flow.timer).toBeUndefined();
+});
 test('a failed delete keeps the weight entry visible and displays the error', async () => {
   const row={ id:42, weight:210, logged_at:new Date().toISOString() };
   fetchAll.mockImplementation(async (_client,table) => table==='weight_log' ? [row] : []);
