@@ -136,11 +136,12 @@ export function PlanOverview({ all, constraints, onStart }) {
   </section>;
 }
 
-export function EngineHome({ history, cardioSessions, constraints, preferences, weeklyGoals, courtRatings, onRate, hasDraft, onResume, onStart, onGoTab, onQuickAdd, onOpenAwards }) {
+export function EngineHome({ history, cardioSessions, constraints, preferences, weeklyGoals, courtRatings, onRate, hasDraft, onResume, onStart, onGoTab, onQuickAdd, onFastBreak, onOpenAwards }) {
   const all = normalizeAll(cardioSessions,history);
   const today = dateKey(new Date());
   const completed = all.filter(s => dateKey(s.date) === today);
   return <><EngineHero all={all} compact onProgress={() => onGoTab('stats')}/><TodayAction all={all} constraints={constraints} preferences={preferences} hasDraft={hasDraft} onResume={onResume} onStart={onStart} onPlan={() => onGoTab('goals')} onChange={() => onGoTab('workout')}/>
+    <button className="engine-button" style={{width:'100%',marginBottom:14}} onClick={onFastBreak}>Log 10 sprints</button>
     {completed.length > 0 && <div className="engine-card"><span className="engine-label">Work recorded today</span><p>{completed.map(s => RECOVERY.TYPES[s.type].label).join(' · ')}</p><button className="engine-link" onClick={() => onGoTab('history')}>View or edit your sessions →</button></div>}
     <EngineMilestone all={all} preferences={preferences} onSettings={() => onGoTab('settings')}/><WeeklyPlan all={all} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} onPlan={() => onGoTab('goals')}/><CourtCheckIn games={cardioSessions} all={all} ratings={courtRatings} onRate={onRate} compact/>
     <section className="engine-card"><span className="engine-label">Quick log</span><div className="engine-actions"><button className="engine-button" onClick={onQuickAdd}>Activity</button><button className="engine-button" onClick={() => onGoTab('nutrition')}>Food</button><button className="engine-button" onClick={() => onGoTab('weight')}>Weight</button></div><button className="engine-link" onClick={onOpenAwards}>Your achievements →</button></section>

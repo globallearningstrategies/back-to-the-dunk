@@ -4,6 +4,7 @@ import App from './App';
 import { supabase } from './data/client';
 import { fetchAll } from './data/records';
 import { weekKey } from './engine';
+import { FAST_BREAK_NOTES } from './FastBreakLog';
 jest.mock('./data/client', () => ({ supabase: { auth: { onAuthStateChange: jest.fn(), getSession: jest.fn(), signOut: jest.fn() }, from: jest.fn() } }));
 jest.mock('./data/records', () => ({ ...jest.requireActual('./data/records'), fetchAll: jest.fn() }));
 let root, div, authChange;
@@ -37,6 +38,22 @@ test('history failure shows a retry screen rather than empty statistics', async 
   await flush(()=>root.render(<App />));
   expect(div.textContent).toContain('Connection interrupted');
   expect(div.textContent).toContain('Retry loading');
+});
+test('Today and Train expose timer-free sprint logging and save it to account history', async () => {
+  const row={id:'sprints-1',workout_type:'long_interval',completed_at:new Date().toISOString(),duration_min:10,rpe:9,notes:FAST_BREAK_NOTES};
+  const query={insert:jest.fn(()=>query),select:jest.fn(()=>query),single:jest.fn().mockResolvedValue({data:row})};
+  supabase.from.mockReturnValue(query);
+  await flush(()=>root.render(<App />)); await click('Log 10 sprints');
+  expect(div.querySelector('[role="dialog"]').textContent).toContain('walk back');
+  await click('Close'); await click('Train'); await click('Log 10 sprints');
+  expect(div.textContent).not.toContain('Start timer');
+  await flush(()=>div.querySelector('[role="dialog"] form, form[role="dialog"]').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  expect(query.insert).toHaveBeenCalledTimes(1);
+  expect(query.insert.mock.calls[0][0]).toEqual(expect.objectContaining({user_id:'alice',workout_type:'long_interval',duration_min:10,rpe:9,notes:FAST_BREAK_NOTES}));
+  expect(div.querySelector('[role="dialog"]')).toBeNull();
+  expect(div.textContent).toContain('10 sprints recorded');
+  expect(div.textContent).toContain('Engine 0.0 → 2.1');
+  await click('Progress'); await click('Log'); expect(div.textContent).toContain('Fast break · 10 sprints');
 });
 test('a failed delete keeps the weight entry visible and displays the error', async () => {
   const row={ id:42, weight:210, logged_at:new Date().toISOString() };

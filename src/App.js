@@ -10,6 +10,7 @@ import { RestTimer, DynoCard } from './training';
 import { StatCard, StatsTab } from './statistics';
 import { NutritionTab } from './nutrition';
 import { toLocalInput, ConditioningLogger, WalkLogger, LiftDateSheet } from './logging';
+import { FastBreakLog, FAST_BREAK_NOTES } from './FastBreakLog';
 import { AchievementsSheet, CelebrationOverlay } from './home';
 import { AuthGate } from './auth';
 import { EngineHome, EngineProgress, GoalSettings, WeeklyPlan, PlanOverview } from './engine-ui';
@@ -90,6 +91,7 @@ export function AccountApp({ userId, userEmail }) {
   const [saveMsg, setSaveMsg] = useState("");
   const [cardioSessions, setCardioSessions] = useState([]);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [fastBreakOpen, setFastBreakOpen] = useState(false);
   // Conditioning logger sheet: { open, prefillType?, warn?, editing? }
   const [loggerState, setLoggerState] = useState({ open: false });
   const [restTimer, setRestTimer] = useState(null); // null or { seconds }
@@ -126,7 +128,7 @@ export function AccountApp({ userId, userEmail }) {
     if (type === 'walk') {setWalkState({open:true});return;}
     if (type === 'game' || type === 'cross_training') {setLoggerState({open:true,prefillType:type});return;}
     draft.setFlow({active:true,mode:type==='lift'?'lift':type==='tabata'?'tabata':'long_interval',short,index:0,
-      minutes:type==='tabata'?(short?2:4):(short?10:12)});
+      minutes:type==='tabata'?(short?2:4):10});
     setTab('workout');window.scrollTo({top:0,behavior:'auto'});
   };
   const hasLiftDraft = Object.values(checked).some(Boolean) || Object.values(vals).some(v => Number(v.setsDone)>0 || Object.values(v.completedSets || {}).some(Boolean));
@@ -393,7 +395,7 @@ export function AccountApp({ userId, userEmail }) {
     if (id == null) {
       const before=engineModel(normalizeAll(cardioSessions,history)).score;
       const after=engineModel(normalizeAll([row,...cardioSessions],history)).score;
-      setSessionResult({title:type==='game'?'Game recorded':'Session recorded',detail:`${duration_min} min · effort ${rpe}/10. Engine ${formatEngine(before)} → ${formatEngine(after)}.`});
+      setSessionResult({title:type==='game'?'Game recorded':notes===FAST_BREAK_NOTES?'10 sprints recorded':'Session recorded',detail:`${duration_min} min · effort ${rpe}/10. Engine ${formatEngine(before)} → ${formatEngine(after)}.`});
       setTab('home');
     }
   });
@@ -548,11 +550,11 @@ export function AccountApp({ userId, userEmail }) {
 
         {tab === "home" && <>
           {sessionResult && <section className="engine-card" role="status"><div className="engine-row"><strong>{sessionResult.title}</strong><button className="engine-link" onClick={()=>setSessionResult(null)}>Dismiss</button></div><p>{sessionResult.detail}</p></section>}
-          <EngineHome history={history} cardioSessions={cardioSessions} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} courtRatings={courtRatings} onRate={rateCourt} hasDraft={hasDraft} onResume={resumeTraining} onStart={startTraining} onGoTab={setTab} onQuickAdd={()=>setQuickAddOpen(true)} onOpenAwards={()=>setAwardsOpen(true)}/>
+          <EngineHome history={history} cardioSessions={cardioSessions} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} courtRatings={courtRatings} onRate={rateCourt} hasDraft={hasDraft} onResume={resumeTraining} onStart={startTraining} onGoTab={setTab} onQuickAdd={()=>setQuickAddOpen(true)} onFastBreak={()=>setFastBreakOpen(true)} onOpenAwards={()=>setAwardsOpen(true)}/>
         </>}
 
         {(tab === "workout" || draft.flow?.active) && <div hidden={tab!=="workout"}>
-          <TrainWorkspace draft={draft} history={history} onStart={startTraining} onRest={restEnabled?()=>setRestTimer({seconds:90,startedAt:Date.now()}):null} onSaveLift={logSession} onSaveConditioning={logConditioning} onLog={type=>setLoggerState({open:true,prefillType:type})} onWalk={()=>setWalkState({open:true})} onDyno={<DynoCard onLog={logDyno}/>} busy={busy}/>
+          <TrainWorkspace draft={draft} history={history} onStart={startTraining} onRest={restEnabled?()=>setRestTimer({seconds:90,startedAt:Date.now()}):null} onSaveLift={logSession} onSaveConditioning={logConditioning} onFastBreak={()=>setFastBreakOpen(true)} onLog={type=>setLoggerState({open:true,prefillType:type})} onWalk={()=>setWalkState({open:true})} onDyno={<DynoCard onLog={logDyno}/>} busy={busy}/>
         </div>}
 
         {/* ── NUTRITION ── */}
@@ -609,7 +611,7 @@ export function AccountApp({ userId, userEmail }) {
             {feed.map((f) => {
               const def = RECOVERY.TYPES[f.type] || {};
               const col = C[def.colorKey] || C.rust;
-              const title = f.kind === "cardio" ? (def.label || f.type) : f.title;
+              const title = f.kind === "cardio" ? (f.type === 'long_interval' && f.notes === FAST_BREAK_NOTES ? 'Fast break · 10 sprints' : def.label || f.type) : f.title;
               const focusOpt = f.kind === "cardio" && f.type === "cross_training" ? s440FocusFor(f.focus) : null;
               const clsName = f.kind === "cardio" && f.type === "cross_training" && f.raw.class_name ? f.raw.class_name.replace("SWEAT440 ", "") : null;
               const detail = f.kind === "cardio"
@@ -983,9 +985,12 @@ export function AccountApp({ userId, userEmail }) {
 
       {/* ── QUICK ADD bottom sheet ── */}
       {quickAddOpen && <div className="backdrop" onClick={()=>setQuickAddOpen(false)}><section className="engine-card" role="dialog" aria-modal="true" aria-label="Quick add" onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:440}}><div className="engine-row"><h2>Log your work</h2><button className="engine-link" onClick={()=>setQuickAddOpen(false)}>Close</button></div><div className="engine-actions">
+        <button className="engine-button primary" onClick={()=>{setQuickAddOpen(false);setFastBreakOpen(true);}}>10 sprints</button>
         {[['game','Basketball'],['cross_training','Class'],['tabata','Tabata'],['long_interval','Conditioning']].map(([type,label])=><button className="engine-button" key={type} onClick={()=>{setQuickAddOpen(false);setLoggerState({open:true,prefillType:type});}}>{label}</button>)}
         <button className="engine-button" onClick={()=>{setQuickAddOpen(false);setWalkState({open:true});}}>Walk</button><button className="engine-button" onClick={()=>{setQuickAddOpen(false);setTab('nutrition');}}>Food</button><button className="engine-button" onClick={()=>{setQuickAddOpen(false);setTab('weight');}}>Weight</button>
       </div></section></div>}
+
+      {fastBreakOpen && <FastBreakLog onSave={saveCardio} onClose={()=>setFastBreakOpen(false)} busy={busy}/>}
 
       {/* ── CONDITIONING LOGGER sheet ── */}
       {loggerState.open && (
