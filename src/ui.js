@@ -26,7 +26,7 @@ export function Surface({ children, accent, style = {}, onClick, className = "",
 export function Eyebrow({ children, color = C.dim }) {
   return (
     <div style={{
-      fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase",
+      fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase",
       color, fontWeight: 600, fontFamily: FONT_MONO,
     }}>{children}</div>
   );
@@ -48,7 +48,7 @@ export function Pill({ children, color = C.rust, size = "sm" }) {
 
 export function NavItem({ g, active, onGo }) {
   return (
-    <button onClick={() => onGo(g)} className="btn"
+    <button onClick={() => onGo(g)} aria-label={g.label} aria-current={active ? "page" : undefined} className="btn"
       style={{
         flex: 1, padding: "8px 4px", border: "none", background: "transparent",
         cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
@@ -58,7 +58,7 @@ export function NavItem({ g, active, onGo }) {
         {g.icon}
       </span>
       <span style={{
-        fontSize: 10, fontWeight: active ? 700 : 500,
+        fontSize: 12, fontWeight: active ? 700 : 500,
         color: active ? C.rust : C.dim,
         letterSpacing: "0.02em", fontFamily: FONT_DISPLAY, transition: "color 0.2s",
       }}>

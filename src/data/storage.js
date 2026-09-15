@@ -4,7 +4,7 @@ export const LEGACY_KEYS = {
   legs: 'bttd_game_legs_v1', schedule: 'bttd_schedule', dyno: 'bttd_dyno_v1',
 };
 export const DEFAULT_BODY = { heightInches: 77, weightLbs: 222, age: 47, goal: 'lean', activityFactor: 1.55 };
-export const MAP_FIELDS = new Set(['body', 'protein', 'calories', 'vitaminD3', 'creatine', 'legs', 'schedule']);
+export const MAP_FIELDS = new Set(['body', 'protein', 'calories', 'vitaminD3', 'creatine', 'legs', 'schedule', 'preferences', 'weeklyGoals', 'court', 'foodEntries', 'foodFavorites']);
 export const accountKey = (userId, key) => `bttd:user:${userId}:${key}`;
 export function readJSON(key, fallback) {
   try { const value = JSON.parse(localStorage.getItem(key)); return value ?? fallback; }

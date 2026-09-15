@@ -41,7 +41,7 @@ export function AuthGate() {
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <div style={{ width: 56, height: 56, borderRadius: 16, background: `linear-gradient(135deg, ${C.rust}, ${C.amber})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "0 auto 14px" }}>💪</div>
           <h1 className="h-display" style={{ fontSize: 26, fontWeight: 700, color: C.bone, letterSpacing: "-0.03em", margin: 0 }}>The Work</h1>
-          <p className="h-serif" style={{ fontSize: 16, color: C.dim, margin: "8px 0 0" }}>Your private training log. Sign in to continue.</p>
+          <p className="h-serif" style={{ fontSize: 16, color: C.dim, margin: "8px 0 0" }}>Build your Engine. Sign in to continue.</p>
         </div>
 
         <Surface padding={22}>

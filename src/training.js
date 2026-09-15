@@ -1,3 +1,4 @@
+import { vibrate } from './model';
 import React, { useState, useEffect, useRef } from 'react';
 import { useUserData } from './data/UserData';
 import { C, FONT_DISPLAY, FONT_MONO, TABATA_CONFIG, getAudioCtx, beep, ringAlarm, speak, requestNotificationPermission, fireNotification, PROGRESS_STEP, nextTarget, platesToReach } from './model';
@@ -92,7 +93,7 @@ export function RestTimer({ seconds, onClose, onSkip }) {
       setRinging(true);
       speak("Time to lift");
       fireNotification("⏰ Rest done", "Get back under the bar.");
-      if (navigator.vibrate) navigator.vibrate([200, 80, 200, 80, 400]);
+      vibrate([200, 80, 200, 80, 400]);
 
       // Repeat alarm
       let count = 0;
@@ -104,7 +105,7 @@ export function RestTimer({ seconds, onClose, onSkip }) {
           onClose && onClose();
         } else {
           ringAlarm();
-          if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
+          vibrate([200, 80, 200]);
         }
       }, 1700);
       return () => { if (ringIntervalRef.current) clearInterval(ringIntervalRef.current); };
@@ -266,7 +267,7 @@ export function BarbellInput({ vals, onVal, lastPerf }) {
             const pl = platesToReach(nextTarget(lastPerf.weight));
             onVal("plates", JSON.stringify([...pl].sort((a, b) => b - a)));
             onVal("perSide", String(pl.reduce((a, b) => a + b, 0)));
-            if (navigator.vibrate) navigator.vibrate(8);
+            vibrate(8);
           }} className="btn"
           style={{
             width: "100%", padding: "10px 12px", marginBottom: 12,
@@ -399,7 +400,7 @@ export function ExRow({ ex, checked, onCheck, vals, onVal, color, onRest, lastPe
     }
     // Subtle haptic-like beep + vibration
     beep(880, 0.04, 0.15);
-    if (navigator.vibrate) navigator.vibrate(10);
+    vibrate(10);
   };
 
   const longPressTimer = useRef(null);
@@ -414,7 +415,7 @@ export function ExRow({ ex, checked, onCheck, vals, onVal, color, onRest, lastPe
         onEditReps(i, customReps[i] !== undefined ? customReps[i] : ex.reps);
       }
       beep(660, 0.15, 0.4);
-      if (navigator.vibrate) navigator.vibrate([20, 30, 20]);
+      vibrate([20, 30, 20]);
     }, 500);
   };
   const handlePressEnd = (e, i) => {
@@ -431,7 +432,7 @@ export function ExRow({ ex, checked, onCheck, vals, onVal, color, onRest, lastPe
     onVal("setsDone", "0");
     onVal("customReps", {});
     beep(440, 0.2, 0.4);
-    if (navigator.vibrate) navigator.vibrate([20, 30, 20]);
+    vibrate([20, 30, 20]);
   };
 
   return (
@@ -636,7 +637,7 @@ export function TabataTimer({ onLog, loggedToday }) {
 
       {/* Already did it elsewhere? One-tap log without running the timer. */}
       {phase === "idle" && countdown === null && (
-        <button onClick={() => { onLog(); beep(880, 0.12, 0.4); if (navigator.vibrate) navigator.vibrate(10); }} className="btn"
+        <button onClick={() => { onLog(); beep(880, 0.12, 0.4); vibrate(10); }} className="btn"
           style={{
             width: "100%", marginTop: 16, padding: "11px 12px", borderRadius: 12, cursor: "pointer",
             background: loggedToday ? `${C.moss}12` : "transparent",
@@ -820,7 +821,7 @@ export function FastBreakTimer({ onLog, cardioSessions = [] }) {
 
       {/* Phone stayed on the sideline? One-tap log without running the timer. */}
       {phase === "idle" && countdown === null && (
-        <button onClick={() => { onLog(minutes); beep(880, 0.12, 0.4); if (navigator.vibrate) navigator.vibrate(10); }} className="btn"
+        <button onClick={() => { onLog(minutes); beep(880, 0.12, 0.4); vibrate(10); }} className="btn"
           style={{
             width: "100%", marginTop: 12, padding: "11px 12px", borderRadius: 12, cursor: "pointer",
             background: "transparent", border: `1px dashed ${C.dim}66`,

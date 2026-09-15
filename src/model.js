@@ -487,7 +487,7 @@ export function recommend(allSessions, refDate, constraints = {}) {
 
   // On a non-hard day, an owed walk is the active-recovery pick; else rest.
   const recoveryDay = (why, restSci) => walkOwed
-    ? mk("train", [{ type: "walk" }], `${why} An easy walk is ideal active recovery (${done.walk}/${T.walk.weeklyTarget} this week).`, SCI.walk)
+    ? mk("train", [{ type: "walk" }], `${why} An easy walk is ideal active recovery (${done.walk}/${T.walk.weeklyTarget} over the last 7 days).`, SCI.walk)
     : rest(`${why} You're recovered and on track — take it easy.`, restSci);
 
   // Which "still recovering" note fits the last hard session?
@@ -519,7 +519,7 @@ export function recommend(allSessions, refDate, constraints = {}) {
     const didTabataToday = todays.some(s => s.type === "tabata");
     const didLiftToday = todays.some(s => s.type === "lift");
     if (RECOVERY.pairLiftWithConditioning && didTabataToday && !didLiftToday && owedLift > 0 && canRampHard) {
-      return mk("train", [{ type: "lift" }], `Tabata's done — pair a Lift with it while you're warm (${done.lift}/${T.lift.weeklyTarget} lifts this week).`, SCI.lift);
+      return mk("train", [{ type: "lift" }], `Tabata's done — pair a Lift with it while you're warm (${done.lift}/${T.lift.weeklyTarget} lifts over the last 7 days).`, SCI.lift);
     }
     return recoveryDay(`${T[todaysHard[0].type].label} already done today — let it absorb.`, recoverSci(todaysHard[0].type));
   }
@@ -582,7 +582,7 @@ export function recommend(allSessions, refDate, constraints = {}) {
     return mk("train", [{ type: "lift" }], `Lift owed (${done.lift}/${T.lift.weeklyTarget}) and you're recovered — go move some weight.`, SCI.lift);
   }
   // Everything's met → recovery day.
-  if (done.game > 0) return recoveryDay("A game this week already covers your hard load.", SCI.gameCovered);
+  if (done.game > 0) return recoveryDay("A game in the last 7 days already counts toward your hard sessions.", SCI.gameCovered);
   return recoveryDay("Weekly targets met (2 Tabata · 1 Long Interval · 2 lifts).", SCI.targetsMet);
 }
 
@@ -716,9 +716,9 @@ export const ACHIEVEMENTS = [
   { id: "walk20",   emoji: "🚶", name: "Active Recovery", desc: "20 recovery walks",           goal: 20,  val: s => s.byType.walk },
   { id: "cross10",  emoji: "💦", name: "Class Act",       desc: "10 Sweat440 classes",         goal: 10,  val: s => s.byType.cross_training },
   { id: "eng85",    emoji: "🚗", name: "Tuned Up",        desc: "Engine score 85",             goal: 85,  val: s => s.enginePeak },
-  { id: "eng95",    emoji: "🏎️", name: "New Redline",     desc: "Engine 95 — beat your July peak", goal: 95, val: s => s.enginePeak },
+  { id: "eng95",    emoji: "🏎️", name: "New Redline",     desc: "Reach Engine 95", goal: 95, val: s => s.enginePeak },
   { id: "eng100",   emoji: "💯", name: "Century Motor",   desc: "Engine score 100",            goal: 100, val: s => s.enginePeak },
-  { id: "eng110",   emoji: "🏁", name: "Game-Ready",      desc: "Engine 110 — built for two full halves", goal: 110, val: s => s.enginePeak },
+  { id: "eng110",   emoji: "🏁", name: "Game-Ready",      desc: "Reach Engine 110", goal: 110, val: s => s.enginePeak },
   { id: "early",    emoji: "🌅", name: "Early Bird",      desc: "Train before 7am",            goal: 1,   val: s => (s.earlyBird ? 1 : 0) },
   { id: "night",    emoji: "🌙", name: "Night Owl",       desc: "Train after 9pm",             goal: 1,   val: s => (s.nightOwl ? 1 : 0) },
   { id: "comeback", emoji: "🔄", name: "Comeback Kid",    desc: "Train after a 7+ day break",  goal: 1,   val: s => (s.comeback ? 1 : 0) },
@@ -726,7 +726,7 @@ export const ACHIEVEMENTS = [
   { id: "days100",  emoji: "🗓️", name: "Lifestyle",       desc: "Train on 100 different days",  goal: 100, val: s => s.activeDays },
   { id: "lost5",    emoji: "📉", name: "Down 5",          desc: "Drop 5 lbs",                  goal: 5,   val: s => s.weightLost },
   { id: "lost15",   emoji: "🎯", name: "Down 15",         desc: "Drop 15 lbs",                 goal: 15,  val: s => s.weightLost },
-  { id: "lost25",   emoji: "👑", name: "Goal Weight",     desc: "Drop 25 lbs — the dunk awaits", goal: 25, val: s => s.weightLost },
+  { id: "lost25",   emoji: "👑", name: "Goal Weight",     desc: "Drop 25 lbs", goal: 25, val: s => s.weightLost },
 ];
 
 export function computeGameState(history, cardioSessions, weightLog) {
@@ -1067,6 +1067,9 @@ export const calcCalorieTarget = (weightLbs, heightInches, age = 35, activityFac
   return Math.max(1200, Math.round(tdee + goalDelta)); // 1200 floor for safety
 };
 
+let feedbackPreferences = {sound:true,vibration:true};
+export function setFeedbackPreferences(value) { feedbackPreferences = value; }
+export function vibrate(pattern) { if (feedbackPreferences.vibration && navigator.vibrate) navigator.vibrate(pattern); }
 export let _audioCtx = null;
 
 export function getAudioCtx() {
@@ -1076,6 +1079,7 @@ export function getAudioCtx() {
 }
 
 export function beep(freq, dur, vol) {
+  if (!feedbackPreferences.sound) return;
   try {
     const ctx = getAudioCtx();
     const osc = ctx.createOscillator(), gain = ctx.createGain();
@@ -1088,6 +1092,7 @@ export function beep(freq, dur, vol) {
 }
 
 export function ringAlarm() {
+  if (!feedbackPreferences.sound) return;
   try {
     const ctx = getAudioCtx();
     const now = ctx.currentTime;
@@ -1117,6 +1122,7 @@ export function ringAlarm() {
 }
 
 export function speak(text) {
+  if (!feedbackPreferences.sound) return;
   try {
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
@@ -1142,7 +1148,7 @@ export function fireNotification(title, body) {
       icon: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>💪</text></svg>",
       tag: "bttd-timer",
       requireInteraction: false,
-      silent: false,
+      silent: !feedbackPreferences.sound,
     });
     n.onclick = () => { window.focus(); n.close(); };
     setTimeout(() => n.close(), 8000);
@@ -1350,11 +1356,11 @@ export function engineLoadOf(s) {
   return 0;
 }
 
-export function engineModel(all) {
+export function engineModel(all, asOf = new Date()) {
   const sessions = all.map(s => ({ s, day: startOfDay(s.date).getTime(), load: engineLoadOf(s) }))
     .filter(x => x.load > 0).sort((a, b) => a.day - b.day);
   if (!sessions.length) return { score: 0, weekPct: null, bumps: [], series: [], peak: 0, peakDay: null, fedStreak: 0 };
-  const today = startOfDay(new Date());
+  const today = startOfDay(asOf);
   let F = 0, i = 0;
   const daily = new Map();
   const fedDays = new Set();

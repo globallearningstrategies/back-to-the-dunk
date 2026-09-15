@@ -1,3 +1,4 @@
+import { vibrate } from './model';
 import React, { useState } from 'react';
 import { C, SPRING, FONT_DISPLAY, FONT_MONO, PRE_WORKOUT_FOODS, POST_WORKOUT_FOODS, ANYTIME_PROTEIN, PRE_WORKOUT_MEALS, POST_WORKOUT_MEALS, calcProteinTarget, GOAL_MODES, calcCalorieTarget, beep, todayKey, weekKeysMonday, calcSupplementStreak } from './model';
 import { Surface, Eyebrow, Pill, Btn, NumIn, PageTitle, toast, AnimatedNumber } from './ui';
@@ -20,7 +21,7 @@ export function SupplementRow({ name, dose, blurb, icon, accent, log, onToggle }
     onToggle(today);
     if (!takenToday) {
       beep(880, 0.08, 0.3);
-      if (navigator.vibrate) navigator.vibrate(8);
+      vibrate(8);
     }
   };
 
@@ -67,7 +68,7 @@ export function SupplementRow({ name, dose, blurb, icon, accent, log, onToggle }
   );
 }
 
-export function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinChange, calorieLog, onCalorieChange, vitaminD3Log, onVitaminD3Toggle, creatineLog, onCreatineToggle }) {
+export function NutritionTab({ guideOnly = false, onLogFood, bodyStats, onUpdateBody, proteinLog, onProteinChange, calorieLog, onCalorieChange, vitaminD3Log, onVitaminD3Toggle, creatineLog, onCreatineToggle }) {
   const [editingBody, setEditingBody] = useState(false);
   const [tmpHeight, setTmpHeight] = useState(bodyStats.heightInches);
   const [tmpWeight, setTmpWeight] = useState(bodyStats.weightLbs);
@@ -116,7 +117,7 @@ export function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinCha
     onProteinChange(today, newTotal);
     if (grams > 0) {
       beep(880, 0.08, 0.3);
-      if (navigator.vibrate) navigator.vibrate(8);
+      vibrate(8);
     }
   };
 
@@ -136,6 +137,7 @@ export function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinCha
 
   /* Log a meal/food: adds BOTH protein and calories in one tap */
   const logFood = (food) => {
+    if (onLogFood) {onLogFood(food);return;}
     const proteinAmt = food.protein || food.totalProtein || 0;
     const calAmt = food.calories || 0;
     if (proteinAmt > 0) {
@@ -146,7 +148,7 @@ export function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinCha
     }
     if (proteinAmt > 0 || calAmt > 0) {
       beep(880, 0.08, 0.3);
-      if (navigator.vibrate) navigator.vibrate(8);
+      vibrate(8);
     }
   };
 
@@ -180,6 +182,7 @@ export function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinCha
 
   return (
     <>
+      {!guideOnly && <>
       <PageTitle kicker="Fuel · the work">Nutrition</PageTitle>
 
       {/* ── PROTEIN RING — hero ── */}
@@ -259,7 +262,7 @@ export function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinCha
                 <Btn ghost color={C.dim} size="sm" onClick={() => {
                   const prev = todayProtein;
                   setProteinAbsolute(0);
-                  if (navigator.vibrate) navigator.vibrate(12);
+                  vibrate(12);
                   toast("Protein reset to 0", { actionLabel: "UNDO", onAction: () => setProteinAbsolute(prev) });
                 }}>↺</Btn>
               )}
@@ -360,7 +363,7 @@ export function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinCha
                 <Btn ghost color={C.dim} size="sm" onClick={() => {
                   const prev = todayCalories;
                   setCaloriesAbsolute(0);
-                  if (navigator.vibrate) navigator.vibrate(12);
+                  vibrate(12);
                   toast("Calories reset to 0", { actionLabel: "UNDO", onAction: () => setCaloriesAbsolute(prev) });
                 }}>↺</Btn>
               )}
@@ -372,6 +375,7 @@ export function NutritionTab({ bodyStats, onUpdateBody, proteinLog, onProteinCha
         </Surface>
       </div>
 
+      </>}
       {/* ── DAILY SUPPLEMENTS ── */}
       <div className="ease-up-2">
         <Surface accent={C.plum}>
