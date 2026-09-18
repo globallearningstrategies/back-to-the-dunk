@@ -935,7 +935,7 @@ export function AccountApp({ userId, userEmail }) {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: `1px solid ${C.line}` }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>💊 Daily D3 reminder</div>
-                      <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Push to this phone every morning at 9</div>
+                      <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Daily push — pick the time below</div>
                     </div>
                     <button onClick={toggleD3Push} aria-label="Daily D3 reminder" aria-pressed={d3Push} className="btn"
                       style={{
@@ -952,6 +952,7 @@ export function AccountApp({ userId, userEmail }) {
                       }} />
                     </button>
                   </div>
+                  <ReminderTimes />
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: `1px solid ${C.line}` }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>Account</div>
@@ -1017,4 +1018,74 @@ export function AccountApp({ userId, userEmail }) {
       <ToastHost />
     </div>
   );
+}
+
+/* ── Reminder schedule — pick when each daily push arrives (Eastern time).
+   Stored in reminder_settings; the server checks it every 15 minutes and
+   sends each reminder once per day after its time passes. ── */
+function ReminderTimes() {
+  const [times, setTimes] = useState({ d3: "07:00", engine: "18:00" });
+  const [engineOn, setEngineOn] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let active = true;
+    let q = null;
+    try { q = supabase.from("reminder_settings").select("id, send_time, enabled"); } catch (e) {}
+    if (!q || typeof q.then !== "function") { setLoaded(true); return; }
+    q.then(({ data }) => {
+      if (!active) return;
+      if (data && data.length) {
+        setTimes(t => { const n = { ...t }; data.forEach(r => { if (r.send_time) n[r.id] = r.send_time.slice(0, 5); }); return n; });
+        const eng = data.find(r => r.id === "engine");
+        if (eng) setEngineOn(eng.enabled !== false);
+      }
+      setLoaded(true);
+    }).catch(() => { if (active) setLoaded(true); });
+    return () => { active = false; };
+  }, []);
+  const persist = (row, okMsg) => {
+    let q = null;
+    try { q = supabase.from("reminder_settings").upsert(row); } catch (e) {}
+    if (!q || typeof q.then !== "function") return;
+    q.then(({ error }) => {
+      if (!error) toast(okMsg); else toast("Couldn't save — try again");
+    }).catch(() => toast("Couldn't save — try again"));
+  };
+  const saveTime = (id, val) => {
+    if (!val) return;
+    setTimes(p => ({ ...p, [id]: val }));
+    persist({ id, send_time: val }, "⏰ Reminder time saved");
+  };
+  const toggleEngine = () => {
+    const next = !engineOn;
+    setEngineOn(next);
+    persist({ id: "engine", enabled: next }, next ? "⛽ Engine nudge on" : "Engine nudge off");
+  };
+  const timeInput = (id) => (
+    <input type="time" value={times[id]} disabled={!loaded} onChange={e => saveTime(id, e.target.value)}
+      aria-label={id === "d3" ? "D3 reminder time" : "Engine nudge time"}
+      style={{ background: C.raised, border: `1px solid ${C.line}`, borderRadius: 10, color: C.bone, padding: "8px 10px", fontSize: 15, fontFamily: FONT_MONO, fontWeight: 700, flexShrink: 0 }} />
+  );
+  return <>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 0", borderTop: `1px solid ${C.line}` }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>⏰ D3 reminder time</div>
+        <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Every day at this time</div>
+      </div>
+      {timeInput("d3")}
+    </div>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 0", borderTop: `1px solid ${C.line}` }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>⛽ Engine nudge time</div>
+        <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Only on days with nothing logged yet</div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        {timeInput("engine")}
+        <button onClick={toggleEngine} aria-label="Engine nudge" aria-pressed={engineOn} className="btn"
+          style={{ width: 50, height: 28, borderRadius: 14, border: "none", background: engineOn ? C.moss : C.faint, position: "relative", cursor: "pointer", padding: 0 }}>
+          <div style={{ width: 22, height: 22, borderRadius: 999, background: "#fff", position: "absolute", top: 3, left: engineOn ? 25 : 3, transition: "left 0.2s cubic-bezier(0.22, 1, 0.36, 1)", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+        </button>
+      </div>
+    </div>
+  </>;
 }
