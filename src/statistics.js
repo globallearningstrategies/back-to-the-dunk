@@ -546,9 +546,16 @@ export function AnatomicalHeart({ growth, beatDur, size = 150 }) {
 
 export function HeartSim({ cardioSessions, workouts }) {
   const all = normalizeAll(cardioSessions, workouts);
-  const isAerobic = (s) => s.type === "tabata" || s.type === "long_interval" || s.type === "game" || (s.type === "cross_training" && s.focus === "cardio");
+  // Aerobic minutes: hard cardio at full value, walks at half, and Sweat440
+  // strength classes at 60% — the 40s-on/20s-off format keeps the heart working.
+  const aerobicMins = (s) => {
+    if (s.type === "tabata" || s.type === "long_interval" || s.type === "game") return s.duration || 0;
+    if (s.type === "cross_training") return (s.duration || 0) * (s.focus === "cardio" ? 1 : 0.6);
+    if (s.type === "walk") return (s.duration || 0) * 0.5;
+    return 0;
+  };
   const minsIn = (from, to) => all.filter(s => { const t = s.date.getTime(); return t >= from && t < to; })
-    .reduce((a, s) => a + (isAerobic(s) ? (s.duration || 0) : s.type === "walk" ? (s.duration || 0) * 0.5 : 0), 0);
+    .reduce((a, s) => a + aerobicMins(s), 0);
   const now = Date.now(), W = 28 * 86400000;
   const mins = Math.round(minsIn(now - W, now + 1));
   const prev = Math.round(minsIn(now - 2 * W, now - W));
@@ -572,7 +579,7 @@ export function HeartSim({ cardioSessions, workouts }) {
   // The receipt: where this block's aerobic minutes actually came from.
   const RECEIPT_LABELS = {
     long_interval: { emoji: "⚡", label: "Long intervals / fast breaks" },
-    cross_training: { emoji: "💦", label: "Conditioning classes" },
+    cross_training: { emoji: "💦", label: "Sweat440 classes (strength days at 60%)" },
     game: { emoji: "🏀", label: "Basketball games" },
     tabata: { emoji: "🔥", label: "Tabatas" },
     walk: { emoji: "🚶", label: "Walks (half credit — easy aerobic)" },
@@ -583,7 +590,7 @@ export function HeartSim({ cardioSessions, workouts }) {
     if (t < now - W || t > now) return;
     let credit = 0, key = null;
     if (s.type === "walk") { credit = (s.duration || 0) * 0.5; key = "walk"; }
-    else if (s.type === "cross_training" && s.focus === "cardio") { credit = s.duration || 0; key = "cross_training"; }
+    else if (s.type === "cross_training") { credit = (s.duration || 0) * (s.focus === "cardio" ? 1 : 0.6); key = "cross_training"; }
     else if (s.type === "tabata" || s.type === "long_interval" || s.type === "game") { credit = s.duration || 0; key = s.type; }
     if (key && credit > 0) {
       if (!receipt[key]) receipt[key] = { n: 0, min: 0 };

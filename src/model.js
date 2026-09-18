@@ -1351,7 +1351,10 @@ export const ENGINE_TAU = 42;
 
 export function engineLoadOf(s) {
   if (s.type === "walk") return (s.duration || 0) * 0.5 * (s.rpe || 3);
-  if (s.type === "cross_training") return s.focus === "cardio" ? (s.duration || 0) * (s.rpe || 8) : 0;
+  // Sweat440 runs 40s-on / 20s-off intervals all class, so even strength-focus
+  // days keep the heart working: cardio classes earn full aerobic credit,
+  // strength classes 60% (the rest of that effort feeds the muscles).
+  if (s.type === "cross_training") return (s.duration || 0) * (s.rpe || 8) * (s.focus === "cardio" ? 1 : 0.6);
   if (s.type === "tabata" || s.type === "long_interval" || s.type === "game") return (s.duration || 0) * (s.rpe || 8);
   return 0;
 }
