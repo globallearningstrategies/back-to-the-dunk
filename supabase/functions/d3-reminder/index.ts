@@ -1,4 +1,6 @@
-// d3-reminder — send the daily "take your Vitamin D3" push to every subscribed device.
+// d3-reminder — daily "take your Vitamin D3" push, at the user's chosen time.
+// A dispatcher cron calls this every 15 minutes; it sends only once the ET
+// clock passes reminder_settings.send_time, and only once per ET day.
 // VAPID keys live in app_config (service-role-only table). Dead subscriptions are pruned.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -7,12 +9,23 @@ import webpush from "npm:web-push@3.6.7";
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
+const etNow = () => new Date().toLocaleTimeString("en-GB", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false });
+const etToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+
 Deno.serve(async (_req: Request) => {
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+
+    // ── Respect the user's schedule ──
+    const { data: pref } = await supabase.from("reminder_settings").select("send_time, enabled, last_sent_date, user_id").eq("id", "d3").maybeSingle();
+    const sendTime = (pref?.send_time || "07:00").slice(0, 5);
+    if (pref && pref.enabled === false) return json({ sent: 0, note: "reminder disabled" });
+    const today = etToday(), now = etNow();
+    if (pref?.last_sent_date === today) return json({ sent: 0, note: "already sent today" });
+    if (now < sendTime) return json({ sent: 0, note: `waiting for ${sendTime} ET (now ${now})` });
 
     const { data: cfg, error: cfgErr } = await supabase.from("app_config").select("key, value").in("key", ["vapid_public", "vapid_private"]);
     if (cfgErr) return json({ error: cfgErr.message }, 500);
@@ -44,9 +57,9 @@ Deno.serve(async (_req: Request) => {
         }
       }
     }
-    return json({ sent, pruned, total: subs.length });
+    if (pref?.user_id) await supabase.from("reminder_settings").upsert({ id: "d3", user_id: pref.user_id, last_sent_date: today });
+    return json({ sent, pruned, total: subs.length, at: now });
   } catch (e) {
     return json({ error: String(e) }, 500);
   }
 });
-
