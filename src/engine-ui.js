@@ -100,6 +100,34 @@ export function CourtCheckIn({ games, all, ratings, onRate, compact = false }) {
   </section>;
 }
 
+export function SeasonStats({ games, onProgress }) {
+  const stat = games
+    .filter(g => g.workout_type === 'game' && (g.points != null || g.rebounds != null))
+    .sort((a,b) => new Date(a.completed_at) - new Date(b.completed_at));
+  if (!stat.length) return null;
+  const avg = arr => arr.length ? arr.reduce((s,n) => s+n,0)/arr.length : null;
+  const fmt1 = n => n == null ? '—' : String(Math.round(n*10)/10);
+  const pts = stat.filter(g => g.points != null).map(g => g.points);
+  const rbs = stat.filter(g => g.rebounds != null).map(g => g.rebounds);
+  const trendOf = vals => {
+    if (vals.length < 4) return null;
+    const half = Math.floor(vals.length/2);
+    return avg(vals.slice(-half)) - avg(vals.slice(0,half));
+  };
+  const pTrend = trendOf(pts), rTrend = trendOf(rbs);
+  const trendText = t => t == null ? null : `${t >= 0 ? '▲' : '▼'} ${fmt1(Math.abs(t))} vs early season`;
+  const last = stat[stat.length-1];
+  const lastBits = [last.points != null ? `${last.points} pts` : null, last.rebounds != null ? `${last.rebounds} rebounds` : null].filter(Boolean).join(' · ');
+  return <section className="engine-card" aria-label="Season stats">
+    <div className="engine-row"><span className="engine-label">Season · points & rebounds</span>{onProgress && <button className="engine-link" onClick={onProgress}>Full box score →</button>}</div>
+    <div className="engine-grid" style={{ marginTop: 10 }}>
+      <div className="engine-mini"><span className="engine-label">Points / game</span><strong style={{ fontSize: 26 }}>{fmt1(avg(pts))}</strong>{trendText(pTrend) && <div className="engine-muted">{trendText(pTrend)}</div>}</div>
+      <div className="engine-mini"><span className="engine-label">Rebounds / game</span><strong style={{ fontSize: 26 }}>{fmt1(avg(rbs))}</strong>{trendText(rTrend) && <div className="engine-muted">{trendText(rTrend)}</div>}</div>
+    </div>
+    <p className="engine-muted" style={{ marginTop: 10 }}>Last game: <strong>{lastBits}</strong> · {new Date(last.completed_at).toLocaleDateString(undefined,{month:'short',day:'numeric'})} · {stat.length} {stat.length === 1 ? 'game' : 'games'} this season</p>
+  </section>;
+}
+
 export function GoalSettings({ preferences, onSave }) {
   const [target,setTarget] = useState(String(preferences.engineTarget));
   const [goal,setGoal] = useState(String(preferences.weeklyGoal));
@@ -119,7 +147,7 @@ export function GoalSettings({ preferences, onSave }) {
 
 export function EngineProgress({ history, cardioSessions, preferences, courtRatings, onRate, onSettings, children }) {
   const all = normalizeAll(cardioSessions,history);
-  return <><EngineHero all={all}/><EngineMilestone all={all} preferences={preferences} onSettings={onSettings}/><CourtCheckIn games={cardioSessions} all={all} ratings={courtRatings} onRate={onRate}/><details className="engine-card"><summary style={{cursor:'pointer',minHeight:44,paddingTop:10,fontWeight:600}}>Training history, strength & body details</summary><div style={{marginTop:16}}>{children}</div></details></>;
+  return <><EngineHero all={all}/><SeasonStats games={cardioSessions}/><EngineMilestone all={all} preferences={preferences} onSettings={onSettings}/><CourtCheckIn games={cardioSessions} all={all} ratings={courtRatings} onRate={onRate}/><details className="engine-card"><summary style={{cursor:'pointer',minHeight:44,paddingTop:10,fontWeight:600}}>Training history, strength & body details</summary><div style={{marginTop:16}}>{children}</div></details></>;
 }
 
 export function PlanOverview({ all, constraints, onStart }) {
@@ -140,7 +168,7 @@ export function EngineHome({ history, cardioSessions, constraints, preferences, 
   const all = normalizeAll(cardioSessions,history);
   const today = dateKey(new Date());
   const completed = all.filter(s => dateKey(s.date) === today);
-  return <><EngineHero all={all} compact onProgress={() => onGoTab('stats')}/><TodayAction all={all} constraints={constraints} preferences={preferences} hasDraft={hasDraft} onResume={onResume} onStart={onStart} onPlan={() => onGoTab('goals')} onChange={() => onGoTab('workout')}/>
+  return <><EngineHero all={all} compact onProgress={() => onGoTab('stats')}/><SeasonStats games={cardioSessions} onProgress={() => onGoTab('stats')}/><TodayAction all={all} constraints={constraints} preferences={preferences} hasDraft={hasDraft} onResume={onResume} onStart={onStart} onPlan={() => onGoTab('goals')} onChange={() => onGoTab('workout')}/>
     <button className="engine-button" style={{width:'100%',marginBottom:14}} onClick={onFastBreak}>Log 10 sprints</button>
     {completed.length > 0 && <div className="engine-card"><span className="engine-label">Work recorded today</span><p>{completed.map(s => RECOVERY.TYPES[s.type].label).join(' · ')}</p><button className="engine-link" onClick={() => onGoTab('history')}>View or edit your sessions →</button></div>}
     <EngineMilestone all={all} preferences={preferences} onSettings={() => onGoTab('settings')}/><WeeklyPlan all={all} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} onPlan={() => onGoTab('goals')}/><CourtCheckIn games={cardioSessions} all={all} ratings={courtRatings} onRate={onRate} compact/>
