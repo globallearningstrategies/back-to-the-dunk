@@ -554,7 +554,13 @@ export function AccountApp({ userId, userEmail }) {
 
         {tab === "home" && <>
           {sessionResult && <section className="engine-card" role="status"><div className="engine-row"><strong>{sessionResult.title}</strong><button className="engine-link" onClick={()=>setSessionResult(null)}>Dismiss</button></div><p>{sessionResult.detail}</p></section>}
-          <EngineHome history={history} cardioSessions={cardioSessions} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} courtRatings={courtRatings} onRate={rateCourt} hasDraft={hasDraft} onResume={resumeTraining} onStart={startTraining} onGoTab={setTab} onQuickAdd={()=>setQuickAddOpen(true)} onFastBreak={()=>setFastBreakOpen(true)} onOpenAwards={()=>setAwardsOpen(true)}/>
+          <EngineHome history={history} cardioSessions={cardioSessions} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} courtRatings={courtRatings} onRate={rateCourt} hasDraft={hasDraft} onResume={resumeTraining} onStart={startTraining} onGoTab={setTab} onQuickAdd={()=>setQuickAddOpen(true)} onFastBreak={()=>setFastBreakOpen(true)} onOpenAwards={()=>setAwardsOpen(true)}
+            stack={{ d3: !!vitaminD3Log[todayKey()], creatine: !!creatineLog[todayKey()] }}
+            onStack={(which) => {
+              const day = todayKey();
+              if (which === 'd3') { const was = !!vitaminD3Log[day]; toggleVitaminD3(day); toast(was ? 'Vitamin D3 unchecked' : '💊 Vitamin D3 logged — stack on'); }
+              else { const was = !!creatineLog[day]; toggleCreatine(day); toast(was ? 'Creatine unchecked' : '💪 Creatine logged — stack on'); }
+            }}/>
         </>}
 
         {(tab === "workout" || draft.flow?.active) && <div hidden={tab!=="workout"}>
