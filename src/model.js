@@ -505,8 +505,16 @@ export function recommend(allSessions, refDate, constraints = {}) {
 
   // Fixed weekly schedule (Shabbat, game night) — these override training.
   const dow = ref.getDay();
-  const gameOn = (d) => constraints.gameDow != null && d.getDay() === constraints.gameDow
-    && constraints.skipGameWeekStart !== startOfWeek(d).getTime();
+  const gameOn = (d) => {
+    const key = dateKey(d);
+    const weekStart = startOfWeek(d);
+    // An explicit weekly selection overrides the recurring game night for that week.
+    if (constraints.gameWeekId && dateKey(new Date(constraints.gameWeekId + "T12:00:00")) === dateKey(new Date(weekStart))) {
+      return (constraints.gameDates || []).includes(key);
+    }
+    return constraints.gameDow != null && d.getDay() === constraints.gameDow
+      && constraints.skipGameWeekStart !== weekStart.getTime();
+  };
   const isShabbat = (constraints.restDows || []).includes(dow);
   const gameToday = gameOn(ref) && !todays.some(s => s.type === "game");
   const gameTomorrow = gameOn(addDays(ref, 1));
