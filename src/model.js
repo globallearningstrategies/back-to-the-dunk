@@ -250,12 +250,13 @@ export const RECOVERY = {
       blurb: "Two 22-min halves",
     },
     lift: {
+      // Retained only to interpret historical logs; no longer recommended.
       key: "lift", label: "Lift", short: "Lift", emoji: "🏋️", colorKey: "amber",
       defaultDurationMin: 50, defaultRPE: 8,
-      hard: true,        // strength work taxes recovery like conditioning does
-      scheduled: true,
-      weeklyTarget: 2,   // rotates A → B → C
-      blurb: "Strength · A/B/C",
+      hard: true,
+      scheduled: false,
+      weeklyTarget: 0,
+      blurb: "Historical strength session",
     },
     cross_training: {
       key: "cross_training", label: "Sweat440", short: "S440", emoji: "💦", colorKey: "pink",
@@ -519,7 +520,14 @@ export function recommend(allSessions, refDate, constraints = {}) {
   const gameToday = gameOn(ref) && !todays.some(s => s.type === "game");
   const gameTomorrow = gameOn(addDays(ref, 1));
   const classWeekMatches = constraints.classWeekId && dateKey(new Date(constraints.classWeekId + "T12:00:00")) === dateKey(new Date(startOfWeek(ref)));
-  const classScheduled = classWeekMatches ? (constraints.classDates || []).includes(dateKey(ref)) : (constraints.classDows || []).includes(dow);
+  // Monday is the default Sweat440 day when no recurring class schedule has been configured.
+  // An explicit weekly class selection (including an empty selection) always takes precedence.
+  const hasRecurringClassSchedule = Array.isArray(constraints.classDows) && constraints.classDows.length > 0;
+  const classScheduled = classWeekMatches
+    ? (constraints.classDates || []).includes(dateKey(ref))
+    : hasRecurringClassSchedule
+      ? constraints.classDows.includes(dow)
+      : dow === 1;
   const classToday = classScheduled && !todays.some(s => s.type === "cross_training");
 
   // 1) Already trained hard today — don't stack a second hard day...
