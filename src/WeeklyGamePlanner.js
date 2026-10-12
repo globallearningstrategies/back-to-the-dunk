@@ -23,8 +23,9 @@ function build(start,games,classes,sprints,all) {
 
 export function WeeklyGamePlanner({value,onChange,all=[]}) {
   const start=useMemo(()=>monday(new Date()),[]), weekId=keyOf(start), dates=Array.from({length:7},(_,i)=>add(start,i));
-  const defaultGame=keyOf(add(start,3)), games=Array.isArray(value?.gameDays)?value.gameDays:[defaultGame];
-  const classes=Number(value?.classTarget)||1, sprints=value?.wantsSprints!==false;
+  const defaultGame=keyOf(add(start,3)), currentWeek=value?.weekId===weekId;
+  const games=currentWeek&&Array.isArray(value?.gameDays)?value.gameDays:[defaultGame];
+  const classes=currentWeek&&Number(value?.classTarget)?Number(value.classTarget):1, sprints=currentWeek?value?.wantsSprints!==false:true;
   const [updated,setUpdated]=useState(false);
   const change=patch=>{onChange({weekId,gameDays:games,classTarget:classes,wantsSprints:sprints,...patch});setUpdated(true);};
   const plan=useMemo(()=>build(start,games,classes,sprints,all),[weekId,games.join(','),classes,sprints,all]);
