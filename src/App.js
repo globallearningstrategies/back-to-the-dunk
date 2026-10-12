@@ -16,6 +16,7 @@ import { AuthGate } from './auth';
 import { EngineHome, EngineProgress, GoalSettings, WeeklyPlan, PlanOverview } from './engine-ui';
 import { DEFAULT_PREFERENCES, engineAchievements, exerciseRecord, formatEngine, nutritionTotals, weekKey } from './engine';
 import { TrainWorkspace } from './WorkoutFlow';
+import { WeeklyGamePlanner } from './WeeklyGamePlanner';
 import { FoodJournal, newFoodId } from './FoodJournal';
 import { setFeedbackPreferences, vibrate } from './model';
 import './engine.css';
@@ -241,12 +242,20 @@ export function AccountApp({ userId, userEmail }) {
   const schedule = cloud.get('schedule', DEFAULT_SCHEDULE);
   const setSchedule = next => cloud.set('schedule', next, DEFAULT_SCHEDULE);
   const updateSchedule = (next) => { setSchedule(next); };
+  const weeklyGamePlan = cloud.get('weeklyGamePlan', {});
+  const saveWeeklyGamePlan = next => cloud.set('weeklyGamePlan', next, {});
   const constraints = useMemo(() => ({
     restDows: schedule.shabbat ? [6] : [],
     gameDow: schedule.gameNight ? schedule.gameDow : null,
     skipGameWeekStart: schedule.skipGameWeek,
     classDows: schedule.crossClass ? (schedule.classDows || []) : [],
-  }), [schedule]);
+    gameWeekId: weeklyGamePlan.weekId,
+    gameDates: weeklyGamePlan.gameDays,
+    classWeekId: weeklyGamePlan.weekId,
+    classDates: weeklyGamePlan.classDates,
+    sprintWeekId: weeklyGamePlan.weekId,
+    sprintDate: weeklyGamePlan.sprintDate,
+  }), [schedule, weeklyGamePlan]);
 
   // Celebrate genuinely new levels / badges. First run for a given browser sets
   // a silent baseline (so a returning player isn't bombarded with old unlocks).
@@ -809,8 +818,9 @@ export function AccountApp({ userId, userEmail }) {
           <>
             <div className="ease-up"><PageTitle kicker="Consistency · compounds">The Plan</PageTitle></div>
 
+            <WeeklyGamePlanner value={weeklyGamePlan} onChange={saveWeeklyGamePlan} all={normalizeAll(cardioSessions,history)} />
             <PlanOverview all={normalizeAll(cardioSessions,history)} constraints={constraints} onStart={startTraining}/>
-            <details className="engine-card"><summary style={{minHeight:44,cursor:"pointer",paddingTop:10,fontWeight:600}}>Schedule settings</summary>
+            <details className="engine-card"><summary style={{minHeight:44,cursor:"pointer",paddingTop:10,fontWeight:600}}>Recurring defaults · advanced</summary><p className="engine-muted" style={{padding:"0 0 8px"}}>These defaults apply outside the week you set above. Your weekly game plan takes priority for the current week.</p>
             {/* Weekly schedule — Shabbat + game night the engine plans around */}
             {(() => {
               const wkNow = startOfWeek(new Date()).getTime();

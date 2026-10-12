@@ -505,12 +505,22 @@ export function recommend(allSessions, refDate, constraints = {}) {
 
   // Fixed weekly schedule (Shabbat, game night) — these override training.
   const dow = ref.getDay();
-  const gameOn = (d) => constraints.gameDow != null && d.getDay() === constraints.gameDow
-    && constraints.skipGameWeekStart !== startOfWeek(d).getTime();
+  const gameOn = (d) => {
+    const key = dateKey(d);
+    const weekStart = startOfWeek(d);
+    // An explicit weekly selection overrides the recurring game night for that week.
+    if (constraints.gameWeekId && dateKey(new Date(constraints.gameWeekId + "T12:00:00")) === dateKey(new Date(weekStart))) {
+      return (constraints.gameDates || []).includes(key);
+    }
+    return constraints.gameDow != null && d.getDay() === constraints.gameDow
+      && constraints.skipGameWeekStart !== weekStart.getTime();
+  };
   const isShabbat = (constraints.restDows || []).includes(dow);
   const gameToday = gameOn(ref) && !todays.some(s => s.type === "game");
   const gameTomorrow = gameOn(addDays(ref, 1));
-  const classToday = (constraints.classDows || []).includes(dow) && !todays.some(s => s.type === "cross_training");
+  const classWeekMatches = constraints.classWeekId && dateKey(new Date(constraints.classWeekId + "T12:00:00")) === dateKey(new Date(startOfWeek(ref)));
+  const classScheduled = classWeekMatches ? (constraints.classDates || []).includes(dateKey(ref)) : (constraints.classDows || []).includes(dow);
+  const classToday = classScheduled && !todays.some(s => s.type === "cross_training");
 
   // 1) Already trained hard today — don't stack a second hard day...
   if (todaysHard.length) {
@@ -561,6 +571,13 @@ export function recommend(allSessions, refDate, constraints = {}) {
   }
   if (band === "ease" && daysSinceHard >= RECOVERY.reentryTabataAfterDays) {
     return mk("train", [{ type: "tabata" }], `${daysSinceHard} days off the hard stuff — ease back with a Tabata before more.`, SCI.restart);
+  }
+
+  // Respect the adaptive planner's explicitly selected sprint day once recovery checks pass.
+  const sprintWeekMatches = constraints.sprintWeekId && dateKey(new Date(constraints.sprintWeekId + "T12:00:00")) === dateKey(new Date(startOfWeek(ref)));
+  const sprintScheduled = sprintWeekMatches && constraints.sprintDate === dateKey(ref);
+  if (sprintScheduled && !todays.some(s => s.type === "long_interval")) {
+    return mk("train", [{ type: "long_interval" }], "Sprint session planned — keep the reps fast and stop before your speed drops.", SCI.liDo);
   }
 
   // Pick the conditioning primary by priority (Long Interval is the marquee).
