@@ -460,7 +460,7 @@ export function recommend(allSessions, refDate, constraints = {}) {
   const daysSinceHard = lastHard ? dayGap(ref, lastHard.date) : null;
 
   const t7 = sessionsInTrailing(allSessions, ref, 7);
-  // Overtraining is judged on hard DAYS, so a paired lift+Tabata day counts once.
+  // Overtraining is judged on hard DAYS; each day counts once.
   const hardDays7 = new Set(t7.filter(s => isHardType(s.type)).map(s => startOfDay(s.date).getTime())).size;
 
   const done = {
@@ -500,8 +500,8 @@ export function recommend(allSessions, refDate, constraints = {}) {
   const cl = Math.min(targetLI, off); targetLI -= cl; off -= cl;
   const owedLI = Math.max(0, targetLI - done.long_interval);
   const owedTab = Math.max(0, targetTab - done.tabata);
-  // Legs/upper Sweat440 classes fill lift slots; cardio-focused ones counted above.
-  const owedLift = Math.max(0, T.lift.weeklyTarget - done.lift - (done.cross_training - done.cross_cardio));
+  // Sweat440 is the preferred strength-and-conditioning session; no standalone lift target.
+  const owedLift = 0;
   const canRampHard = band !== "restart" && band !== "fresh" && !(band === "ease" && daysSinceHard >= RECOVERY.reentryTabataAfterDays);
 
   // Fixed weekly schedule (Shabbat, game night) — these override training.
@@ -533,12 +533,6 @@ export function recommend(allSessions, refDate, constraints = {}) {
   // 1) Already trained hard today — don't stack a second hard day...
   if (todaysHard.length) {
     if (daysSinceHard === 1) flags.push("Two hard days in a row — keep tomorrow easy.");
-    // ...but a lift may pair with today's Tabata while you're already warm.
-    const didTabataToday = todays.some(s => s.type === "tabata");
-    const didLiftToday = todays.some(s => s.type === "lift");
-    if (RECOVERY.pairLiftWithConditioning && didTabataToday && !didLiftToday && owedLift > 0 && canRampHard) {
-      return mk("train", [{ type: "lift" }], `Tabata's done — pair a Lift with it while you're warm (${done.lift}/${T.lift.weeklyTarget} lifts over the last 7 days).`, SCI.lift);
-    }
     return recoveryDay(`${T[todaysHard[0].type].label} already done today — let it absorb.`, recoverSci(todaysHard[0].type));
   }
 
@@ -595,20 +589,13 @@ export function recommend(allSessions, refDate, constraints = {}) {
     return mk("train", [{ type: "long_interval" }], `Long Interval owed (${done.long_interval}/${targetLI}) and you're recovered — the week's marquee session.`, SCI.liDo);
   }
   if (primary === "tabata") {
-    // Pair a lift onto the Tabata day (never onto the brutal Long Interval).
-    if (RECOVERY.pairLiftWithConditioning && owedLift > 0) {
-      return mk("train", [{ type: "tabata" }, { type: "lift" }],
-        `Tabata + Lift — pair them today, then recover tomorrow (Tabata ${done.tabata}/${targetTab}, lifts ${done.lift}/${T.lift.weeklyTarget}).`, SCI.tabataLift);
-    }
+    // Keep conditioning recommendations focused; strength work belongs inside Sweat440 classes.
     return mk("train", [{ type: "tabata" }], `Tabata owed (${done.tabata}/${targetTab}) and you're recovered — quick and hard.`, SCI.tabata);
   }
-  // No conditioning owed — get a lift in on its own if one's still owed.
-  if (owedLift > 0) {
-    return mk("train", [{ type: "lift" }], `Lift owed (${done.lift}/${T.lift.weeklyTarget}) and you're recovered — go move some weight.`, SCI.lift);
-  }
+  // No standalone lifting recommendation: strength work is covered by Sweat440.
   // Everything's met → recovery day.
   if (done.game > 0) return recoveryDay("A game in the last 7 days already counts toward your hard sessions.", SCI.gameCovered);
-  return recoveryDay("Weekly targets met (2 Tabata · 1 Long Interval · 2 lifts).", SCI.targetsMet);
+  return recoveryDay("Weekly conditioning targets met. Recovery is part of the plan.", SCI.targetsMet);
 }
 
 export function buildPlan(allSessions, fromDate, nDays, constraints = {}) {
