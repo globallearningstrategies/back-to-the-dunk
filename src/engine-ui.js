@@ -164,19 +164,14 @@ export function PlanOverview({ all, constraints, onStart }) {
   </section>;
 }
 
-export function EngineHome({ history, cardioSessions, constraints, preferences, weeklyGoals, courtRatings, onRate, hasDraft, onResume, onStart, onGoTab, onQuickAdd, onFastBreak, onOpenAwards, stack, onStack, onLogType }) {
+export function EngineHome({ history, cardioSessions, constraints, preferences, courtRatings, onRate, hasDraft, onResume, onStart, onGoTab, onQuickAdd, onLogType }) {
   const all = normalizeAll(cardioSessions,history);
   const today = dateKey(new Date());
   const completed = all.filter(s => dateKey(s.date) === today);
-  return <><EngineHero all={all} compact onProgress={() => onGoTab('stats')}/><SeasonStats games={cardioSessions} onProgress={() => onGoTab('stats')}/><TodayAction all={all} constraints={constraints} preferences={preferences} hasDraft={hasDraft} onResume={onResume} onStart={onStart} onPlan={() => onGoTab('goals')} onChange={() => onGoTab('workout')}/>
-    <button className="engine-button" style={{width:'100%',marginBottom:14}} onClick={onFastBreak}>Log 10 sprints</button>
-    {completed.length > 0 && <div className="engine-card"><span className="engine-label">Work recorded today</span><p>{completed.map(s => RECOVERY.TYPES[s.type].label).join(' · ')}</p><button className="engine-link" onClick={() => onGoTab('history')}>View or edit your sessions →</button></div>}
-    <EngineMilestone all={all} preferences={preferences} onSettings={() => onGoTab('settings')}/><WeeklyPlan all={all} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} onPlan={() => onGoTab('goals')}/><CourtCheckIn games={cardioSessions} all={all} ratings={courtRatings} onRate={onRate} compact/>
-    <section className="engine-card"><span className="engine-label">Quick log</span><div className="engine-actions">{onLogType && <button className="engine-button primary" onClick={() => onLogType('game')}>🏀 Basketball</button>}{onLogType && <button className="engine-button" onClick={() => onLogType('cross_training')}>💦 Class</button>}<button className="engine-button" onClick={onQuickAdd}>Activity</button><button className="engine-button" onClick={() => onGoTab('nutrition')}>Food</button><button className="engine-button" onClick={() => onGoTab('weight')}>Weight</button></div>
-      {stack && onStack && <div className="engine-actions" style={{ marginTop: 8 }}>
-        <button className="engine-button" aria-pressed={!!stack.d3} onClick={() => onStack('d3')}>{stack.d3 ? '✓ D3 taken today' : '💊 Vitamin D3'}</button>
-        <button className="engine-button" aria-pressed={!!stack.creatine} onClick={() => onStack('creatine')}>{stack.creatine ? '✓ Creatine taken today' : '💪 Creatine'}</button>
-      </div>}
-      <button className="engine-link" onClick={onOpenAwards}>Your achievements →</button></section>
+  return <>
+    <TodayAction all={all} constraints={constraints} preferences={preferences} hasDraft={hasDraft} onResume={onResume} onStart={onStart} onPlan={() => onGoTab('goals')} onChange={() => onGoTab('workout')}/>
+    {completed.length > 0 && <section className="engine-card" aria-label="Today's activity"><div className="engine-row"><span className="engine-label">Today’s activity</span><button className="engine-link" onClick={() => onGoTab('history')}>View log →</button></div><p>{completed.map(s => RECOVERY.TYPES[s.type]?.label || s.type).join(' · ')}</p></section>}
+    <section className="engine-card" aria-label="Quick log"><span className="engine-label">Quick log</span><p className="engine-muted">Already done? Add it in a tap.</p><div className="engine-actions">{onLogType && <button className="engine-button primary" onClick={() => onLogType('game')}>🏀 Basketball</button>}{onLogType && <button className="engine-button" onClick={() => onLogType('cross_training')}>💦 Sweat440</button>}<button className="engine-button" onClick={onQuickAdd}>Other activity</button></div></section>
+    <CourtCheckIn games={cardioSessions} all={all} ratings={courtRatings} onRate={onRate} compact/>
   </>;
 }

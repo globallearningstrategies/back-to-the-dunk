@@ -13,7 +13,7 @@ import { toLocalInput, ConditioningLogger, WalkLogger, LiftDateSheet } from './l
 import { FastBreakLog, FAST_BREAK_NOTES } from './FastBreakLog';
 import { AchievementsSheet, CelebrationOverlay } from './home';
 import { AuthGate } from './auth';
-import { EngineHome, EngineProgress, GoalSettings, WeeklyPlan, PlanOverview } from './engine-ui';
+import { EngineHome, EngineProgress, GoalSettings } from './engine-ui';
 import { DEFAULT_PREFERENCES, engineAchievements, exerciseRecord, formatEngine, nutritionTotals, weekKey } from './engine';
 import { TrainWorkspace } from './WorkoutFlow';
 import { WeeklyGamePlanner } from './WeeklyGamePlanner';
@@ -42,7 +42,7 @@ export default function App() {
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, []);
   if (error) return <div role="alert">{error} <button onClick={() => window.location.reload()}>Retry</button></div>;
-  if (!ready) return <div role="status">Loading The Work…</div>;
+  if (!ready) return <div role="status">Loading Back to the Dunk…</div>;
   if (!session) return <AuthGate />;
   return <UserDataProvider key={session.user.id} userId={session.user.id}><AccountApp userId={session.user.id} userEmail={session.user.email} /></UserDataProvider>;
 }
@@ -464,8 +464,9 @@ export function AccountApp({ userId, userEmail }) {
 
   // Primary navigation — three groups, each fronting a set of sub-tabs.
   const GROUPS = [
-    { id: "today",    label: "Today",    icon: "🔥", tabs: ["home"] },
-    { id: "train",    label: "Train",    icon: "🏋️", tabs: ["workout", "goals"] },
+    { id: "today", label: "Today", icon: "⌂", tabs: ["home"] },
+    { id: "plan", label: "Plan", icon: "📅", tabs: ["goals"] },
+    { id: "train", label: "Train", icon: "🏀", tabs: ["workout"] },
     { id: "fuel", label: "Fuel", icon: "🥣", tabs: ["nutrition"] },
     { id: "progress", label: "Progress", icon: "📈", tabs: ["stats", "history", "weight"] },
   ];
@@ -516,8 +517,8 @@ export function AccountApp({ userId, userEmail }) {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 32, height: 32, borderRadius: 10, background: `linear-gradient(135deg, ${C.rust}, ${C.amber})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>💪</div>
             <div>
-              <div className="h-display" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.02em", color: C.bone, lineHeight: 1.1 }}>The Work</div>
-              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.1em", marginTop: 2 }}>BUILD YOUR ENGINE</div>
+              <div className="h-display" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.02em", color: C.bone, lineHeight: 1.1 }}>Back to the Dunk</div>
+              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.1em", marginTop: 2 }}>BUILT FOR THE COURT</div>
             </div>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:12}}>
@@ -816,91 +817,10 @@ export function AccountApp({ userId, userEmail }) {
         {/* ── PLAN ── */}
         {tab === "goals" && (
           <>
-            <div className="ease-up"><PageTitle kicker="Consistency · compounds">The Plan</PageTitle></div>
+            <div className="ease-up"><PageTitle kicker="Games first · recovery built in">Your week</PageTitle></div>
 
             <WeeklyGamePlanner value={weeklyGamePlan} onChange={saveWeeklyGamePlan} all={normalizeAll(cardioSessions,history)} />
-            <PlanOverview all={normalizeAll(cardioSessions,history)} constraints={constraints} onStart={startTraining}/>
-            <details className="engine-card"><summary style={{minHeight:44,cursor:"pointer",paddingTop:10,fontWeight:600}}>Recurring defaults · advanced</summary><p className="engine-muted" style={{padding:"0 0 8px"}}>These defaults apply outside the week you set above. Your weekly game plan takes priority for the current week.</p>
-            {/* Weekly schedule — Shabbat + game night the engine plans around */}
-            {(() => {
-              const wkNow = startOfWeek(new Date()).getTime();
-              const playingThisWeek = schedule.skipGameWeek !== wkNow;
-              const Switch = ({ on, onToggle }) => (
-                <button onClick={onToggle} className="btn" style={{ width: 50, height: 28, borderRadius: 14, border: "none", background: on ? C.moss : C.faint, position: "relative", cursor: "pointer", padding: 0, flexShrink: 0, transition: "background 0.2s" }}>
-                  <div style={{ width: 22, height: 22, borderRadius: 999, background: "#fff", position: "absolute", top: 3, left: on ? 25 : 3, transition: "left 0.2s cubic-bezier(0.22,1,0.36,1)", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
-                </button>
-              );
-              return (
-                <div className="ease-up-1">
-                  <Surface accent={C.electric}>
-                    <Eyebrow color={C.electric}>Weekly schedule</Eyebrow>
-                    {/* Shabbat */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0 10px", borderBottom: `1px solid ${C.line}` }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>🕯️ Shabbat (Saturday)</div>
-                        <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>No hard training — rest or an easy walk</div>
-                      </div>
-                      <Switch on={schedule.shabbat} onToggle={() => updateSchedule({ ...schedule, shabbat: !schedule.shabbat })} />
-                    </div>
-                    {/* Game night */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0 10px", borderBottom: schedule.gameNight ? `1px solid ${C.line}` : "none" }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>🏀 Game night</div>
-                        <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>League night — the engine plans around it</div>
-                      </div>
-                      <Switch on={schedule.gameNight} onToggle={() => updateSchedule({ ...schedule, gameNight: !schedule.gameNight })} />
-                    </div>
-                    {schedule.gameNight && (
-                      <>
-                        <div style={{ display: "flex", gap: 5, marginTop: 12 }}>
-                          {DOW_NAMES.map((d, i) => (
-                            <button key={i} onClick={() => updateSchedule({ ...schedule, gameDow: i })} className="btn" style={{
-                              flex: 1, padding: "8px 0", borderRadius: 9, cursor: "pointer", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 11,
-                              border: `1px solid ${schedule.gameDow === i ? C.rust : C.line}`, background: schedule.gameDow === i ? `${C.rust}18` : C.raised, color: schedule.gameDow === i ? C.rust : C.dim,
-                            }}>{d}</button>
-                          ))}
-                        </div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>Playing this week?</div>
-                            <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>{playingThisWeek ? `Game on ${DOW_NAMES[schedule.gameDow]} night` : "Off this week — no game planned"}</div>
-                          </div>
-                          <Switch on={playingThisWeek} onToggle={() => updateSchedule({ ...schedule, skipGameWeek: playingThisWeek ? wkNow : null })} />
-                        </div>
-                      </>
-                    )}
-                    {/* Sweat440 class days */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0 10px", borderTop: `1px solid ${C.line}`, marginTop: schedule.gameNight ? 12 : 0 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>💦 Sweat440 class</div>
-                        <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Recurring class days — the engine plans around them</div>
-                      </div>
-                      <Switch on={schedule.crossClass} onToggle={() => updateSchedule({ ...schedule, crossClass: !schedule.crossClass })} />
-                    </div>
-                    {schedule.crossClass && (
-                      <>
-                        <div style={{ display: "flex", gap: 5, marginTop: 8 }}>
-                          {DOW_NAMES.map((d, i) => {
-                            const on = (schedule.classDows || []).includes(i);
-                            return (
-                              <button key={i} onClick={() => updateSchedule({ ...schedule, classDows: on ? (schedule.classDows || []).filter(x => x !== i) : [...(schedule.classDows || []), i] })} className="btn" style={{
-                                flex: 1, padding: "8px 0", borderRadius: 9, cursor: "pointer", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 11,
-                                border: `1px solid ${on ? C.pink : C.line}`, background: on ? `${C.pink}18` : C.raised, color: on ? C.pink : C.dim,
-                              }}>{d}</button>
-                            );
-                          })}
-                        </div>
-                        <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginTop: 8 }}>Tap every day you have class — pick as many as apply.</div>
-                      </>
-                    )}
-                  </Surface>
-                </div>
-              );
-            })()}
 
-            </details>
-            <WeeklyPlan all={normalizeAll(cardioSessions,history)} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} onPlan={()=>setTab('settings')}/>
-            <button className="engine-button" onClick={()=>setTab('settings')}>Edit Engine & weekly goals</button>
           </>
         )}
 
