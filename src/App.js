@@ -13,7 +13,7 @@ import { toLocalInput, ConditioningLogger, WalkLogger, LiftDateSheet } from './l
 import { FastBreakLog, FAST_BREAK_NOTES } from './FastBreakLog';
 import { AchievementsSheet, CelebrationOverlay } from './home';
 import { AuthGate } from './auth';
-import { EngineHome, EngineProgress, GoalSettings, WeeklyPlan, PlanOverview } from './engine-ui';
+import { EngineHome, EngineProgress, GoalSettings } from './engine-ui';
 import { DEFAULT_PREFERENCES, engineAchievements, exerciseRecord, formatEngine, nutritionTotals, weekKey } from './engine';
 import { TrainWorkspace } from './WorkoutFlow';
 import { WeeklyGamePlanner } from './WeeklyGamePlanner';
@@ -42,7 +42,7 @@ export default function App() {
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, []);
   if (error) return <div role="alert">{error} <button onClick={() => window.location.reload()}>Retry</button></div>;
-  if (!ready) return <div role="status">Loading The Work…</div>;
+  if (!ready) return <div role="status">Loading Back to the Dunk…</div>;
   if (!session) return <AuthGate />;
   return <UserDataProvider key={session.user.id} userId={session.user.id}><AccountApp userId={session.user.id} userEmail={session.user.email} /></UserDataProvider>;
 }
@@ -465,10 +465,10 @@ export function AccountApp({ userId, userEmail }) {
   // Primary navigation — three groups, each fronting a set of sub-tabs.
   const GROUPS = [
     { id: "today", label: "Today", icon: "⌂", tabs: ["home"] },
-    { id: "plan", label: "Plan", icon: "▦", tabs: ["goals"] },
-    { id: "train", label: "Train", icon: "↗", tabs: ["workout"] },
-    { id: "fuel", label: "Fuel", icon: "◒", tabs: ["nutrition"] },
-    { id: "progress", label: "Progress", icon: "↗", tabs: ["stats", "history", "weight"] },
+    { id: "plan", label: "Plan", icon: "📅", tabs: ["goals"] },
+    { id: "train", label: "Train", icon: "🏀", tabs: ["workout"] },
+    { id: "fuel", label: "Fuel", icon: "🥣", tabs: ["nutrition"] },
+    { id: "progress", label: "Progress", icon: "📈", tabs: ["stats", "history", "weight"] },
   ];
   const SUB_LABELS = {
     home: "Today", workout: "Train", history: "Log", goals: "Plan",
