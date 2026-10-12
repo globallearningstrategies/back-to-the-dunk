@@ -573,6 +573,13 @@ export function recommend(allSessions, refDate, constraints = {}) {
     return mk("train", [{ type: "tabata" }], `${daysSinceHard} days off the hard stuff — ease back with a Tabata before more.`, SCI.restart);
   }
 
+  // Respect the adaptive planner's explicitly selected sprint day once recovery checks pass.
+  const sprintWeekMatches = constraints.sprintWeekId && dateKey(new Date(constraints.sprintWeekId + "T12:00:00")) === dateKey(new Date(startOfWeek(ref)));
+  const sprintScheduled = sprintWeekMatches && constraints.sprintDate === dateKey(ref);
+  if (sprintScheduled && !todays.some(s => s.type === "long_interval")) {
+    return mk("train", [{ type: "long_interval" }], "Sprint session planned — keep the reps fast and stop before your speed drops.", SCI.liDo);
+  }
+
   // Pick the conditioning primary by priority (Long Interval is the marquee).
   const primary = owedLI > 0 ? "long_interval" : owedTab > 0 ? "tabata" : null;
 
