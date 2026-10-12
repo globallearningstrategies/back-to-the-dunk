@@ -164,7 +164,7 @@ export function PlanOverview({ all, constraints, onStart }) {
   </section>;
 }
 
-export function EngineHome({ history, cardioSessions, constraints, preferences, weeklyGoals, courtRatings, onRate, hasDraft, onResume, onStart, onGoTab, onQuickAdd, onFastBreak, onOpenAwards, stack, onStack, onLogType }) {
+export function EngineHome({ history, cardioSessions, constraints, preferences, courtRatings, onRate, hasDraft, onResume, onStart, onGoTab, onQuickAdd, onLogType }) {
   const all = normalizeAll(cardioSessions,history);
   const today = dateKey(new Date());
   const completed = all.filter(s => dateKey(s.date) === today);
