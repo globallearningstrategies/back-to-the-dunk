@@ -253,6 +253,8 @@ export function AccountApp({ userId, userEmail }) {
     gameDates: weeklyGamePlan.gameDays,
     classWeekId: weeklyGamePlan.weekId,
     classDates: weeklyGamePlan.classDates,
+    sprintWeekId: weeklyGamePlan.weekId,
+    sprintDate: weeklyGamePlan.sprintDate,
   }), [schedule, weeklyGamePlan]);
 
   // Celebrate genuinely new levels / badges. First run for a given browser sets
