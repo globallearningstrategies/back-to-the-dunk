@@ -820,7 +820,7 @@ export function AccountApp({ userId, userEmail }) {
 
             <WeeklyGamePlanner value={weeklyGamePlan} onChange={saveWeeklyGamePlan} all={normalizeAll(cardioSessions,history)} />
             <PlanOverview all={normalizeAll(cardioSessions,history)} constraints={constraints} onStart={startTraining}/>
-            <details className="engine-card"><summary style={{minHeight:44,cursor:"pointer",paddingTop:10,fontWeight:600}}>Schedule settings</summary>
+            <details className="engine-card"><summary style={{minHeight:44,cursor:"pointer",paddingTop:10,fontWeight:600}}>Recurring defaults · advanced</summary><p className="engine-muted" style={{padding:"0 0 8px"}}>These defaults apply outside the week you set above. Your weekly game plan takes priority for the current week.</p>
             {/* Weekly schedule — Shabbat + game night the engine plans around */}
             {(() => {
               const wkNow = startOfWeek(new Date()).getTime();
