@@ -27,7 +27,7 @@ export function WeeklyGamePlanner({value,onChange,all=[]}) {
   const games=currentWeek&&Array.isArray(value?.gameDays)?value.gameDays:[defaultGame];
   const classes=currentWeek&&Number(value?.classTarget)?Number(value.classTarget):1, sprints=currentWeek?value?.wantsSprints!==false:true;
   const [updated,setUpdated]=useState(false);
-  const change=patch=>{onChange({weekId,gameDays:games,classTarget:classes,wantsSprints:sprints,...patch});setUpdated(true);};
+  const change=patch=>{const next={weekId,gameDays:games,classTarget:classes,wantsSprints:sprints,...patch};const proposed=build(start,next.gameDays,next.classTarget,next.wantsSprints,all);next.classDates=proposed.filter(x=>x.kind==='class').map(x=>x.key);next.sprintDate=(next.wantsSprints?proposed.find(x=>x.kind==='sprint')?.key:null);onChange(next);setUpdated(true);};
   const plan=useMemo(()=>build(start,games,classes,sprints,all),[weekId,games.join(','),classes,sprints,all]);
   const pick=(active,color)=>({flex:1,minWidth:0,padding:'10px 3px',borderRadius:12,border:'1px solid '+(active?color:C.line),background:active?color+'18':C.raised,color:active?color:C.dim,fontFamily:'inherit',fontWeight:700,cursor:'pointer'});
   return <section className="engine-card" aria-label="Weekly game planner">
