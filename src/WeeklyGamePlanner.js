@@ -10,8 +10,8 @@ function build(start,games,classes,sprints,all) {
   const keys=Array.from({length:7},(_,i)=>keyOf(add(start,i)));
   const before=new Set(games.map(k=>keyOf(add(new Date(k+'T12:00:00'),-1))));
   const after=new Set(games.map(k=>keyOf(add(new Date(k+'T12:00:00'),1))));
-  const logged=new Map(); (all||[]).forEach(s=>{const k=keyOf(new Date(s.date));logged.set(k,[...(logged.get(k)||[]),s]);});
-  const hard=new Set(games), assigned={};
+  const logged=new Map(), loggedHard=new Set(); (all||[]).forEach(s=>{const k=keyOf(new Date(s.date));logged.set(k,[...(logged.get(k)||[]),s]);if(['game','cross_training','long_interval','tabata','lift'].includes(s.type))loggedHard.add(k);});
+  const hard=new Set([...games,...loggedHard]), assigned={};
   const available=k=>{const d=new Date(k+'T12:00:00');return d.getDay()!==6&&!games.includes(k)&&!before.has(k)&&!after.has(k)&&!logged.has(k)&&!hard.has(keyOf(add(d,-1)))&&!hard.has(keyOf(add(d,1)));};
   games.forEach(k=>assigned[k]={kind:'game',title:'Basketball game',detail:'Your priority session. Arrive fresh.'});
   let n=0; for(const i of [0,2,1,3,4,6,5]){const k=keys[i];if(n>=classes)break;if(available(k)){assigned[k]={kind:'class',title:'Sweat440',detail:'Strength and conditioning. Adjust effort to how your legs feel.'};hard.add(k);n++;}}
