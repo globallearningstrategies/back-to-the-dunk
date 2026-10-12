@@ -518,7 +518,9 @@ export function recommend(allSessions, refDate, constraints = {}) {
   const isShabbat = (constraints.restDows || []).includes(dow);
   const gameToday = gameOn(ref) && !todays.some(s => s.type === "game");
   const gameTomorrow = gameOn(addDays(ref, 1));
-  const classToday = (constraints.classDows || []).includes(dow) && !todays.some(s => s.type === "cross_training");
+  const classWeekMatches = constraints.classWeekId && dateKey(new Date(constraints.classWeekId + "T12:00:00")) === dateKey(new Date(startOfWeek(ref)));
+  const classScheduled = classWeekMatches ? (constraints.classDates || []).includes(dateKey(ref)) : (constraints.classDows || []).includes(dow);
+  const classToday = classScheduled && !todays.some(s => s.type === "cross_training");
 
   // 1) Already trained hard today — don't stack a second hard day...
   if (todaysHard.length) {
