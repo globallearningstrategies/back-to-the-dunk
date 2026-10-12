@@ -4,7 +4,7 @@ import { fetchAll, mutateRecord, restorePayload } from './data/records';
 import { UserDataProvider, useUserData } from './data/UserData';
 import { accountKey, readJSON, writeJSON, DEFAULT_BODY } from './data/storage';
 import { useWorkoutDraft } from './data/useWorkoutDraft';
-import { C, LS_THEME, loadThemePref, applyThemePalette, FONT_DISPLAY, FONT_MONO, injectStyles, SESSIONS, RECOVERY, s440FocusFor, startOfWeek, normalizeAll, weightProjection, computeGameState, DEFAULT_SCHEDULE, DOW_NAMES, requestNotificationPermission, VAPID_PUBLIC_KEY, urlBase64ToUint8Array, pushSupported, daysAgo, fmtNum, getLastPerformance, platesToReach, todayKey, engineModel } from './model';
+import { C, LS_THEME, loadThemePref, applyThemePalette, FONT_DISPLAY, FONT_MONO, injectStyles, SESSIONS, RECOVERY, s440FocusFor, normalizeAll, weightProjection, computeGameState, DEFAULT_SCHEDULE, requestNotificationPermission, VAPID_PUBLIC_KEY, urlBase64ToUint8Array, pushSupported, daysAgo, fmtNum, getLastPerformance, platesToReach, todayKey, engineModel } from './model';
 import { Surface, Eyebrow, Pill, NavItem, Btn, PageTitle, toast, ToastHost, Confetti } from './ui';
 import { RestTimer, DynoCard } from './training';
 import { StatCard, StatsTab } from './statistics';
