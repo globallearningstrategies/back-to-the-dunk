@@ -556,7 +556,7 @@ export function recommend(allSessions, refDate, constraints = {}) {
     return recoveryDay("It's Shabbat — your scheduled rest day, no hard training.", SCI.shabbat);
   }
   if (condition === "low") {
-    return recoveryDay("Low energy today — skip hard training. Rest or take an easy walk, then reassess tomorrow.", SCI.walk);
+    return recoveryDay("Low energy today — skip extra hard training. Rest or take an easy walk, then reassess tomorrow.", SCI.walk);
   }
   if (classToday) {
     if (daysSinceHard === 1) flags.push("Class lands the day after a hard session — pace yourself in there.");
