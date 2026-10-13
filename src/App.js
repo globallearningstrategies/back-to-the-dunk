@@ -255,6 +255,10 @@ export function AccountApp({ userId, userEmail }) {
     classDates: weeklyGamePlan.classDates,
     sprintWeekId: weeklyGamePlan.weekId,
     sprintDate: weeklyGamePlan.sprintDate,
+    // Keep the weekly planner's readiness and availability choices in sync with
+    // the daily recommendation engine, not just the visual weekly schedule.
+    condition: weeklyGamePlan.weekId === weekKey(new Date()) ? weeklyGamePlan.condition : "normal",
+    blockedDays: weeklyGamePlan.weekId === weekKey(new Date()) ? (weeklyGamePlan.blockedDays || []) : [],
   }), [schedule, weeklyGamePlan]);
 
   // Celebrate genuinely new levels / badges. First run for a given browser sets
