@@ -540,6 +540,7 @@ export function recommend(allSessions, refDate, constraints = {}) {
   }
 
   // 1) Already trained hard today — don't stack a second hard day...
+  if (todaysHard.length) {
     if (daysSinceHard === 1) flags.push("Two hard days in a row — keep tomorrow easy.");
     return recoveryDay(`${T[todaysHard[0].type].label} already done today — let it absorb.`, recoverSci(todaysHard[0].type));
   }
