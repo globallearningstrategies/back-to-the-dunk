@@ -535,11 +535,8 @@ export function recommend(allSessions, refDate, constraints = {}) {
   // and respect a day the user explicitly blocked in the weekly planner.
   const condition = constraints.condition || "normal";
   const dayBlocked = (constraints.blockedDays || []).includes(dateKey(ref));
-  if (!todaysHard.length && (condition === "sick" || dayBlocked)) {
-    return rest(condition === "sick"
-      ? "You're marked as sick — skip structured training and let recovery come first. Don't make up missed sessions."
-      : "You marked today unavailable. Keep the day free; the plan will resume around your schedule.",
-    condition === "sick" ? SCI.overtrain : SCI.walk);
+  if (!todaysHard.length && condition === "sick") {
+    return rest("You're marked as sick — skip structured training and let recovery come first. Don't make up missed sessions.", SCI.overtrain);
   }
 
   // 1) Already trained hard today — don't stack a second hard day...
@@ -551,6 +548,9 @@ export function recommend(allSessions, refDate, constraints = {}) {
   if (gameToday) {
     if (daysSinceHard === 1) flags.push("Game lands on a hard day — take it a touch easier out there.");
     return mk("train", [{ type: "game" }], "Game night 🏀 — that's your hard session. Leave it all on the court.", SCI.gameDo);
+  }
+  if (dayBlocked) {
+    return rest("You marked today unavailable. Keep the day free; the plan will resume around your schedule.", SCI.walk);
   }
   if (isShabbat) {
     return recoveryDay("It's Shabbat — your scheduled rest day, no hard training.", SCI.shabbat);
