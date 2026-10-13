@@ -495,7 +495,8 @@ export function recommend(allSessions, refDate, constraints = {}) {
   const recoverSci = (type) => type === "long_interval" ? SCI.liRecover : type === "lift" || type === "cross_training" ? SCI.liftRecover : type === "game" ? SCI.gameCovered : SCI.tabataRecover;
 
   // Weekly conditioning targets, reduced by any games played (lowest priority first).
-  let targetTab = T.tabata.weeklyTarget, targetLI = T.long_interval.weeklyTarget, off = done.game + done.cross_cardio;
+  // Basketball games and every Sweat440 class are meaningful conditioning load, regardless of class focus.
+  let targetTab = T.tabata.weeklyTarget, targetLI = T.long_interval.weeklyTarget, off = done.game + done.cross_training;
   const ct = Math.min(targetTab, off); targetTab -= ct; off -= ct;
   const cl = Math.min(targetLI, off); targetLI -= cl; off -= cl;
   const owedLI = Math.max(0, targetLI - done.long_interval);
@@ -530,6 +531,14 @@ export function recommend(allSessions, refDate, constraints = {}) {
       : dow === 1;
   const classToday = classScheduled && !todays.some(s => s.type === "cross_training");
 
+  // Health and availability override the plan. Never prescribe hard training while sick,
+  // and respect a day the user explicitly blocked in the weekly planner.
+  const condition = constraints.condition || "normal";
+  const dayBlocked = (constraints.blockedDays || []).includes(dateKey(ref));
+  if (!todaysHard.length && condition === "sick") {
+    return rest("You're marked as sick — skip structured training and let recovery come first. Don't make up missed sessions.", SCI.overtrain);
+  }
+
   // 1) Already trained hard today — don't stack a second hard day...
   if (todaysHard.length) {
     if (daysSinceHard === 1) flags.push("Two hard days in a row — keep tomorrow easy.");
@@ -541,8 +550,14 @@ export function recommend(allSessions, refDate, constraints = {}) {
     if (daysSinceHard === 1) flags.push("Game lands on a hard day — take it a touch easier out there.");
     return mk("train", [{ type: "game" }], "Game night 🏀 — that's your hard session. Leave it all on the court.", SCI.gameDo);
   }
+  if (dayBlocked) {
+    return rest("You marked today unavailable. Keep the day free; the plan will resume around your schedule.", SCI.walk);
+  }
   if (isShabbat) {
     return recoveryDay("It's Shabbat — your scheduled rest day, no hard training.", SCI.shabbat);
+  }
+  if (condition === "low") {
+    return recoveryDay("Low energy today — skip extra hard training. Rest or take an easy walk, then reassess tomorrow.", SCI.walk);
   }
   if (classToday) {
     if (daysSinceHard === 1) flags.push("Class lands the day after a hard session — pace yourself in there.");
