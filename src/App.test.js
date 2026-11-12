@@ -43,7 +43,7 @@ test('Today and Train expose timer-free sprint logging and save it to account hi
   const row={id:'sprints-1',workout_type:'long_interval',completed_at:new Date().toISOString(),duration_min:10,rpe:9,notes:FAST_BREAK_NOTES};
   const query={insert:jest.fn(()=>query),select:jest.fn(()=>query),single:jest.fn().mockResolvedValue({data:row})};
   supabase.from.mockReturnValue(query);
-  await flush(()=>root.render(<App />)); await click('Log 10 sprints');
+  await flush(()=>root.render(<App />)); await flush(()=>div.querySelector('[aria-label="10 sprints"]').click());
   expect(div.querySelector('[role="dialog"]').textContent).toContain('walk back');
   await click('Close'); await click('Train'); await click('Log 10 sprints');
   expect(div.textContent).not.toContain('Start timer');
@@ -92,4 +92,27 @@ test('delete and undo restore the entry using a fresh generated ID', async () =>
   expect(div.querySelector('[aria-label="Delete weight entry"]')).toBeTruthy();
   expect(query.insert.mock.calls[0][0]).not.toHaveProperty('id');
   expect(query.insert.mock.calls[0][0].user_id).toBe('alice');
+});
+test('100 threes can be logged from Today, synced to the account, shown in the log and undone', async () => {
+  const stored=new Map();
+  const upsert=jest.fn(async rows=>{rows.forEach(r=>stored.set(r.key,r));return {error:null};});
+  supabase.from.mockReturnValue({upsert});
+  fetchAll.mockImplementation(async (_client,table) => table === 'user_state' ? [...stored.values()].filter(r=>r.value!==null) : []);
+  await flush(()=>root.render(<App />));
+  await flush(()=>div.querySelector('[aria-label="100 threes"]').click());
+  const input=div.querySelector('[aria-label="Threes made"]');
+  await flush(()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'41');input.dispatchEvent(new Event('input',{bubbles:true}));});
+  expect(div.querySelector('[role="dialog"]').textContent).toContain('41% from three');
+  await click('Log 100 threes');
+  expect(div.querySelector('[role="dialog"]')).toBeNull();
+  expect(div.textContent).toContain('100 threes recorded');
+  expect(div.textContent).toContain('41 of 100 made');
+  const saved=upsert.mock.calls.flatMap(c=>c[0]).find(r=>r.key.startsWith('shooting:'));
+  expect(saved).toEqual(expect.objectContaining({user_id:'alice',value:expect.objectContaining({attempts:100,makes:41})}));
+  await click('Progress'); expect(div.querySelector('[aria-label="Three-point shooting"]').textContent).toContain('41%');
+  await click('Log'); expect(div.textContent).toContain('41 made · 41%');
+  await flush(()=>div.querySelector('[aria-label^="Delete 100 threes"]').click());
+  expect(div.textContent).not.toContain('41 made');
+  await flush(()=>[...div.querySelectorAll('button')].filter(b=>b.textContent==='UNDO').pop().click());
+  expect(div.textContent).toContain('41 made · 41%');
 });

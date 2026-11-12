@@ -17,7 +17,9 @@ Run `npm run lint`, `npm test -- --runInBand`, and `npm run build`. GitHub Actio
 - `src/engine.js`, `src/engine-ui.js`, `src/engine.css`: Engine calculations, weekly goals, court check-ins and the main experience.
 - `src/WorkoutFlow.js`: focused lifting and interval sessions, partial sets and timer recovery.
 - `src/FoodJournal.js`: individual food entries, portions, favorites and repeat logging.
-- `src/ui.js`: shared controls and notifications.
+- `src/shooting.js`: three-point shooting log (100-shot sessions, makes, percentage trends). Stored in the synced `shooting` map; it never changes the Engine score.
+- `src/ActivityLog.js`: the unified, filterable activity feed.
+- `src/ui.js`: shared controls (bottom sheet, switch, icons) and notifications.
 - `src/training.js`, `statistics.js`, `nutrition.js`, `logging.js`, `home.js`: feature screens.
 
 ## Reliability and syncing
