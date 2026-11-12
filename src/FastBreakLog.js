@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { RECOVERY } from './model';
 import { toLocalInput } from './logging';
+import { Sheet } from './ui';
 
 export const FAST_BREAK_NOTES = 'Fast break · 10 sprints · walk-back recovery';
 
@@ -32,10 +33,7 @@ export function FastBreakLog({ onSave, onClose, busy = false }) {
     if (saved) onClose();
   };
 
-  return <div className="backdrop" onClick={close} onKeyDown={e => { if (e.key === 'Escape') close(); }}>
-    <form className="engine-card" role="dialog" aria-modal="true" aria-labelledby="fast-break-title" onClick={e => e.stopPropagation()} onSubmit={save} style={{width:'100%',maxWidth:440,maxHeight:'90dvh',overflowY:'auto'}}>
-      <div className="engine-row"><span className="engine-label">Fast breaks · Quick log</span><button type="button" className="engine-link" onClick={close} disabled={pending}>Close</button></div>
-      <h2 id="fast-break-title">10 sprints</h2>
+  return <Sheet label="Fast breaks · Quick log" title="10 sprints" titleId="fast-break-title" onClose={close} onSubmit={save} closeDisabled={pending}>
       <p>Sprint, then walk back to your starting spot. Repeat 10 times.</p>
       <label className="engine-field">How hard did it feel? (1–10)<input aria-label="Sprint effort" type="number" inputMode="numeric" min="1" max="10" step="1" value={effort} onChange={e => setEffort(e.target.value)} disabled={pending}/></label>
       <p className="engine-muted">Logging {minutes || '—'} minutes including walk-back recovery. The 10-minute estimate is used for your Engine score; adjust it to match your session.</p>
@@ -46,6 +44,5 @@ export function FastBreakLog({ onSave, onClose, busy = false }) {
       </details>
       {error && <p role="alert">{error}</p>}
       <button className="engine-button primary" type="submit" autoFocus disabled={pending} style={{width:'100%',marginTop:12}}>{pending ? 'Saving…' : 'Log 10 sprints'}</button>
-    </form>
-  </div>;
+  </Sheet>;
 }

@@ -54,11 +54,11 @@ export function NavItem({ g, active, onGo }) {
         cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
         position: "relative",
       }}>
-      <span style={{ fontSize: 20, opacity: active ? 1 : 0.55, transition: "opacity 0.2s, transform 0.2s", transform: active ? "scale(1.05)" : "scale(1)" }}>
-        {g.icon}
+      <span style={{ color: active ? C.rust : C.dim, transition: "color 0.2s" }}>
+        <Icon name={g.icon} size={23} strokeWidth={active ? 2.1 : 1.7} />
       </span>
       <span style={{
-        fontSize: 12, fontWeight: active ? 700 : 500,
+        fontSize: 11, fontWeight: active ? 700 : 500,
         color: active ? C.rust : C.dim,
         letterSpacing: "0.02em", fontFamily: FONT_DISPLAY, transition: "color 0.2s",
       }}>
@@ -232,4 +232,56 @@ export function Confetti({ show, onDone }) {
       })}
     </div>
   );
+}
+
+/* ── Icons — one stroke family so navigation and actions read as a set. ── */
+const ICONS = {
+  home: <><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h5v-6h4v6h5V9.5"/></>,
+  calendar: <><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></>,
+  ball: <><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18M5.6 5.6c3 2.6 3 10.2 0 12.8M18.4 5.6c-3 2.6-3 10.2 0 12.8"/></>,
+  fuel: <><path d="M4 11h16a8 8 0 0 1-16 0Z"/><path d="M9 3c-1 1.5 1 2.5 0 4M13.5 3c-1 1.5 1 2.5 0 4"/></>,
+  chart: <><path d="M4 19h16"/><path d="m5 15 4.5-5 3.5 3L19 6"/><path d="M15 6h4v4"/></>,
+  gear: <><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></>,
+  edit: <><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></>,
+  trash: <><path d="M4 7h16M10 3.5h4M6 7l1 13h10l1-13M10 11v5M14 11v5"/></>,
+  chevron: <path d="m6 9 6 6 6-6"/>,
+  plus: <path d="M12 5v14M5 12h14"/>,
+  target: <><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="0.6"/></>,
+  bolt: <path d="M13 2.5 5 13.5h6l-1 8 8-11h-6l1-8Z"/>,
+  walk: <><circle cx="13" cy="4.5" r="1.8"/><path d="m9 21 2.5-6-2-3 1-4.5 3.5 1 2 3.5 3 1M8 10l2.5-2.5M13.5 15l2.5 6"/></>,
+  flame: <path d="M12 21c4 0 6.5-2.7 6.5-6.3 0-3.2-2.2-5-3.3-7.7-.4 1.7-1.3 2.7-2.4 3.3C13 7 11.5 4.5 9.5 3c.3 3.2-4 5.5-4 11.2C5.5 18.3 8 21 12 21Z"/>,
+  drop: <path d="M12 3c3 4 6 7 6 11a6 6 0 0 1-12 0c0-4 3-7 6-11Z"/>,
+  scale: <><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8.5 9.5a5 5 0 0 1 7 0L13 12h-2L8.5 9.5Z"/></>,
+};
+
+export function Icon({ name, size = 22, strokeWidth = 1.8, style }) {
+  return <svg aria-hidden="true" focusable="false" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', flexShrink: 0, ...style }}>{ICONS[name]}</svg>;
+}
+
+/* ── Sheet — the one bottom-sheet used by every quick logger. Escape and the
+   backdrop close it, the page behind it stops scrolling, and passing onSubmit
+   makes the panel itself a form so Enter saves. ── */
+export function Sheet({ label, title, titleId, onClose, onSubmit, closeDisabled, children }) {
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') closeRef.current(); };
+    document.addEventListener('keydown', onKey);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = previous; };
+  }, []);
+  const Panel = onSubmit ? 'form' : 'div';
+  return <div className="backdrop sheet-host" onClick={onClose}>
+    <Panel className="sheet slide-up" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-label={titleId ? undefined : title} onClick={e => e.stopPropagation()} onSubmit={onSubmit}>
+      <div className="sheet-grip" aria-hidden="true"/>
+      <div className="engine-row"><span className="engine-label">{label}</span><button type="button" className="engine-link" onClick={onClose} disabled={closeDisabled}>Close</button></div>
+      <h2 id={titleId}>{title}</h2>
+      {children}
+    </Panel>
+  </div>;
+}
+
+export function Switch({ checked, onChange, label, disabled }) {
+  return <button type="button" role="switch" className="engine-switch" aria-checked={!!checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)}><span/></button>;
 }

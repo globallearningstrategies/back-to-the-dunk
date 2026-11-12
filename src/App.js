@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 import { supabase } from './data/client';
 import { fetchAll, mutateRecord, restorePayload } from './data/records';
 import { UserDataProvider, useUserData } from './data/UserData';
 import { accountKey, readJSON, writeJSON, DEFAULT_BODY } from './data/storage';
 import { useWorkoutDraft } from './data/useWorkoutDraft';
-import { C, LS_THEME, loadThemePref, applyThemePalette, FONT_DISPLAY, FONT_MONO, injectStyles, SESSIONS, RECOVERY, s440FocusFor, normalizeAll, weightProjection, computeGameState, DEFAULT_SCHEDULE, requestNotificationPermission, VAPID_PUBLIC_KEY, urlBase64ToUint8Array, pushSupported, daysAgo, fmtNum, getLastPerformance, platesToReach, todayKey, engineModel } from './model';
-import { Surface, Eyebrow, Pill, NavItem, Btn, PageTitle, toast, ToastHost, Confetti } from './ui';
+import { C, LS_THEME, loadThemePref, applyThemePalette, FONT_DISPLAY, FONT_MONO, injectStyles, SESSIONS, normalizeAll, weightProjection, computeGameState, DEFAULT_SCHEDULE, requestNotificationPermission, VAPID_PUBLIC_KEY, urlBase64ToUint8Array, pushSupported, daysAgo, getLastPerformance, platesToReach, todayKey, engineModel } from './model';
+import { Surface, Eyebrow, NavItem, Btn, PageTitle, toast, ToastHost, Confetti, Icon, Sheet, Switch } from './ui';
 import { RestTimer, DynoCard } from './training';
-import { StatCard, StatsTab } from './statistics';
 import { NutritionTab } from './nutrition';
 import { toLocalInput, ConditioningLogger, WalkLogger, LiftDateSheet } from './logging';
 import { FastBreakLog, FAST_BREAK_NOTES } from './FastBreakLog';
@@ -17,9 +16,22 @@ import { EngineHome, EngineProgress, GoalSettings } from './engine-ui';
 import { DEFAULT_PREFERENCES, engineAchievements, exerciseRecord, formatEngine, nutritionTotals, weekKey } from './engine';
 import { TrainWorkspace } from './WorkoutFlow';
 import { WeeklyGamePlanner } from './WeeklyGamePlanner';
+import { ActivityLog } from './ActivityLog';
+import { ThreePointLog, ShootingCard, newShotId, formatPct, shotPct } from './shooting';
 import { FoodJournal, newFoodId } from './FoodJournal';
 import { setFeedbackPreferences, vibrate } from './model';
 import './engine.css';
+
+// The detailed statistics screen is the heaviest module and sits behind a
+// collapsed section, so it loads only when someone opens it.
+const StatsTab = lazy(() => import('./statistics').then(m => ({ default: m.StatsTab })));
+
+function Boot({ title, message, children }) {
+  return <div className="engine-app engine-boot" data-theme={loadThemePref()} role={children ? 'alert' : 'status'}><div>
+    <div className="engine-boot-mark" aria-hidden="true">🏀</div><h1>{title}</h1>{message && <p>{message}</p>}
+    {children ? <div className="engine-actions">{children}</div> : <div className="engine-skeleton" aria-hidden="true"/>}
+  </div></div>;
+}
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -41,8 +53,8 @@ export default function App() {
     }).catch(e => { if (active) { setError(e.message); setReady(true); } });
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, []);
-  if (error) return <div role="alert">{error} <button onClick={() => window.location.reload()}>Retry</button></div>;
-  if (!ready) return <div role="status">Loading Back to the Dunk…</div>;
+  if (error) return <Boot title="Couldn’t open your account" message={error}><button className="engine-button primary" onClick={() => window.location.reload()}>Retry</button></Boot>;
+  if (!ready) return <Boot title="Back to the Dunk" message="Loading Back to the Dunk…"/>;
   if (!session) return <AuthGate />;
   return <UserDataProvider key={session.user.id} userId={session.user.id}><AccountApp userId={session.user.id} userEmail={session.user.email} /></UserDataProvider>;
 }
@@ -86,13 +98,13 @@ export function AccountApp({ userId, userEmail }) {
 
 
   const [history, setHistory] = useState([]);
-  const [expandedLog, setExpandedLog] = useState({});
   const [weightLog, setWeightLog] = useState([]);
   const [weightInput, setWeightInput] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
   const [cardioSessions, setCardioSessions] = useState([]);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [fastBreakOpen, setFastBreakOpen] = useState(false);
+  const [shotState, setShotState] = useState({ open: false }); // { open, editing? }
   // Conditioning logger sheet: { open, prefillType?, warn?, editing? }
   const [loggerState, setLoggerState] = useState({ open: false });
   const [restTimer, setRestTimer] = useState(null); // null or { seconds }
@@ -108,11 +120,28 @@ export function AccountApp({ userId, userEmail }) {
   const courtRatings = cloud.get('court', {});
   const foodEntries = cloud.get('foodEntries', {});
   const foodFavorites = cloud.get('foodFavorites', {});
+  const shooting = cloud.get('shooting', {});
+  const setShot = (id, value) => cloud.set('shooting', prev => ({...prev,[id]:value}), {});
   const setPreferences = next => cloud.set('preferences', next, DEFAULT_PREFERENCES);
   const updatePreferences = patch => setPreferences(prev => ({...prev,...patch}));
   const setFoodEntry = (id, value) => cloud.set('foodEntries', prev => ({...prev,[id]:value}), {});
   const setFavorite = (id, value) => cloud.set('foodFavorites', prev => ({...prev,[id]:value}), {});
   const rateCourt = (id, rating) => {cloud.set('court', prev => ({...prev,[id]:rating}), {});toast('Court check-in recorded');};
+  const saveShooting = (id, value) => {
+    const key = id || newShotId();
+    setShot(key, value); setShotState({ open: false });
+    if (id) { toast('Shooting session updated'); return; }
+    if (preferences.motion) setConfetti(true);
+    const pct = shotPct(value.makes, value.attempts);
+    setSessionResult({title:`${value.attempts} threes recorded`,detail:pct == null ? 'Reps banked. Add your makes next time to track your percentage.' : `${value.makes} of ${value.attempts} made · ${formatPct(pct)} from three.`});
+    setTab('home'); window.scrollTo({top:0,behavior:'auto'});
+    toast('Shooting logged', { actionLabel: 'UNDO', onAction: () => { setShot(key, null); setSessionResult(null); } });
+  };
+  const deleteShooting = id => {
+    const previous = shooting[id];
+    setShot(id, null); setShotState({ open: false });
+    if (previous) toast('Entry deleted', { actionLabel: 'UNDO', onAction: () => setShot(id, previous) });
+  };
   const saveGoals = patch => {
     updatePreferences(patch);
     cloud.set('weeklyGoals', prev => ({...prev,[weekKey(new Date())]:patch.weeklyGoal}), {});
@@ -184,7 +213,8 @@ export function AccountApp({ userId, userEmail }) {
   const showSave = (ok) => { setSaveMsg(ok ? "Saved" : "Failed"); setTimeout(() => setSaveMsg(""), 2400); };
 
   // Gamification state, derived purely from logged data.
-  const game = useMemo(() => engineAchievements(computeGameState(history, cardioSessions, weightLog), normalizeAll(cardioSessions,history), preferences, weeklyGoals), [history, cardioSessions, weightLog, preferences, weeklyGoals]);
+  const all = useMemo(() => normalizeAll(cardioSessions, history), [cardioSessions, history]);
+  const game = useMemo(() => engineAchievements(computeGameState(history, cardioSessions, weightLog), all, preferences, weeklyGoals), [history, cardioSessions, weightLog, all, preferences, weeklyGoals]);
 
   // Post-game legs check-ins, keyed by cardio session id.
   const legsLog = cloud.get('legs', {});
@@ -396,7 +426,7 @@ export function AccountApp({ userId, userEmail }) {
   });
   const logConditioning = payload => run(async () => {
     if (!Number.isFinite(payload.duration_min) || payload.duration_min<=0 || !Number.isInteger(payload.rpe) || payload.rpe<1 || payload.rpe>10) throw new Error('Enter a positive duration and effort from 1 to 10.');
-    const before = engineModel(normalizeAll(cardioSessions,history)).score;
+    const before = engineModel(all).score;
     const row = await write('cardio_sessions', 'insert', { completed_at: new Date().toISOString(), ...payload });
     const after = engineModel(normalizeAll([row,...cardioSessions],history)).score;
     setCardioSessions(p => sortCardio([row, ...p])); setConfetti(true); showSave(true); toast('Session logged');
@@ -410,7 +440,7 @@ export function AccountApp({ userId, userEmail }) {
     setCardioSessions(p => sortCardio(id != null ? p.map(r => r.id === id ? row : r) : [row, ...p]));
     setGameLegs(row.id, legs); showSave(true); setLoggerState({ open: false });
     if (id == null) {
-      const before=engineModel(normalizeAll(cardioSessions,history)).score;
+      const before=engineModel(all).score;
       const after=engineModel(normalizeAll([row,...cardioSessions],history)).score;
       setSessionResult({title:type==='game'?'Game recorded':notes===FAST_BREAK_NOTES?'10 sprints recorded':'Session recorded',detail:`${duration_min} min · effort ${rpe}/10. Engine ${formatEngine(before)} → ${formatEngine(after)}.`});
       setTab('home');
@@ -462,17 +492,16 @@ export function AccountApp({ userId, userEmail }) {
     }
   };
 
-  const totalLbs = history.reduce((a,h) => a+(h.total_volume||0), 0);
 
   // Did today's 4-minute tabata get logged?
 
   // Primary navigation — three groups, each fronting a set of sub-tabs.
   const GROUPS = [
-    { id: "today", label: "Today", icon: "⌂", tabs: ["home"] },
-    { id: "plan", label: "Plan", icon: "📅", tabs: ["goals"] },
-    { id: "train", label: "Train", icon: "🏀", tabs: ["workout"] },
-    { id: "fuel", label: "Fuel", icon: "🥣", tabs: ["nutrition"] },
-    { id: "progress", label: "Progress", icon: "📈", tabs: ["stats", "history", "weight"] },
+    { id: "today", label: "Today", icon: "home", tabs: ["home"] },
+    { id: "plan", label: "Plan", icon: "calendar", tabs: ["goals"] },
+    { id: "train", label: "Train", icon: "ball", tabs: ["workout"] },
+    { id: "fuel", label: "Fuel", icon: "fuel", tabs: ["nutrition"] },
+    { id: "progress", label: "Progress", icon: "chart", tabs: ["stats", "history", "weight"] },
   ];
   const SUB_LABELS = {
     home: "Today", workout: "Train", history: "Log", goals: "Plan",
@@ -485,30 +514,22 @@ export function AccountApp({ userId, userEmail }) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  if (loadError || (!cloud.ready && cloud.error)) return <div role="alert" style={{ padding: 24 }}>
-    <p>{loadError || cloud.error}</p><button onClick={() => { loadData(); cloud.retry(); }}>Retry loading</button>
-    <button onClick={signOut}>Sign out</button>
-  </div>;
+  if (loadError || (!cloud.ready && cloud.error)) return <Boot title="Couldn’t load your history" message={loadError || cloud.error}>
+    <button className="engine-button primary" onClick={() => { loadData(); cloud.retry(); }}>Retry loading</button>
+    <button className="engine-button" onClick={signOut}>Sign out</button>
+  </Boot>;
 
-  if (loading || !cloud.ready) return (
-    <div className="court-bg" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div className="ease-up" style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 44, marginBottom: 14 }}>💪</div>
-        <div className="h-display" style={{ color: C.rust, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>The Work</div>
-        <div style={{ color: C.dim, fontSize: 12, marginTop: 6, fontFamily: FONT_MONO, letterSpacing: "0.1em" }}>LOADING…</div>
-      </div>
-    </div>
-  );
+  if (loading || !cloud.ready) return <Boot title="Back to the Dunk" message="Loading your training…"/>;
 
   return (
     <div className="court-bg engine-app" data-theme={theme} data-motion={preferences.motion ? "on" : "off"} style={{ minHeight: "100vh", paddingBottom: 80 }}>
 
-      {(cloud.error || cloud.pendingCount || draft.error || cloud.legacyAvailable) && <div role="status" aria-live="polite" style={{ padding: '8px 20px', color: C.bone, background: C.panel }}>
-        {busy ? 'Saving…' : cloud.syncing ? 'Syncing…' : cloud.error || cloud.pendingCount ? 'Changes waiting to sync.' : 'Synced'}
-        {cloud.error && <><span> {cloud.error} </span><button onClick={cloud.retry}>Retry sync</button></>}
+      {(cloud.error || draft.error || cloud.legacyAvailable) && <div role="status" aria-live="polite" style={{ padding: '8px 20px', color: C.bone, background: C.panel, borderBottom: `1px solid ${C.line}`, fontSize: 14 }}>
+        {(cloud.error || cloud.pendingCount > 0) && <span>Changes waiting to sync. </span>}
+        {cloud.error && <><span>{cloud.error} </span><button className="engine-link" onClick={cloud.retry}>Retry sync</button></>}
         {draft.error && <p role="alert">{draft.error}</p>}
 
-        {cloud.legacyAvailable && <p>Training and nutrition data was found in this browser. Import it only if it belongs to this account. <button onClick={cloud.importLegacy}>Import my saved data</button></p>}
+        {cloud.legacyAvailable && <p>Training and nutrition data was found in this browser. Import it only if it belongs to this account. <button className="engine-button" onClick={cloud.importLegacy}>Import my saved data</button></p>}
       </div>}
       {/* HEADER */}
       <header style={{
@@ -517,29 +538,18 @@ export function AccountApp({ userId, userEmail }) {
         WebkitBackdropFilter: "blur(20px)",
         borderBottom: `1px solid ${C.line}`,
       }}>
-        <div style={{ padding: "16px 20px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ padding: "calc(10px + env(safe-area-inset-top)) 16px 10px", maxWidth: 480, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 10, background: `linear-gradient(135deg, ${C.rust}, ${C.amber})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>💪</div>
+            <div aria-hidden="true" style={{ width: 34, height: 34, borderRadius: 11, background: `linear-gradient(135deg, ${C.rust}, ${C.amber})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>🏀</div>
             <div>
               <div className="h-display" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.02em", color: C.bone, lineHeight: 1.1 }}>Back to the Dunk</div>
               <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.1em", marginTop: 2 }}>BUILT FOR THE COURT</div>
             </div>
           </div>
-          <div style={{display:'flex',alignItems:'center',gap:12}}>
-            <span role="status" style={{fontSize:12,color:C.dim}}>{busy?'Saving…':cloud.syncing?'Syncing…':cloud.pendingCount?'Pending':'Synced'}</span>
-            <button className="engine-button" aria-label="Settings" onClick={()=>{setTab('settings');window.scrollTo({top:0,behavior:'auto'});}}>⚙</button>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <span role="status" className="engine-status" data-state={saveMsg==='Failed'||cloud.error?'error':busy||cloud.syncing||cloud.pendingCount?'busy':'ok'}>{saveMsg==='Failed'?'Not saved':busy?'Saving…':cloud.syncing?'Syncing…':cloud.pendingCount?'Pending':saveMsg||'Synced'}</span>
+            <button className="engine-icon-button framed" aria-label="Settings" aria-current={tab==='settings'?'page':undefined} onClick={()=>{setTab('settings');window.scrollTo({top:0,behavior:'auto'});}}><Icon name="gear" size={20}/></button>
           </div>
-          {saveMsg && (
-            <div className="ease-in" style={{
-              fontSize: 11, fontFamily: FONT_MONO, letterSpacing: "0.1em",
-              color: saveMsg === "Saved" ? C.moss : C.red,
-              border: `1px solid ${saveMsg === "Saved" ? C.moss : C.red}40`,
-              background: `${saveMsg === "Saved" ? C.moss : C.red}10`,
-              padding: "4px 10px", borderRadius: 999,
-            }}>
-              ● {saveMsg.toUpperCase()}
-            </div>
-          )}
         </div>
 
       </header>
@@ -568,7 +578,7 @@ export function AccountApp({ userId, userEmail }) {
 
         {tab === "home" && <>
           {sessionResult && <section className="engine-card" role="status"><div className="engine-row"><strong>{sessionResult.title}</strong><button className="engine-link" onClick={()=>setSessionResult(null)}>Dismiss</button></div><p>{sessionResult.detail}</p></section>}
-          <EngineHome history={history} cardioSessions={cardioSessions} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} courtRatings={courtRatings} onRate={rateCourt} hasDraft={hasDraft} onResume={resumeTraining} onStart={startTraining} onGoTab={setTab} onQuickAdd={()=>setQuickAddOpen(true)} onFastBreak={()=>setFastBreakOpen(true)} onOpenAwards={()=>setAwardsOpen(true)} onLogType={type=>setLoggerState({open:true,prefillType:type})}
+          <EngineHome cardioSessions={cardioSessions} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} courtRatings={courtRatings} onRate={rateCourt} hasDraft={hasDraft} onResume={resumeTraining} onStart={startTraining} onGoTab={setTab} onQuickAdd={()=>setQuickAddOpen(true)} onFastBreak={()=>setFastBreakOpen(true)} onThrees={()=>setShotState({open:true})} shooting={shooting} all={all} onOpenAwards={()=>setAwardsOpen(true)} onLogType={type=>setLoggerState({open:true,prefillType:type})}
             stack={{ d3: !!vitaminD3Log[todayKey()], creatine: !!creatineLog[todayKey()] }}
             onStack={(which) => {
               const day = todayKey();
@@ -578,7 +588,7 @@ export function AccountApp({ userId, userEmail }) {
         </>}
 
         {(tab === "workout" || draft.flow?.active) && <div hidden={tab!=="workout"}>
-          <TrainWorkspace draft={draft} history={history} onStart={startTraining} onStartTimer={startTimer} onRest={restEnabled?()=>setRestTimer({seconds:90,startedAt:Date.now()}):null} onSaveLift={logSession} onSaveConditioning={logConditioning} onFastBreak={()=>setFastBreakOpen(true)} onLog={type=>setLoggerState({open:true,prefillType:type})} onWalk={()=>setWalkState({open:true})} onDyno={<DynoCard onLog={logDyno}/>} busy={busy}/>
+          <TrainWorkspace draft={draft} history={history} onStart={startTraining} onStartTimer={startTimer} onRest={restEnabled?()=>setRestTimer({seconds:90,startedAt:Date.now()}):null} onSaveLift={logSession} onSaveConditioning={logConditioning} onFastBreak={()=>setFastBreakOpen(true)} onThrees={()=>setShotState({open:true})} onLog={type=>setLoggerState({open:true,prefillType:type})} onWalk={()=>setWalkState({open:true})} onDyno={<DynoCard onLog={logDyno}/>} busy={busy}/>
         </div>}
 
         {/* ── NUTRITION ── */}
@@ -600,97 +610,13 @@ export function AccountApp({ userId, userEmail }) {
         )}
 
         {/* ── HISTORY ── */}
-        {tab === "history" && (() => {
-          // One unified feed — every logged activity, newest first.
-          const feed = [
-            ...cardioSessions.map(s => ({ kind: "cardio", id: s.id, type: s.workout_type, date: new Date(s.completed_at), duration: s.duration_min, rpe: s.rpe, notes: s.notes, focus: s.focus, raw: s })),
-            ...history.map(w => {
-              const isWalk = w.session_name === "Treadmill Walk";
-              return { kind: "workout", id: w.id, type: isWalk ? "walk" : "lift", date: new Date(w.logged_at), title: isWalk ? "Walk" : "Lift", subtitle: (w.exercises && w.exercises[0] && w.exercises[0].name) || w.session_name, volume: w.total_volume || 0, exercises: w.exercises, raw: w };
-            }),
-          ].sort((a, b) => b.date - a.date);
-          const twoWeekCount = feed.filter(f => (Date.now() - f.date.getTime()) < 14 * 86400000).length;
-          return (
-          <>
-            <div className="ease-up"><PageTitle kicker="The work · is the win">Log</PageTitle></div>
-
-            <div className="ease-up-1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
-              <StatCard kicker="ALL" value={feed.length} color={C.rust} sub="logged" />
-              <StatCard kicker="14-DAY" value={twoWeekCount} color={C.amber} sub="sessions" />
-              <StatCard kicker="LBS" value={fmtNum(totalLbs)} color={C.moss} sub="lifted" />
-            </div>
-
-            <div className="ease-up-1" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-              <button onClick={() => setQuickAddOpen(true)} className="btn" style={{ background: C.rust, border: "none", color: "#fff", borderRadius: 10, padding: "8px 14px", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>+ Log a workout</button>
-            </div>
-
-            {feed.length === 0 && (
-              <Surface style={{ textAlign: "center", padding: 48 }}>
-                <div style={{ fontSize: 36, marginBottom: 12 }}>💪</div>
-                <p className="h-serif" style={{ fontSize: 18, color: C.cream, margin: 0 }}>The page is blank.</p>
-                <div style={{ fontSize: 12, color: C.dim, marginTop: 8, fontFamily: FONT_MONO }}>GO WRITE THE FIRST CHAPTER</div>
-              </Surface>
-            )}
-
-            {feed.map((f) => {
-              const def = RECOVERY.TYPES[f.type] || {};
-              const col = C[def.colorKey] || C.rust;
-              const title = f.kind === "cardio" ? (f.type === 'long_interval' && f.notes === FAST_BREAK_NOTES ? 'Fast break · 10 sprints' : def.label || f.type) : f.title;
-              const focusOpt = f.kind === "cardio" && f.type === "cross_training" ? s440FocusFor(f.focus) : null;
-              const clsName = f.kind === "cardio" && f.type === "cross_training" && f.raw.class_name ? f.raw.class_name.replace("SWEAT440 ", "") : null;
-              const detail = f.kind === "cardio"
-                ? [clsName ? `${focusOpt ? focusOpt.emoji + " " : ""}${clsName}` : focusOpt ? `${focusOpt.emoji} ${focusOpt.label} day` : null, f.raw.points != null ? `🏀 ${f.raw.points} pts` : null, f.raw.rebounds != null ? `${f.raw.rebounds} reb` : null, f.duration != null ? `${f.duration} min` : null, f.rpe != null ? `RPE ${f.rpe}` : null].filter(Boolean).join(" · ")
-                : f.subtitle;
-              const canExpand = f.kind === "workout" && f.type === "lift" && f.exercises && f.exercises.length;
-              const expanded = expandedLog[f.kind + f.id];
-              return (
-                <Surface key={f.kind + f.id} accent={col} padding={14}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ fontSize: 26 }}>{def.emoji || "•"}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <span className="h-display" style={{ fontSize: 16, fontWeight: 700, color: C.bone, letterSpacing: "-0.01em" }}>{title}</span>
-                        <Pill color={col}>{daysAgo(f.date)}</Pill>
-                      </div>
-                      {detail && <div style={{ fontSize: 11, color: C.dim, marginTop: 3, fontFamily: FONT_MONO, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</div>}
-                      {f.notes && <div style={{ fontSize: 11, color: C.mute, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.notes}</div>}
-                      <div style={{ fontSize: 10, color: C.mute, marginTop: 3, fontFamily: FONT_MONO }}>{f.date.toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric" })}</div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                      {f.volume > 0 && (
-                        <div style={{ textAlign: "right", marginRight: 2 }}>
-                          <div className="num-tab" style={{ color: col, fontSize: 15, fontWeight: 700 }}>{fmtNum(f.volume)}</div>
-                          <div style={{ fontSize: 8, color: C.dim, fontFamily: FONT_MONO }}>LBS</div>
-                        </div>
-                      )}
-                      {canExpand && <button onClick={() => setExpandedLog(p => ({ ...p, [f.kind + f.id]: !p[f.kind + f.id] }))} className="btn" style={{ background: "transparent", border: "none", color: C.dim, cursor: "pointer", fontSize: 13, padding: 6 }}>{expanded ? "▲" : "▼"}</button>}
-                      <button onClick={() => {
-                        if (f.kind === "cardio") setLoggerState({ open: true, editing: f.raw });
-                        else if (f.type === "walk") setWalkState({ open: true, editing: f.raw });
-                        else setLiftEdit(f.raw);
-                      }} className="btn" style={{ background: "transparent", border: "none", color: C.dim, cursor: "pointer", fontSize: 13, padding: 6 }}>✎</button>
-                      <button onClick={() => (f.kind === "cardio" ? deleteCardio(f.id) : deleteLog(f.id))} className="btn" style={{ background: "transparent", border: "none", color: C.mute, cursor: "pointer", fontSize: 14, padding: 6 }}>✕</button>
-                    </div>
-                  </div>
-                  {canExpand && expanded && (
-                    <div className="ease-up" style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
-                      {f.exercises.map((ex, j) => (
-                        <div key={j} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13, borderBottom: j < f.exercises.length - 1 ? `1px solid ${C.line}` : "none" }}>
-                          <span style={{ color: C.cream }}>{ex.name}</span>
-                          <span className="num-tab" style={{ color: C.dim, fontFamily: FONT_MONO, fontSize: 12 }}>{ex.sets}×{ex.reps}{ex.weight > 0 ? ` @ ${ex.weight}` : ""}{ex.volume > 0 ? ` = ${fmtNum(ex.volume)}` : ""}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </Surface>
-              );
-            })}
-          </>
-          );
-        })()}
+        {tab === "history" && <ActivityLog cardioSessions={cardioSessions} history={history} shooting={shooting} busy={busy}
+          onAdd={() => setQuickAddOpen(true)}
+          onEdit={f => f.kind === 'cardio' ? setLoggerState({ open: true, editing: f.raw }) : f.kind === 'shooting' ? setShotState({ open: true, editing: f.raw }) : f.kind === 'walk' ? setWalkState({ open: true, editing: f.raw }) : setLiftEdit(f.raw)}
+          onDelete={f => f.kind === 'cardio' ? deleteCardio(f.id) : f.kind === 'shooting' ? deleteShooting(f.id) : deleteLog(f.id)}/>}
 
         {/* ── STATS ── */}
-        {tab === "stats" && <EngineProgress history={history} cardioSessions={cardioSessions} preferences={preferences} courtRatings={courtRatings} onRate={rateCourt} onSettings={()=>setTab("settings")}><StatsTab history={history} weightLog={weightLog} cardioSessions={cardioSessions} legsLog={legsLog} /></EngineProgress>}
+        {tab === "stats" && <EngineProgress all={all} cardioSessions={cardioSessions} preferences={preferences} courtRatings={courtRatings} onRate={rateCourt} onSettings={()=>setTab("settings")} shooting={<ShootingCard log={shooting} onLog={()=>setShotState({open:true})}/>}><Suspense fallback={<p className="engine-muted" role="status">Loading details…</p>}><StatsTab history={history} weightLog={weightLog} cardioSessions={cardioSessions} legsLog={legsLog} /></Suspense></EngineProgress>}
 
         {/* ── WEIGHT ── */}
         {tab === "weight" && (() => {
@@ -823,7 +749,7 @@ export function AccountApp({ userId, userEmail }) {
           <>
             <div className="ease-up"><PageTitle kicker="Games first · recovery built in">Your week</PageTitle></div>
 
-            <WeeklyGamePlanner value={weeklyGamePlan} onChange={saveWeeklyGamePlan} all={normalizeAll(cardioSessions,history)} />
+            <WeeklyGamePlanner value={weeklyGamePlan} onChange={saveWeeklyGamePlan} all={all} />
 
           </>
         )}
@@ -834,75 +760,17 @@ export function AccountApp({ userId, userEmail }) {
           <section className="engine-card"><h2>Make it yours</h2>
             <label className="engine-field">Coaching tone<select aria-label="Coaching tone" value={preferences.coachingTone} onChange={e=>updatePreferences({coachingTone:e.target.value})}><option value="calm">Calm</option><option value="encouraging">Encouraging</option><option value="intense">Intense</option></select></label>
             <label className="engine-field">Appearance<select aria-label="Appearance" value={theme} onChange={e=>setTheme(e.target.value)}><option value="light">Light</option><option value="dark">Dark</option></select></label>
-            {['sound','vibration','motion'].map(key=><div key={key} className="engine-row" style={{padding:'10px 0'}}><span>{key==='sound'?'Sounds & voice':key==='vibration'?'Vibration':'Animations & celebrations'}</span><button className="engine-button" aria-label={key} aria-pressed={!!preferences[key]} onClick={()=>updatePreferences({[key]:!preferences[key]})}>{preferences[key]?'On':'Off'}</button></div>)}
+            {[['sound','Sounds & voice','Timer beeps and spoken cues'],['vibration','Vibration','Haptic taps on supported phones'],['motion','Animations & celebrations','Confetti and screen transitions']].map(([key,name,hint])=><div key={key} className="engine-setting"><div><strong>{name}</strong><small>{hint}</small></div><Switch label={key} checked={!!preferences[key]} onChange={value=>updatePreferences({[key]:value})}/></div>)}
+            <div className="engine-setting"><div><strong>Rest timer</strong><small>Starts automatically after each set</small></div><Switch label="Rest timer" checked={restEnabled} onChange={setRestEnabled}/></div>
           </section>
-            {/* Quick Settings */}
-            <div className="ease-up-1">
-              <Surface>
-                <Eyebrow color={C.electric}>Settings</Eyebrow>
-                <div style={{ marginTop: 14 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.line}` }}>
-                    <div>
-                      <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>Rest timer</div>
-                      <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Auto-start after each set</div>
-                    </div>
-                    <button onClick={() => setRestEnabled(!restEnabled)} aria-label="Rest timer" aria-pressed={restEnabled} className="btn"
-                      style={{
-                        width: 50, height: 28, borderRadius: 14, border: "none",
-                        background: restEnabled ? C.moss : C.faint,
-                        position: "relative", cursor: "pointer", padding: 0,
-                        transition: "background 0.2s",
-                      }}>
-                      <div style={{
-                        width: 22, height: 22, borderRadius: 999, background: "#fff",
-                        position: "absolute", top: 3, left: restEnabled ? 25 : 3,
-                        transition: "left 0.2s cubic-bezier(0.22, 1, 0.36, 1)",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-                      }} />
-                    </button>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.line}` }}>
-                    <div>
-                      <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>Banner notifications</div>
-                      <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Alerts when timers fire in the background</div>
-                    </div>
-                    {notifEnabled ? (
-                      <span style={{ fontSize: 11, color: C.moss, fontFamily: FONT_MONO, letterSpacing: "0.05em" }}>● ON</span>
-                    ) : (
-                      <Btn color={C.electric} size="sm" onClick={enableNotifications}>Enable</Btn>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: `1px solid ${C.line}` }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>💊 Daily D3 reminder</div>
-                      <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Daily push — pick the time below</div>
-                    </div>
-                    <button onClick={toggleD3Push} aria-label="Daily D3 reminder" aria-pressed={d3Push} className="btn"
-                      style={{
-                        width: 50, height: 28, borderRadius: 14, border: "none",
-                        background: d3Push ? C.moss : C.faint,
-                        position: "relative", cursor: "pointer", padding: 0, flexShrink: 0,
-                        transition: "background 0.2s",
-                      }}>
-                      <div style={{
-                        width: 22, height: 22, borderRadius: 999, background: "#fff",
-                        position: "absolute", top: 3, left: d3Push ? 25 : 3,
-                        transition: "left 0.2s cubic-bezier(0.22, 1, 0.36, 1)",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-                      }} />
-                    </button>
-                  </div>
-                  <ReminderTimes />
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: `1px solid ${C.line}` }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>Account</div>
-                      <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{userEmail || "Signed in"}</div>
-                    </div>
-                    <Btn color={C.red} ghost size="sm" onClick={signOut}>Sign out</Btn>
-                  </div>
-                </div>
-              </Surface>
-            </div>
+          <section className="engine-card"><h2>Reminders</h2>
+            <div className="engine-setting"><div><strong>Banner notifications</strong><small>Alerts when timers finish in the background</small></div>{notifEnabled ? <span className="engine-status">On</span> : <button className="engine-button" onClick={enableNotifications}>Enable</button>}</div>
+            <div className="engine-setting"><div><strong>Daily D3 reminder</strong><small>A push notification at the time below</small></div><Switch label="Daily D3 reminder" checked={d3Push} onChange={toggleD3Push}/></div>
+            <ReminderTimes />
+          </section>
+          <section className="engine-card"><h2>Account</h2>
+            <div className="engine-setting"><div style={{minWidth:0}}><strong>Signed in</strong><small style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{userEmail || 'Signed in'}</small></div><button className="engine-button" onClick={signOut}>Sign out</button></div>
+          </section>
 
         </>}
 
@@ -929,13 +797,17 @@ export function AccountApp({ userId, userEmail }) {
       </nav>
 
       {/* ── QUICK ADD bottom sheet ── */}
-      {quickAddOpen && <div className="backdrop" onClick={()=>setQuickAddOpen(false)}><section className="engine-card" role="dialog" aria-modal="true" aria-label="Quick add" onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:440}}><div className="engine-row"><h2>Log your work</h2><button className="engine-link" onClick={()=>setQuickAddOpen(false)}>Close</button></div><div className="engine-actions">
-        <button className="engine-button primary" onClick={()=>{setQuickAddOpen(false);setFastBreakOpen(true);}}>10 sprints</button>
-        {[['game','Basketball'],['cross_training','Class'],['tabata','Tabata'],['long_interval','Conditioning']].map(([type,label])=><button className="engine-button" key={type} onClick={()=>{setQuickAddOpen(false);setLoggerState({open:true,prefillType:type});}}>{label}</button>)}
-        <button className="engine-button" onClick={()=>{setQuickAddOpen(false);setWalkState({open:true});}}>Walk</button><button className="engine-button" onClick={()=>{setQuickAddOpen(false);setTab('nutrition');}}>Food</button><button className="engine-button" onClick={()=>{setQuickAddOpen(false);setTab('weight');}}>Weight</button>
-      </div></section></div>}
+      {quickAddOpen && <Sheet label="Quick add" title="Log your work" titleId="quick-add-title" onClose={()=>setQuickAddOpen(false)}>
+        {[['On the court',[['game','Basketball','Game or pickup','ball',()=>setLoggerState({open:true,prefillType:'game'})],['threes','100 threes','Shots and makes','target',()=>setShotState({open:true})]]],
+          ['Conditioning',[['sprints','10 sprints','Fast breaks','bolt',()=>setFastBreakOpen(true)],['cross_training','Class','Sweat440','drop',()=>setLoggerState({open:true,prefillType:'cross_training'})],['tabata','Tabata','4-minute intervals','flame',()=>setLoggerState({open:true,prefillType:'tabata'})],['long_interval','Conditioning','Longer intervals','chart',()=>setLoggerState({open:true,prefillType:'long_interval'})],['walk','Walk','Easy recovery','walk',()=>setWalkState({open:true})]]],
+          ['Body',[['food','Food','Meals and protein','fuel',()=>setTab('nutrition')],['weight','Weight','Weekly check-in','scale',()=>setTab('weight')]]]].map(([heading,items])=><React.Fragment key={heading}>
+          <div className="engine-label engine-section-label">{heading}</div>
+          <div className="engine-tiles">{items.map(([key,name,hint,icon,go])=><button key={key} className="engine-tile" aria-label={name} onClick={()=>{setQuickAddOpen(false);go();}}><span className="engine-tile-icon"><Icon name={icon} size={20}/></span><span><strong>{name}</strong><small>{hint}</small></span></button>)}</div>
+        </React.Fragment>)}
+      </Sheet>}
 
       {fastBreakOpen && <FastBreakLog onSave={saveCardio} onClose={()=>setFastBreakOpen(false)} busy={busy}/>}
+      {shotState.open && <ThreePointLog editing={shotState.editing} onSave={saveShooting} onDelete={deleteShooting} onClose={()=>setShotState({open:false})}/>}
 
       {/* ── CONDITIONING LOGGER sheet ── */}
       {loggerState.open && (
@@ -1004,28 +876,12 @@ function ReminderTimes() {
   const timeInput = (id) => (
     <input type="time" value={times[id]} disabled={!loaded} onChange={e => saveTime(id, e.target.value)}
       aria-label={id === "d3" ? "D3 reminder time" : "Engine nudge time"}
-      style={{ background: C.raised, border: `1px solid ${C.line}`, borderRadius: 10, color: C.bone, padding: "8px 10px", fontSize: 15, fontFamily: FONT_MONO, fontWeight: 700, flexShrink: 0 }} />
+      style={{ background: C.raised, border: `1px solid ${C.line}`, borderRadius: 10, color: C.bone, minHeight: 44, padding: "8px 10px", fontSize: 16, fontWeight: 600, flexShrink: 0 }} />
   );
   return <>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 0", borderTop: `1px solid ${C.line}` }}>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>⏰ D3 reminder time</div>
-        <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Every day at this time</div>
-      </div>
-      {timeInput("d3")}
-    </div>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 0", borderTop: `1px solid ${C.line}` }}>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 14, color: C.bone, fontWeight: 600 }}>⛽ Engine nudge time</div>
-        <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: FONT_MONO }}>Only on days with nothing logged yet</div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-        {timeInput("engine")}
-        <button onClick={toggleEngine} aria-label="Engine nudge" aria-pressed={engineOn} className="btn"
-          style={{ width: 50, height: 28, borderRadius: 14, border: "none", background: engineOn ? C.moss : C.faint, position: "relative", cursor: "pointer", padding: 0 }}>
-          <div style={{ width: 22, height: 22, borderRadius: 999, background: "#fff", position: "absolute", top: 3, left: engineOn ? 25 : 3, transition: "left 0.2s cubic-bezier(0.22, 1, 0.36, 1)", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
-        </button>
-      </div>
+    <div className="engine-setting"><div><strong>D3 reminder time</strong><small>Every day at this time</small></div>{timeInput("d3")}</div>
+    <div className="engine-setting"><div><strong>Engine nudge</strong><small>Only on days with nothing logged yet</small></div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>{timeInput("engine")}<Switch label="Engine nudge" checked={engineOn} onChange={toggleEngine}/></div>
     </div>
   </>;
 }
