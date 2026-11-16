@@ -17,6 +17,7 @@ import { DEFAULT_PREFERENCES, engineAchievements, exerciseRecord, formatEngine, 
 import { TrainWorkspace } from './WorkoutFlow';
 import { WeeklyGamePlanner } from './WeeklyGamePlanner';
 import { ActivityLog } from './ActivityLog';
+import { GameDayWarmup } from './GameDayWarmup';
 import { ThreePointLog, ShootingCard, newShotId, formatPct, shotPct } from './shooting';
 import { FoodJournal, newFoodId } from './FoodJournal';
 import { setFeedbackPreferences, vibrate } from './model';
@@ -105,6 +106,7 @@ export function AccountApp({ userId, userEmail }) {
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [fastBreakOpen, setFastBreakOpen] = useState(false);
   const [shotState, setShotState] = useState({ open: false }); // { open, editing? }
+  const [warmupOpen, setWarmupOpen] = useState(false);
   // Conditioning logger sheet: { open, prefillType?, warn?, editing? }
   const [loggerState, setLoggerState] = useState({ open: false });
   const [restTimer, setRestTimer] = useState(null); // null or { seconds }
@@ -578,7 +580,7 @@ export function AccountApp({ userId, userEmail }) {
 
         {tab === "home" && <>
           {sessionResult && <section className="engine-card" role="status"><div className="engine-row"><strong>{sessionResult.title}</strong><button className="engine-link" onClick={()=>setSessionResult(null)}>Dismiss</button></div><p>{sessionResult.detail}</p></section>}
-          <EngineHome cardioSessions={cardioSessions} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} courtRatings={courtRatings} onRate={rateCourt} hasDraft={hasDraft} onResume={resumeTraining} onStart={startTraining} onGoTab={setTab} onQuickAdd={()=>setQuickAddOpen(true)} onFastBreak={()=>setFastBreakOpen(true)} onThrees={()=>setShotState({open:true})} shooting={shooting} all={all} onOpenAwards={()=>setAwardsOpen(true)} onLogType={type=>setLoggerState({open:true,prefillType:type})}
+          <EngineHome cardioSessions={cardioSessions} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} courtRatings={courtRatings} onRate={rateCourt} hasDraft={hasDraft} onResume={resumeTraining} onStart={startTraining} onGoTab={setTab} onQuickAdd={()=>setQuickAddOpen(true)} onFastBreak={()=>setFastBreakOpen(true)} onThrees={()=>setShotState({open:true})} onWarmup={()=>setWarmupOpen(true)} shooting={shooting} all={all} onOpenAwards={()=>setAwardsOpen(true)} onLogType={type=>setLoggerState({open:true,prefillType:type})}
             stack={{ d3: !!vitaminD3Log[todayKey()], creatine: !!creatineLog[todayKey()] }}
             onStack={(which) => {
               const day = todayKey();
@@ -588,7 +590,7 @@ export function AccountApp({ userId, userEmail }) {
         </>}
 
         {(tab === "workout" || draft.flow?.active) && <div hidden={tab!=="workout"}>
-          <TrainWorkspace draft={draft} history={history} onStart={startTraining} onStartTimer={startTimer} onRest={restEnabled?()=>setRestTimer({seconds:90,startedAt:Date.now()}):null} onSaveLift={logSession} onSaveConditioning={logConditioning} onFastBreak={()=>setFastBreakOpen(true)} onThrees={()=>setShotState({open:true})} onLog={type=>setLoggerState({open:true,prefillType:type})} onWalk={()=>setWalkState({open:true})} onDyno={<DynoCard onLog={logDyno}/>} busy={busy}/>
+          <TrainWorkspace draft={draft} history={history} onStart={startTraining} onStartTimer={startTimer} onRest={restEnabled?()=>setRestTimer({seconds:90,startedAt:Date.now()}):null} onSaveLift={logSession} onSaveConditioning={logConditioning} onFastBreak={()=>setFastBreakOpen(true)} onThrees={()=>setShotState({open:true})} onWarmup={()=>setWarmupOpen(true)} onLog={type=>setLoggerState({open:true,prefillType:type})} onWalk={()=>setWalkState({open:true})} onDyno={<DynoCard onLog={logDyno}/>} busy={busy}/>
         </div>}
 
         {/* ── NUTRITION ── */}
@@ -807,6 +809,7 @@ export function AccountApp({ userId, userEmail }) {
       </Sheet>}
 
       {fastBreakOpen && <FastBreakLog onSave={saveCardio} onClose={()=>setFastBreakOpen(false)} busy={busy}/>}
+      {warmupOpen && <GameDayWarmup onClose={()=>setWarmupOpen(false)}/>}
       {shotState.open && <ThreePointLog editing={shotState.editing} onSave={saveShooting} onDelete={deleteShooting} onClose={()=>setShotState({open:false})}/>}
 
       {/* ── CONDITIONING LOGGER sheet ── */}

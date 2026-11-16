@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { addDays, buildPlan, C, dateKey, RECOVERY, startOfDay } from './model';
+import { addDays, buildPlan, C, dateKey, isGameNight, RECOVERY, startOfDay } from './model';
+import { WarmupCard } from './GameDayWarmup';
 import { Icon } from './ui';
 import { ShootingCard, shootingSessions } from './shooting';
 import { COURT_RATINGS, coachMessage, engineBeforeGame, engineSummary, formatEngine, weeklyProgress } from './engine';
@@ -167,11 +168,13 @@ export function PlanOverview({ all, constraints, onStart }) {
   </section>;
 }
 
-export function EngineHome({ all, shooting = {}, constraints, preferences, cardioSessions, courtRatings, onRate, hasDraft, onResume, onStart, onGoTab, onQuickAdd, onLogType, onFastBreak, onThrees }) {
+export function EngineHome({ all, shooting = {}, constraints, preferences, cardioSessions, courtRatings, onRate, hasDraft, onResume, onStart, onGoTab, onQuickAdd, onLogType, onFastBreak, onThrees, onWarmup }) {
   const today = dateKey(new Date());
+  const gameNight = isGameNight(constraints, new Date());
   const completed = [...all.filter(s => dateKey(s.date) === today).map(s => RECOVERY.TYPES[s.type]?.label || s.type),
     ...shootingSessions(shooting).filter(s => dateKey(s.at) === today).map(s => `${s.attempts} threes`)];
   return <>
+    {onWarmup && gameNight && <WarmupCard gameNight onStart={onWarmup}/>}
     <TodayAction all={all} constraints={constraints} preferences={preferences} hasDraft={hasDraft} onResume={onResume} onStart={onStart} onPlan={() => onGoTab('goals')} onChange={() => onGoTab('workout')}/>
     {completed.length > 0 && <section className="engine-card" aria-label="Today's activity"><div className="engine-row"><span className="engine-label">Today’s activity</span><button className="engine-link" onClick={() => onGoTab('history')}>View log →</button></div><p>{completed.join(' · ')}</p></section>}
     <section className="engine-card" aria-label="Quick log"><span className="engine-label">Quick log</span><p className="engine-muted">Already done? Add it in a tap.</p>
@@ -183,6 +186,7 @@ export function EngineHome({ all, shooting = {}, constraints, preferences, cardi
       </div>
       <button className="engine-link" style={{ marginTop: 6 }} onClick={onQuickAdd}>Other activity</button>
     </section>
+    {onWarmup && !gameNight && <WarmupCard onStart={onWarmup}/>}
     <ShootingCard log={shooting} onLog={onThrees} compact/>
     <CourtCheckIn games={cardioSessions} all={all} ratings={courtRatings} onRate={onRate} compact/>
   </>;

@@ -507,16 +507,7 @@ export function recommend(allSessions, refDate, constraints = {}) {
 
   // Fixed weekly schedule (Shabbat, game night) — these override training.
   const dow = ref.getDay();
-  const gameOn = (d) => {
-    const key = dateKey(d);
-    const weekStart = startOfWeek(d);
-    // An explicit weekly selection overrides the recurring game night for that week.
-    if (constraints.gameWeekId && dateKey(new Date(constraints.gameWeekId + "T12:00:00")) === dateKey(new Date(weekStart))) {
-      return (constraints.gameDates || []).includes(key);
-    }
-    return constraints.gameDow != null && d.getDay() === constraints.gameDow
-      && constraints.skipGameWeekStart !== weekStart.getTime();
-  };
+  const gameOn = (d) => isGameNight(constraints, d);
   const isShabbat = (constraints.restDows || []).includes(dow);
   const gameToday = gameOn(ref) && !todays.some(s => s.type === "game");
   const gameTomorrow = gameOn(addDays(ref, 1));
@@ -611,6 +602,18 @@ export function recommend(allSessions, refDate, constraints = {}) {
   // Everything's met → recovery day.
   if (done.game > 0) return recoveryDay("A game in the last 7 days already counts toward your hard sessions.", SCI.gameCovered);
   return recoveryDay("Weekly conditioning targets met. Recovery is part of the plan.", SCI.targetsMet);
+}
+
+// Is there a basketball game on this date? An explicit weekly selection in the
+// planner overrides the recurring game night for that week.
+export function isGameNight(constraints = {}, d = new Date()) {
+  const key = dateKey(d);
+  const weekStart = startOfWeek(d);
+  if (constraints.gameWeekId && dateKey(new Date(constraints.gameWeekId + "T12:00:00")) === dateKey(new Date(weekStart))) {
+    return (constraints.gameDates || []).includes(key);
+  }
+  return constraints.gameDow != null && d.getDay() === constraints.gameDow
+    && constraints.skipGameWeekStart !== weekStart.getTime();
 }
 
 export function buildPlan(allSessions, fromDate, nDays, constraints = {}) {
