@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { addDays, buildPlan, C, dateKey, isGameNight, RECOVERY, startOfDay } from './model';
+import { addDays, buildPlan, BRISK_WALK, C, dateKey, isBriskWalk, isGameNight, RECOVERY, startOfDay } from './model';
 import { WarmupCard } from './GameDayWarmup';
 import { Icon } from './ui';
 import { ShootingCard, shootingSessions } from './shooting';
@@ -34,7 +34,7 @@ export function EngineHero({ all, onProgress, compact = false }) {
     <EngineChart series={engine.series} compact={compact}/>
     {!compact && <>
       <div className="engine-grid" style={{ marginTop: 16 }}><div className="engine-mini"><span className="engine-label">7-day average</span><strong>{formatEngine(engine.currentAverage)}</strong></div><div className="engine-mini"><span className="engine-label">Previous 7 days</span><strong>{engine.previousAverage == null ? '—' : formatEngine(engine.previousAverage)}</strong></div></div>
-      <details className="engine-details"><summary>How your Engine works</summary><p className="engine-muted">Engine is a smoothed training-load score built from 42-day weighting. Conditioning contributes minutes × reported effort; Sweat440 strength classes count at 60% (their 40s-on/20s-off intervals keep the heart working), walks receive half weight, and gym lifting does not add directly.</p><p className="engine-muted">The score decreases slightly each day before new activity is added. A recovery-day dip is expected in this formula. It measures recorded training, not a direct fitness test or today’s freshness. Record the time and effort you actually did.</p></details>
+      <details className="engine-details"><summary>How your Engine works</summary><p className="engine-muted">Engine is a smoothed training-load score built from 42-day weighting. Conditioning contributes minutes × reported effort; Sweat440 strength classes count at 60% (their 40s-on/20s-off intervals keep the heart working), brisk walks — where you can talk but not sing — count in full at effort 4, easy walks receive half weight, and gym lifting does not add directly.</p><p className="engine-muted">The score decreases slightly each day before new activity is added. A recovery-day dip is expected in this formula. It measures recorded training, not a direct fitness test or today’s freshness. Record the time and effort you actually did.</p></details>
     </>}
   </section>;
 }
@@ -168,10 +168,10 @@ export function PlanOverview({ all, constraints, onStart }) {
   </section>;
 }
 
-export function EngineHome({ all, shooting = {}, constraints, preferences, cardioSessions, courtRatings, onRate, hasDraft, onResume, onStart, onGoTab, onQuickAdd, onLogType, onFastBreak, onThrees, onWarmup }) {
+export function EngineHome({ all, shooting = {}, constraints, preferences, cardioSessions, courtRatings, onRate, hasDraft, onResume, onStart, onGoTab, onQuickAdd, onLogType, onFastBreak, onThrees, onWarmup, onWalk }) {
   const today = dateKey(new Date());
   const gameNight = isGameNight(constraints, new Date());
-  const completed = [...all.filter(s => dateKey(s.date) === today).map(s => RECOVERY.TYPES[s.type]?.label || s.type),
+  const completed = [...all.filter(s => dateKey(s.date) === today).map(s => isBriskWalk(s) ? BRISK_WALK.label : RECOVERY.TYPES[s.type]?.label || s.type),
     ...shootingSessions(shooting).filter(s => dateKey(s.at) === today).map(s => `${s.attempts} threes`)];
   return <>
     {onWarmup && gameNight && <WarmupCard gameNight onStart={onWarmup}/>}
@@ -183,8 +183,9 @@ export function EngineHome({ all, shooting = {}, constraints, preferences, cardi
         {onThrees && <button className="engine-tile" aria-label="100 threes" onClick={onThrees}><span className="engine-tile-icon"><Icon name="target" size={20}/></span><span><strong>100 threes</strong><small>Shots and makes</small></span></button>}
         {onLogType && <button className="engine-tile" aria-label="Sweat440" onClick={() => onLogType('cross_training')}><span className="engine-tile-icon"><Icon name="drop" size={20}/></span><span><strong>Sweat440</strong><small>Class</small></span></button>}
         {onFastBreak && <button className="engine-tile" aria-label="10 sprints" onClick={onFastBreak}><span className="engine-tile-icon"><Icon name="bolt" size={20}/></span><span><strong>10 sprints</strong><small>Fast breaks</small></span></button>}
+        {onWalk && <button className="engine-tile" aria-label="Brisk walk" onClick={() => onWalk('brisk')}><span className="engine-tile-icon"><Icon name="walk" size={20}/></span><span><strong>Brisk walk</strong><small>{BRISK_WALK.test}</small></span></button>}
+        <button className="engine-tile" aria-label="Other activity" onClick={onQuickAdd}><span className="engine-tile-icon"><Icon name="plus" size={20}/></span><span><strong>Other</strong><small>Walk, Tabata, food…</small></span></button>
       </div>
-      <button className="engine-link" style={{ marginTop: 6 }} onClick={onQuickAdd}>Other activity</button>
     </section>
     {onWarmup && !gameNight && <WarmupCard onStart={onWarmup}/>}
     <ShootingCard log={shooting} onLog={onThrees} compact/>

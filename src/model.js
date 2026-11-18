@@ -267,7 +267,7 @@ export const RECOVERY = {
       blurb: "40-min class · legs / cardio / upper",
     },
     walk: {
-      key: "walk", label: "Treadmill Walk", short: "Walk", emoji: "🚶", colorKey: "plum",
+      key: "walk", label: "Easy walk", short: "Walk", emoji: "🚶", colorKey: "plum",
       defaultDurationMin: 40, defaultRPE: 3,
       hard: false,       // low intensity — active recovery, no recovery cost of its own
       scheduled: true,
@@ -413,14 +413,21 @@ export function normalizeSessions(rows) {
     });
 }
 
+// Brisk walks pass the talk test: you can talk but not sing. That moderate,
+// steady effort builds the aerobic base, so it earns full Engine credit at
+// effort 4 (an easy recovery walk earns half credit at effort 3).
+export const BRISK_WALK = { rpe: 4, label: "Brisk walk", test: "Can talk, can’t sing" };
+export const isBriskWalk = s => s && s.type === "walk" && s.pace === "brisk";
+
 export function normalizeAll(cardioRows, workoutRows) {
   const out = normalizeSessions(cardioRows);
   (workoutRows || []).forEach(w => {
     const name = w.session_name || "";
     if (name === "Treadmill Walk") {
+      const brisk = !!(w.exercises && w.exercises[0] && w.exercises[0].pace === "brisk");
       out.push({
-        id: "w" + w.id, type: "walk", date: new Date(w.logged_at),
-        rpe: RECOVERY.TYPES.walk.defaultRPE,
+        id: "w" + w.id, type: "walk", date: new Date(w.logged_at), pace: brisk ? "brisk" : "easy",
+        rpe: brisk ? BRISK_WALK.rpe : RECOVERY.TYPES.walk.defaultRPE,
         duration: (w.exercises && w.exercises[0] && w.exercises[0].duration) || RECOVERY.TYPES.walk.defaultDurationMin,
       });
     } else if (name) {
@@ -1380,7 +1387,7 @@ export function calcSupplementStreak(log) {
 export const ENGINE_TAU = 42;
 
 export function engineLoadOf(s) {
-  if (s.type === "walk") return (s.duration || 0) * 0.5 * (s.rpe || 3);
+  if (s.type === "walk") return (s.duration || 0) * (s.pace === "brisk" ? 1 : 0.5) * (s.rpe || 3);
   // Sweat440 runs 40s-on / 20s-off intervals all class, so even strength-focus
   // days keep the heart working: cardio classes earn full aerobic credit,
   // strength classes 60% (the rest of that effort feeds the muscles).

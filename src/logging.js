@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { C, FONT_DISPLAY, FONT_SERIF, FONT_MONO, RECOVERY, CONDITIONING_TYPES, S440_CLASSES, S440_NAME_BY_FOCUS, focusFromClassName, fetchS440Schedule, S440_FOCUS_OPTIONS, startOfDay, addDays, startOfWeek, fmtDur, normalizeAll, buildPlan, trailingSummary, streakInfo, fatigueSignal, dateKey, LEGS_OPTIONS, ENGINE_TAU, engineModel, engineBumpPreview } from './model';
-import { Surface, Eyebrow, Btn } from './ui';
+import { C, FONT_DISPLAY, FONT_SERIF, FONT_MONO, RECOVERY, CONDITIONING_TYPES, S440_CLASSES, S440_NAME_BY_FOCUS, focusFromClassName, fetchS440Schedule, S440_FOCUS_OPTIONS, startOfDay, addDays, startOfWeek, fmtDur, normalizeAll, buildPlan, trailingSummary, streakInfo, fatigueSignal, dateKey, LEGS_OPTIONS, ENGINE_TAU, engineLoadOf, BRISK_WALK, engineModel, engineBumpPreview } from './model';
+import { Surface, Eyebrow, Btn, Sheet } from './ui';
 
 export function toLocalInput(d) {
   const x = new Date(d); const p = n => String(n).padStart(2, "0");
@@ -389,84 +389,57 @@ export function ConditioningLogger({ state, onClose, onSave, onDelete }) {
 export function WalkLogger({ state, onClose, onSave, onDelete }) {
   const editing = (state && state.editing) || null;
   const ex = (editing && editing.exercises && editing.exercises[0]) || {};
+  const [pace, setPace] = useState(editing ? (ex.pace === "brisk" ? "brisk" : "easy") : (state && state.pace) || "easy");
   const [when, setWhen] = useState(editing ? toLocalInput(editing.logged_at) : toLocalInput(new Date()));
   const [duration, setDuration] = useState(ex.duration ? String(ex.duration) : "");
   const [speed, setSpeed] = useState(ex.speed ? String(ex.speed) : "");
   const [incline, setIncline] = useState(ex.incline ? String(ex.incline) : "");
   const [notes, setNotes] = useState(ex.notes || "");
+  const [error, setError] = useState("");
   const miles = duration && speed ? ((parseFloat(duration) / 60) * parseFloat(speed)).toFixed(2) : null;
-  const canSave = duration || speed || incline;
+  const brisk = pace === "brisk";
+  const mins = Number(duration);
+  const credit = Number.isFinite(mins) && mins > 0 ? engineLoadOf({ type: "walk", pace, duration: mins, rpe: brisk ? BRISK_WALK.rpe : RECOVERY.TYPES.walk.defaultRPE }) / ENGINE_TAU : null;
 
-  const save = () => {
-    if (!canSave) return;
-    onSave({ editingId: editing ? editing.id : undefined, when, duration, speed, incline, miles, notes });
+  const save = e => {
+    e.preventDefault();
+    if (!Number.isFinite(mins) || mins <= 0 || mins > 1440) { setError("Enter how many minutes you walked."); return; }
+    const date = new Date(when);
+    if (!Number.isFinite(date.getTime()) || date > new Date()) { setError("Choose a date and time that has already happened."); return; }
+    onSave({ editingId: editing ? editing.id : undefined, when, duration, speed, incline, miles, notes, pace });
   };
+  const clear = set => e => { set(e.target.value); setError(""); };
 
-  const field = (label, unit, val, set, ph) => (
-    <div>
-      <div style={{ textAlign: "center" }}><Eyebrow>{label}</Eyebrow></div>
-      <input type="number" inputMode="decimal" step="0.1" value={val} onChange={e => set(e.target.value)} placeholder={ph}
-        style={{ width: "100%", marginTop: 6, background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 8px", fontSize: 16, outline: "none", textAlign: "center", fontFamily: FONT_MONO, boxSizing: "border-box" }} />
-      <div style={{ textAlign: "center", fontSize: 9, color: C.mute, fontFamily: FONT_MONO, marginTop: 4 }}>{unit}</div>
+  return <Sheet label={editing ? "Edit walk" : "Walk · Quick log"} title={editing ? "Edit walk" : brisk ? "Log a brisk walk" : "Log a walk"} titleId="walk-title" onClose={onClose} onSubmit={save}>
+    {state && state.warn && <p className="engine-muted">⚠ {state.warn}</p>}
+    <div className="engine-label" style={{ marginTop: 10 }}>Pace</div>
+    <div className="engine-tiles" role="radiogroup" aria-label="Walking pace" style={{ marginTop: 8 }}>
+      {[["easy", "Easy", "Recovery stroll"], ["brisk", "Brisk", BRISK_WALK.test]].map(([key, name, hint]) =>
+        <button key={key} type="button" role="radio" aria-checked={pace === key} className="engine-tile walk-pace" onClick={() => setPace(key)}>
+          <span><strong>{name}</strong><small>{hint}</small></span>
+        </button>)}
     </div>
-  );
-
-  return (
-    <div className="backdrop" style={{ alignItems: "flex-end", padding: 0 }} onClick={onClose}>
-      <div className="slide-up" onClick={e => e.stopPropagation()} style={{
-        width: "100%", maxWidth: 480, margin: "0 auto", background: C.panel,
-        borderRadius: "22px 22px 0 0", borderTop: `1px solid ${C.line}`,
-        padding: "10px 18px calc(24px + env(safe-area-inset-bottom))", maxHeight: "90vh", overflowY: "auto",
-      }}>
-        <div style={{ width: 38, height: 4, borderRadius: 999, background: C.faint, margin: "0 auto 16px" }} />
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
-          <h2 className="h-display" style={{ fontSize: 22, fontWeight: 700, color: C.bone, margin: 0, letterSpacing: "-0.03em" }}>{editing ? "🚶 Edit walk" : "🚶 Log a walk"}</h2>
-          <button onClick={onClose} className="btn" style={{ border: "none", background: "transparent", color: C.dim, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
-        </div>
-
-        {state && state.warn && (
-          <div style={{ marginBottom: 14, padding: "10px 12px", borderRadius: 10, background: `${C.amber}12`, border: `1px solid ${C.amber}40`, color: C.amber, fontSize: 12, fontFamily: FONT_MONO, lineHeight: 1.4 }}>⚠ {state.warn}</div>
-        )}
-
-        <Eyebrow>When</Eyebrow>
-        <input type="datetime-local" value={when} max={toLocalInput(new Date())} onChange={e => setWhen(e.target.value)}
-          style={{ width: "100%", margin: "8px 0 18px", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 15, outline: "none", fontFamily: FONT_DISPLAY, boxSizing: "border-box" }} />
-
-        {/* Quick durations — one tap for a casual walk */}
-        <Eyebrow>Quick log</Eyebrow>
-        <div style={{ display: "flex", gap: 8, margin: "8px 0 16px" }}>
-          {[20, 30, 45, 60, 90].map(n => {
-            const on = String(n) === String(duration);
-            return (
-              <button key={n} className="btn" onClick={() => setDuration(String(n))} style={{
-                flex: 1, padding: "12px 4px", borderRadius: 12, cursor: "pointer",
-                border: `1px solid ${on ? C.plum : C.line}`, background: on ? `${C.plum}18` : C.raised,
-                color: on ? C.plum : C.cream, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14,
-              }}>{n}<span style={{ fontSize: 9, color: on ? C.plum : C.mute, fontFamily: FONT_MONO, display: "block", marginTop: 1 }}>MIN</span></button>
-            );
-          })}
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
-          {field("Minutes", "min", duration, setDuration, "45")}
-          {field("Speed", "mph", speed, setSpeed, "3.5")}
-          {field("Incline", "%", incline, setIncline, "8")}
-        </div>
-        {miles && <div style={{ textAlign: "center", color: C.plum, fontSize: 14, marginBottom: 14, fontFamily: FONT_SERIF, fontStyle: "italic" }}>≈ {miles} miles</div>}
-
-        <Eyebrow>Notes (optional)</Eyebrow>
-        <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. podcast walk, felt good"
-          style={{ width: "100%", margin: "8px 0 18px", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-
-        <Btn color={C.plum} full size="lg" onClick={save} disabled={!canSave}>{editing ? "Save changes" : (canSave ? "Log walk" : "Add minutes, speed or incline")}</Btn>
-        {editing && onDelete && (
-          <button onClick={() => onDelete(editing.id)} className="btn" style={{ width: "100%", marginTop: 10, padding: "12px", borderRadius: 12, border: `1px solid ${C.red}40`, background: "transparent", color: C.red, fontFamily: FONT_MONO, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Delete walk</button>
-        )}
+    <p className="engine-muted">{brisk
+      ? "Talk test: you can hold a conversation, but you couldn’t sing. That steady effort builds your aerobic base, so brisk walks earn full Engine credit."
+      : "An easy walk helps you recover and earns half Engine credit."}</p>
+    <div className="engine-actions" aria-label="Quick durations">{[20, 30, 45, 60, 90].map(n =>
+      <button key={n} type="button" className="engine-button" aria-pressed={String(n) === String(duration)} onClick={() => { setDuration(String(n)); setError(""); }}>{n} min</button>)}</div>
+    <label className="engine-field">Minutes<input aria-label="Walk minutes" type="number" inputMode="decimal" min="1" max="1440" step="any" placeholder="45" value={duration} onChange={clear(setDuration)}/></label>
+    {credit != null && <p className="engine-muted" role="status">Adds about +{credit.toFixed(1)} to your Engine today.</p>}
+    <details className="engine-details"><summary>Treadmill, notes or date</summary>
+      <div className="engine-grid">
+        <label className="engine-field">Speed (mph)<input aria-label="Walk speed" type="number" inputMode="decimal" step="0.1" placeholder="3.5" value={speed} onChange={clear(setSpeed)}/></label>
+        <label className="engine-field">Incline (%)<input aria-label="Walk incline" type="number" inputMode="decimal" step="0.5" placeholder="8" value={incline} onChange={clear(setIncline)}/></label>
       </div>
-    </div>
-  );
+      {miles && <p className="engine-muted">≈ {miles} miles</p>}
+      <label className="engine-field">Notes<input aria-label="Walk notes" type="text" placeholder="e.g. neighbourhood loop, podcast" value={notes} onChange={clear(setNotes)}/></label>
+      <label className="engine-field">When<input aria-label="Walk date" type="datetime-local" max={toLocalInput(new Date())} value={when} onChange={clear(setWhen)}/></label>
+    </details>
+    {error && <p role="alert">{error}</p>}
+    <button className="engine-button primary" type="submit" style={{ width: "100%", marginTop: 12 }}>{editing ? "Save changes" : brisk ? "Log brisk walk" : "Log walk"}</button>
+    {editing && onDelete && <button type="button" className="engine-link" style={{ width: "100%", marginTop: 6 }} onClick={() => onDelete(editing.id)}>Delete walk</button>}
+  </Sheet>;
 }
-
 export function LiftDateSheet({ row, onClose, onSave, onDelete }) {
   const [when, setWhen] = useState(toLocalInput(row.logged_at));
   return (

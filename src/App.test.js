@@ -116,3 +116,16 @@ test('100 threes can be logged from Today, synced to the account, shown in the l
   await flush(()=>[...div.querySelectorAll('button')].filter(b=>b.textContent==='UNDO').pop().click());
   expect(div.textContent).toContain('41 made · 41%');
 });
+test('a brisk walk logged from Today is saved with its pace and raises the Engine', async () => {
+  const query={insert:jest.fn(()=>query),select:jest.fn(()=>query),single:jest.fn(async()=>({data:{id:7,logged_at:new Date().toISOString(),...query.insert.mock.calls[0][0]}}))};
+  supabase.from.mockReturnValue(query);
+  await flush(()=>root.render(<App />));
+  await flush(()=>div.querySelector('[aria-label="Brisk walk"]').click());
+  await click('45 min'); await click('Log brisk walk');
+  const saved=query.insert.mock.calls[0][0];
+  expect(saved).toEqual(expect.objectContaining({user_id:'alice',session_name:'Treadmill Walk'}));
+  expect(saved.exercises[0]).toEqual(expect.objectContaining({pace:'brisk',duration:45,rpe:4}));
+  expect(div.textContent).toContain('Brisk walk recorded');
+  expect(div.textContent).toContain('Engine 0.0 → 4.3');
+  expect(div.textContent).toContain('Today’s activity');
+});
