@@ -20,9 +20,10 @@ export function buildFeed(cardioSessions, history, shooting) {
     }),
     ...history.map(w => {
       const walk = w.session_name === 'Treadmill Walk';
+      const brisk = walk && w.exercises?.[0]?.pace === 'brisk';
       const exercises = w.exercises || [];
       return { key: `workout${w.id}`, kind: walk ? 'walk' : 'lift', group: walk ? 'walk' : 'strength', id: w.id, date: new Date(w.logged_at), emoji: RECOVERY.TYPES[walk ? 'walk' : 'lift'].emoji,
-        title: walk ? 'Walk' : 'Lift', detail: walk ? exercises[0]?.name || '' : [w.total_volume > 0 ? `${fmtNum(w.total_volume)} lb` : null, `${exercises.length} ${exercises.length === 1 ? 'exercise' : 'exercises'}`].filter(Boolean).join(' · '),
+        title: brisk ? 'Brisk walk' : walk ? 'Walk' : 'Lift', detail: walk ? (exercises[0]?.name || '').replace(/^Brisk · /, '') : [w.total_volume > 0 ? `${fmtNum(w.total_volume)} lb` : null, `${exercises.length} ${exercises.length === 1 ? 'exercise' : 'exercises'}`].filter(Boolean).join(' · '),
         exercises: walk ? null : exercises, raw: w };
     }),
     ...shootingSessions(shooting).map(s => ({ key: `shot${s.id}`, kind: 'shooting', group: 'shooting', id: s.id, date: s.at, emoji: '🎯',

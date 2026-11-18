@@ -4,7 +4,7 @@ import { fetchAll, mutateRecord, restorePayload } from './data/records';
 import { UserDataProvider, useUserData } from './data/UserData';
 import { accountKey, readJSON, writeJSON, DEFAULT_BODY } from './data/storage';
 import { useWorkoutDraft } from './data/useWorkoutDraft';
-import { C, LS_THEME, loadThemePref, applyThemePalette, FONT_DISPLAY, FONT_MONO, injectStyles, SESSIONS, normalizeAll, weightProjection, computeGameState, DEFAULT_SCHEDULE, requestNotificationPermission, VAPID_PUBLIC_KEY, urlBase64ToUint8Array, pushSupported, daysAgo, getLastPerformance, platesToReach, todayKey, engineModel } from './model';
+import { C, LS_THEME, loadThemePref, applyThemePalette, FONT_DISPLAY, FONT_MONO, injectStyles, SESSIONS, RECOVERY, BRISK_WALK, normalizeAll, weightProjection, computeGameState, DEFAULT_SCHEDULE, requestNotificationPermission, VAPID_PUBLIC_KEY, urlBase64ToUint8Array, pushSupported, daysAgo, getLastPerformance, platesToReach, todayKey, engineModel } from './model';
 import { Surface, Eyebrow, NavItem, Btn, PageTitle, toast, ToastHost, Confetti, Icon, Sheet, Switch } from './ui';
 import { RestTimer, DynoCard } from './training';
 import { NutritionTab } from './nutrition';
@@ -157,7 +157,7 @@ export function AccountApp({ userId, userEmail }) {
     if (cloud.ready && !weeklyGoals[thisWeekKey]) cloud.set('weeklyGoals', prev => ({...prev,[thisWeekKey]:preferences.weeklyGoal}), {});
   }, [cloud.ready, thisWeekKey]);
   const startTraining = (type, short = false) => {
-    if (type === 'walk') {setWalkState({open:true});return;}
+    if (type === 'walk' || type === 'brisk_walk') {setWalkState({open:true,pace:type==='brisk_walk'?'brisk':'easy'});return;}
     if (type === 'long_interval') {setFastBreakOpen(true);return;}
     if (type === 'game' || type === 'cross_training' || type === 'tabata') {setLoggerState({open:true,prefillType:type});return;}
     draft.setFlow({active:true,mode:'lift',short,index:0});
@@ -461,14 +461,24 @@ export function AccountApp({ userId, userEmail }) {
   const deleteCardio = id => deleteEntry('cardio_sessions', id, cardioSessions, setCardioSessions, sortCardio, () => setLoggerState({ open: false }));
   const deleteLog = id => deleteEntry('workouts', id, history, setHistory, sortByLogged, () => { setWalkState({ open: false }); setLiftEdit(null); });
   const deleteWeight = id => deleteEntry('weight_log', id, weightLog, setWeightLog, sortByLogged);
-  const saveWalk = ({ editingId, when, duration, speed, incline, miles, notes }) => run(async () => {
-    if (!Number.isFinite(Number(duration)) || Number(duration) <= 0) throw new Error('Enter a positive walking duration.');
-    const label = [duration ? duration + ' min' : null, speed ? speed + ' mph' : null, incline ? incline + '% incline' : null, miles && miles > 0 ? miles + ' mi' : null, notes || null].filter(Boolean).join(' · ');
+  const saveWalk = ({ editingId, when, duration, speed, incline, miles, notes, pace }) => run(async () => {
+    const minutes = Number(duration);
+    if (!Number.isFinite(minutes) || minutes <= 0) throw new Error('Enter a positive walking duration.');
+    const brisk = pace === 'brisk';
+    const label = [brisk ? 'Brisk' : null, minutes + ' min', speed ? speed + ' mph' : null, incline ? incline + '% incline' : null, miles && miles > 0 ? miles + ' mi' : null, notes || null].filter(Boolean).join(' · ');
+    // Every walk keeps the "Treadmill Walk" session name (the server-side Engine
+    // nudge and older stats look for it); brisk walks are marked by `pace`.
     const payload = { session_name: 'Treadmill Walk', color: C.plum, total_volume: 0,
-      exercises: [{ name: label, sets: 1, reps: 'walk', weight: 0, volume: 0, duration: Number(duration) || 0, speed: Number(speed) || 0, incline: Number(incline) || 0, miles: Number(miles) || 0, notes: notes || '' }], logged_at: new Date(when).toISOString() };
+      exercises: [{ name: label, sets: 1, reps: 'walk', weight: 0, volume: 0, duration: minutes, speed: Number(speed) || 0, incline: Number(incline) || 0, miles: Number(miles) || 0, notes: notes || '', pace: brisk ? 'brisk' : 'easy', rpe: brisk ? BRISK_WALK.rpe : RECOVERY.TYPES.walk.defaultRPE }], logged_at: new Date(when).toISOString() };
     const row = await write('workouts', editingId != null ? 'update' : 'insert', payload, editingId);
-    setHistory(p => sortByLogged(editingId != null ? p.map(r => r.id === editingId ? row : r) : [row, ...p]));
+    const nextHistory = sortByLogged(editingId != null ? history.map(r => r.id === editingId ? row : r) : [row, ...history]);
+    setHistory(nextHistory);
     showSave(true); setWalkState({ open: false });
+    if (editingId == null) {
+      const before = engineModel(all).score, after = engineModel(normalizeAll(cardioSessions, nextHistory)).score;
+      setSessionResult({ title: brisk ? 'Brisk walk recorded' : 'Walk recorded', detail: `${minutes} min${brisk ? ' at talk-test pace' : ' easy'}. Engine ${formatEngine(before)} → ${formatEngine(after)}.` });
+      setTab('home'); window.scrollTo({ top: 0, behavior: 'auto' });
+    } else toast('Walk updated');
   });
   const saveLiftDate = (id, whenISO) => run(async () => {
     const row = await write('workouts', 'update', { logged_at: whenISO }, id);
@@ -580,7 +590,7 @@ export function AccountApp({ userId, userEmail }) {
 
         {tab === "home" && <>
           {sessionResult && <section className="engine-card" role="status"><div className="engine-row"><strong>{sessionResult.title}</strong><button className="engine-link" onClick={()=>setSessionResult(null)}>Dismiss</button></div><p>{sessionResult.detail}</p></section>}
-          <EngineHome cardioSessions={cardioSessions} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} courtRatings={courtRatings} onRate={rateCourt} hasDraft={hasDraft} onResume={resumeTraining} onStart={startTraining} onGoTab={setTab} onQuickAdd={()=>setQuickAddOpen(true)} onFastBreak={()=>setFastBreakOpen(true)} onThrees={()=>setShotState({open:true})} onWarmup={()=>setWarmupOpen(true)} shooting={shooting} all={all} onOpenAwards={()=>setAwardsOpen(true)} onLogType={type=>setLoggerState({open:true,prefillType:type})}
+          <EngineHome cardioSessions={cardioSessions} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} courtRatings={courtRatings} onRate={rateCourt} hasDraft={hasDraft} onResume={resumeTraining} onStart={startTraining} onGoTab={setTab} onQuickAdd={()=>setQuickAddOpen(true)} onFastBreak={()=>setFastBreakOpen(true)} onThrees={()=>setShotState({open:true})} onWarmup={()=>setWarmupOpen(true)} onWalk={pace=>setWalkState({open:true,pace})} shooting={shooting} all={all} onOpenAwards={()=>setAwardsOpen(true)} onLogType={type=>setLoggerState({open:true,prefillType:type})}
             stack={{ d3: !!vitaminD3Log[todayKey()], creatine: !!creatineLog[todayKey()] }}
             onStack={(which) => {
               const day = todayKey();
@@ -590,7 +600,7 @@ export function AccountApp({ userId, userEmail }) {
         </>}
 
         {(tab === "workout" || draft.flow?.active) && <div hidden={tab!=="workout"}>
-          <TrainWorkspace draft={draft} history={history} onStart={startTraining} onStartTimer={startTimer} onRest={restEnabled?()=>setRestTimer({seconds:90,startedAt:Date.now()}):null} onSaveLift={logSession} onSaveConditioning={logConditioning} onFastBreak={()=>setFastBreakOpen(true)} onThrees={()=>setShotState({open:true})} onWarmup={()=>setWarmupOpen(true)} onLog={type=>setLoggerState({open:true,prefillType:type})} onWalk={()=>setWalkState({open:true})} onDyno={<DynoCard onLog={logDyno}/>} busy={busy}/>
+          <TrainWorkspace draft={draft} history={history} onStart={startTraining} onStartTimer={startTimer} onRest={restEnabled?()=>setRestTimer({seconds:90,startedAt:Date.now()}):null} onSaveLift={logSession} onSaveConditioning={logConditioning} onFastBreak={()=>setFastBreakOpen(true)} onThrees={()=>setShotState({open:true})} onWarmup={()=>setWarmupOpen(true)} onBriskWalk={()=>setWalkState({open:true,pace:'brisk'})} onLog={type=>setLoggerState({open:true,prefillType:type})} onWalk={()=>setWalkState({open:true})} onDyno={<DynoCard onLog={logDyno}/>} busy={busy}/>
         </div>}
 
         {/* ── NUTRITION ── */}
@@ -801,7 +811,7 @@ export function AccountApp({ userId, userEmail }) {
       {/* ── QUICK ADD bottom sheet ── */}
       {quickAddOpen && <Sheet label="Quick add" title="Log your work" titleId="quick-add-title" onClose={()=>setQuickAddOpen(false)}>
         {[['On the court',[['game','Basketball','Game or pickup','ball',()=>setLoggerState({open:true,prefillType:'game'})],['threes','100 threes','Shots and makes','target',()=>setShotState({open:true})]]],
-          ['Conditioning',[['sprints','10 sprints','Fast breaks','bolt',()=>setFastBreakOpen(true)],['cross_training','Class','Sweat440','drop',()=>setLoggerState({open:true,prefillType:'cross_training'})],['tabata','Tabata','4-minute intervals','flame',()=>setLoggerState({open:true,prefillType:'tabata'})],['long_interval','Conditioning','Longer intervals','chart',()=>setLoggerState({open:true,prefillType:'long_interval'})],['walk','Walk','Easy recovery','walk',()=>setWalkState({open:true})]]],
+          ['Conditioning',[['sprints','10 sprints','Fast breaks','bolt',()=>setFastBreakOpen(true)],['cross_training','Class','Sweat440','drop',()=>setLoggerState({open:true,prefillType:'cross_training'})],['tabata','Tabata','4-minute intervals','flame',()=>setLoggerState({open:true,prefillType:'tabata'})],['long_interval','Conditioning','Longer intervals','chart',()=>setLoggerState({open:true,prefillType:'long_interval'})],['brisk_walk','Brisk walk','Can talk, can’t sing','walk',()=>setWalkState({open:true,pace:'brisk'})],['walk','Easy walk','Recovery stroll','walk',()=>setWalkState({open:true,pace:'easy'})]]],
           ['Body',[['food','Food','Meals and protein','fuel',()=>setTab('nutrition')],['weight','Weight','Weekly check-in','scale',()=>setTab('weight')]]]].map(([heading,items])=><React.Fragment key={heading}>
           <div className="engine-label engine-section-label">{heading}</div>
           <div className="engine-tiles">{items.map(([key,name,hint,icon,go])=><button key={key} className="engine-tile" aria-label={name} onClick={()=>{setQuickAddOpen(false);go();}}><span className="engine-tile-icon"><Icon name={icon} size={20}/></span><span><strong>{name}</strong><small>{hint}</small></span></button>)}</div>

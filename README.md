@@ -33,7 +33,7 @@ Focused workouts preserve per-set reps and weights, including partial sessions a
 
 ## Engine experience
 
-Today leads with the existing Engine score, its seven-day change, personal best and next action. The numerical formula is preserved: conditioning load is duration × effort, walks use half weight, and each day applies the existing 41/42 decay before adding load/42. Engine is a training-load model, not a measured fitness or readiness score. Recovery-day decreases are expected.
+Today leads with the existing Engine score, its seven-day change, personal best and next action. The numerical formula is preserved: conditioning load is duration × effort, brisk walks (talk-test pace: can talk, can’t sing) count in full at effort 4, easy walks use half weight, and each day applies the existing 41/42 decay before adding load/42. Engine is a training-load model, not a measured fitness or readiness score. Recovery-day decreases are expected.
 
 Weekly goals use Monday–Sunday. A target is saved per week, beginning when this version is opened. Changing this week's goal preserves previous saved goals. Motivation celebrates these goals and Engine milestones rather than daily training streaks.
 

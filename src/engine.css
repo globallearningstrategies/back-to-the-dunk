@@ -182,3 +182,7 @@ details.engine-card > summary { font-weight: 600; }
 /* Home-screen entry point */
 .warmup-card.game-night { border: 2px solid var(--action); background: linear-gradient(135deg, color-mix(in srgb, var(--action) 10%, var(--surface)), var(--surface) 70%); }
 .warmup-start { width: 100%; min-height: 58px; font-size: 18px; margin-top: 8px; }
+
+/* Walk pace choice */
+.walk-pace { min-height: 70px; }
+.walk-pace[aria-checked="true"] { border: 2px solid var(--action); background: color-mix(in srgb, var(--action) 9%, var(--raised)); }
