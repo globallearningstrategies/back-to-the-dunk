@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { addDays, buildPlan, BRISK_WALK, C, dateKey, isBriskWalk, isGameNight, isRecoveryPlan, planItemLabel, planItemMinutes, RECOVERY, startOfDay } from './model';
+import { addDays, buildPlan, BRISK_WALK, C, dateKey, isGameNight, isRecoveryPlan, planItemLabel, sessionLabel, planItemMinutes, RECOVERY, startOfDay } from './model';
 import { WarmupCard, LogGameCard } from './GameDayWarmup';
 import { Icon } from './ui';
 import { ShootingCard, shootingSessions } from './shooting';
@@ -174,7 +174,7 @@ export function EngineHome({ all, shooting = {}, constraints, preferences, cardi
   const gameLogged = cardioSessions.some(g => g.workout_type === 'game' && dateKey(new Date(g.completed_at)) === today);
   const gameNight = isGameNight(constraints, new Date()) && !gameLogged;
   const readyToLog = gameNight && onLogGame && (warmedUp || new Date().getHours() >= 20);
-  const completed = [...all.filter(s => dateKey(s.date) === today).map(s => isBriskWalk(s) ? BRISK_WALK.label : RECOVERY.TYPES[s.type]?.label || s.type),
+  const completed = [...all.filter(s => dateKey(s.date) === today).map(sessionLabel),
     ...shootingSessions(shooting).filter(s => dateKey(s.at) === today).map(s => `${s.attempts} threes`)];
   return <>
     {readyToLog ? <LogGameCard onLog={onLogGame} onWarmup={onWarmup}/> : onWarmup && gameNight && <WarmupCard gameNight onStart={onWarmup}/>}

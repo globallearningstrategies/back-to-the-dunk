@@ -100,3 +100,20 @@ describe('screens', () => {
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ heightInches: 77, age: 47, startWeight: 214, goalWeight: 200 }));
   });
 });
+
+test('10 sprints are named as sprints in Today’s activity and in plans, not "Long Interval"', async () => {
+  const { sessionLabel, planItemLabel, FAST_BREAK_NOTES } = require('./model');
+  const [sprints, other] = normalizeAll([
+    { id: 's', workout_type: 'long_interval', completed_at: at(0, 11), duration_min: 10, rpe: 9, notes: FAST_BREAK_NOTES },
+    { id: 'o', workout_type: 'long_interval', completed_at: at(0, 12), duration_min: 20, rpe: 9, notes: null },
+  ], []);
+  expect(sessionLabel(sprints)).toBe('10 sprints');
+  expect(sessionLabel(other)).toBe('Long Interval');
+  expect(planItemLabel({ type: 'long_interval' })).toBe('10 sprints');
+  const div = document.createElement('div'); document.body.appendChild(div); const root = createRoot(div);
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  await act(async () => root.render(<EngineHome all={[sprints]} cardioSessions={[]} constraints={{}} preferences={DEFAULT_PREFERENCES} courtRatings={{}} onRate={() => {}} onStart={() => {}} onGoTab={() => {}} onQuickAdd={() => {}}/>));
+  expect(div.querySelector('[aria-label="Today\'s activity"]').textContent).toContain('10 sprints');
+  expect(div.querySelector('[aria-label="Today\'s activity"]').textContent).not.toContain('Long Interval');
+  await act(async () => root.unmount()); div.remove();
+});

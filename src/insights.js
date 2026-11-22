@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { addDays, isBriskWalk, isHardType, startOfDay, RECOVERY } from './model';
+import { addDays, isBriskWalk, isHardType, sessionLabel, startOfDay } from './model';
 import { COURT_RATINGS, engineBeforeGame, formatEngine } from './engine';
 
 /* Game insights — does what you do before a game show up on the court?
@@ -13,7 +13,7 @@ export function dayBeforeKind(all, game) {
   const prev = addDays(new Date(gameDay), -1).getTime();
   const sessions = all.filter(s => startOfDay(s.date).getTime() === prev && String(s.id) !== String(game.id));
   const hard = sessions.find(s => isHardType(s.type));
-  if (hard) return { kind: 'hard', label: hard.type === 'cross_training' ? 'Sweat440' : RECOVERY.TYPES[hard.type]?.short || 'Hard session' };
+  if (hard) return { kind: 'hard', label: hard.type === 'cross_training' ? 'Sweat440' : sessionLabel(hard) };
   if (sessions.some(isBriskWalk)) return { kind: 'light', label: 'Brisk walk' };
   if (sessions.some(s => s.type === 'walk')) return { kind: 'light', label: 'Easy walk' };
   return { kind: 'light', label: 'Rest' };
