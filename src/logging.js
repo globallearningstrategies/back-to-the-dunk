@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { C, FONT_DISPLAY, FONT_SERIF, FONT_MONO, RECOVERY, CONDITIONING_TYPES, S440_CLASSES, S440_NAME_BY_FOCUS, focusFromClassName, fetchS440Schedule, S440_FOCUS_OPTIONS, startOfDay, addDays, startOfWeek, fmtDur, normalizeAll, buildPlan, trailingSummary, streakInfo, fatigueSignal, dateKey, LEGS_OPTIONS, ENGINE_TAU, engineLoadOf, BRISK_WALK, engineModel, engineBumpPreview } from './model';
 import { Surface, Eyebrow, Btn, Sheet } from './ui';
+import { COURT_RATINGS } from './engine';
 
 export function toLocalInput(d) {
   const x = new Date(d); const p = n => String(n).padStart(2, "0");
@@ -214,6 +215,8 @@ export function ConditioningLogger({ state, onClose, onSave, onDelete }) {
   const [rpe, setRpe] = useState(editing && editing.rpe != null ? Number(editing.rpe) : RECOVERY.TYPES[initType].defaultRPE);
   const [notes, setNotes] = useState(editing ? (editing.notes || "") : "");
   const [legs, setLegs] = useState(state.legs || null);
+  const [court, setCourt] = useState(state.court || null);
+  const [error, setError] = useState("");
   // Box score — Thursday-night stat line, points and boards.
   const [points, setPoints] = useState(editing && editing.points != null ? String(editing.points) : "");
   const [rebounds, setRebounds] = useState(editing && editing.rebounds != null ? String(editing.rebounds) : "");
@@ -246,6 +249,7 @@ export function ConditioningLogger({ state, onClose, onSave, onDelete }) {
       rpe,
       notes: notes.trim() || null,
       legs: type === "game" ? legs : null,
+      court: type === "game" ? court : null,
       points: type === "game" && points !== "" ? Number(points) : null,
       rebounds: type === "game" && rebounds !== "" ? Number(rebounds) : null,
       focus: type === "cross_training" ? effFocus : null,
@@ -253,137 +257,59 @@ export function ConditioningLogger({ state, onClose, onSave, onDelete }) {
     });
   };
 
-  return (
-    <div className="backdrop" style={{ alignItems: "flex-end", padding: 0 }} onClick={onClose}>
-      <div className="slide-up" onClick={e => e.stopPropagation()} style={{
-        width: "100%", maxWidth: 480, margin: "0 auto",
-        background: C.panel, borderRadius: "22px 22px 0 0",
-        borderTop: `1px solid ${C.line}`, padding: "10px 18px calc(24px + env(safe-area-inset-bottom))",
-        maxHeight: "90vh", overflowY: "auto",
-      }}>
-        <div style={{ width: 38, height: 4, borderRadius: 999, background: C.faint, margin: "0 auto 16px" }} />
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
-          <h2 className="h-display" style={{ fontSize: 22, fontWeight: 700, color: C.bone, margin: 0, letterSpacing: "-0.03em" }}>{editing ? "Edit session" : "Log a session"}</h2>
-          <button onClick={onClose} className="btn" style={{ border: "none", background: "transparent", color: C.dim, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
-        </div>
+  const badStat = v => v !== "" && (!Number.isInteger(Number(v)) || Number(v) < 0 || Number(v) > 200);
+  const submit = e => {
+    e.preventDefault();
+    const mins = duration !== "" ? Number(duration) : def.defaultDurationMin;
+    if (!Number.isFinite(mins) || mins <= 0 || mins > 1440) { setError("Enter a positive number of minutes."); return; }
+    const date = new Date(when);
+    if (!Number.isFinite(date.getTime()) || date > new Date()) { setError("Choose a date and time that has already happened."); return; }
+    if (type === "game" && (badStat(points) || badStat(rebounds))) { setError("Points and rebounds should be whole numbers."); return; }
+    setError("");
+    save();
+  };
+  const choice = (options, value, set, label) => <div className="engine-actions" role="group" aria-label={label}>
+    {options.map(o => <button key={o.key} type="button" className="engine-button" aria-pressed={value === o.key} onClick={() => set(value === o.key ? null : o.key)}>{o.emoji ? `${o.emoji} ` : ""}{o.label}</button>)}
+  </div>;
 
-        {state.warn && (
-          <div style={{ marginBottom: 14, padding: "10px 12px", borderRadius: 10, background: `${C.amber}12`, border: `1px solid ${C.amber}40`, color: C.amber, fontSize: 12, fontFamily: FONT_MONO, lineHeight: 1.4 }}>⚠ {state.warn}</div>
-        )}
+  return <Sheet label={editing ? "Edit session" : "Quick log"} title={editing ? `Edit ${def.label.toLowerCase()}` : type === "game" ? "Log your game" : `Log ${def.label}`} titleId="conditioning-title" onClose={onClose} onSubmit={submit}>
+    {state.warn && <p className="engine-muted">⚠ {state.warn}</p>}
+    {!state.lockType && <>
+      <div className="engine-label" style={{ marginTop: 10 }}>Type</div>
+      <div className="engine-actions" role="group" aria-label="Session type">{CONDITIONING_TYPES.map(tk => RECOVERY.TYPES[tk]).map(t =>
+        <button key={t.key} type="button" className="engine-button" aria-pressed={type === t.key} onClick={() => chooseType(t.key)}>{t.emoji} {t.short}</button>)}</div>
+    </>}
 
-        {/* Type */}
-        <Eyebrow>Type</Eyebrow>
-        <div style={{ display: "flex", gap: 8, margin: "8px 0 18px" }}>
-          {CONDITIONING_TYPES.map(tk => RECOVERY.TYPES[tk]).map(t => {
-            const on = type === t.key; const col = C[t.colorKey];
-            return (
-              <button key={t.key} className="btn" onClick={() => chooseType(t.key)} style={{
-                flex: 1, padding: "12px 6px", borderRadius: 12, cursor: "pointer",
-                border: `1px solid ${on ? col : C.line}`, background: on ? `${col}18` : C.raised,
-                color: on ? col : C.cream, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 13,
-                display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-              }}>
-                <span style={{ fontSize: 20 }}>{t.emoji}</span>{t.short}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* When */}
-        <Eyebrow>When</Eyebrow>
-        <input type="datetime-local" value={when} max={toLocalInput(new Date())} onChange={e => setWhen(e.target.value)}
-          style={{ width: "100%", margin: "8px 0 18px", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 15, outline: "none", fontFamily: FONT_DISPLAY }} />
-
-        {/* Duration */}
-        <Eyebrow>Duration (min)</Eyebrow>
-        <input type="number" inputMode="numeric" min="1" placeholder={String(def.defaultDurationMin)} value={duration} onChange={e => setDuration(e.target.value)}
-          style={{ width: "100%", margin: "8px 0 18px", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 15, outline: "none", fontFamily: FONT_MONO }} />
-
-        {/* RPE */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <Eyebrow>Perceived intensity (RPE)</Eyebrow>
-          <span className="num-tab h-display" style={{ fontSize: 20, fontWeight: 700, color: C[def.colorKey] }}>{rpe}<span style={{ fontSize: 11, color: C.dim, fontWeight: 500 }}>/10</span></span>
-        </div>
-        <input type="range" min="1" max="10" step="1" value={rpe} onChange={e => { setRpe(Number(e.target.value)); setTouchedRpe(true); }}
-          style={{ width: "100%", margin: "10px 0 4px", accentColor: C[def.colorKey] }} />
-        <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginBottom: 18 }}>Default for {def.label}: {def.defaultRPE}. Adjust if it felt easier or harder.</div>
-
-        {/* Sweat440 focus — follows the Mon legs / Wed cardio / Fri upper rotation */}
-        {type === "cross_training" && (
-          <>
-            <Eyebrow>Class focus</Eyebrow>
-            <div style={{ display: "flex", gap: 8, margin: "8px 0 4px" }}>
-              {S440_FOCUS_OPTIONS.map(o => {
-                const on = effFocus === o.key;
-                return (
-                  <button key={o.key} className="btn" onClick={() => { setFocus(on ? null : o.key); setTouchedFocus(true); }} style={{
-                    flex: 1, padding: "11px 6px", borderRadius: 12, cursor: "pointer",
-                    border: `1px solid ${on ? C.pink : C.line}`, background: on ? `${C.pink}18` : C.raised,
-                    color: on ? C.pink : C.cream, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 12,
-                    display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
-                  }}>
-                    <span style={{ fontSize: 18 }}>{o.emoji}</span>{o.label}
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginBottom: 18, lineHeight: 1.5 }}>
-              {effClassName ? <><span style={{ color: C.pink, fontWeight: 700 }}>{effClassName}</span>{!touchedFocus ? (liveName ? " · live from the gym's schedule — tap to change" : " · from the weekly pattern — tap to change") : ""}</> : "Mon/Thu lower · Tue/Fri upper · Wed conditioning · weekends full body."}
-            </div>
-          </>
-        )}
-
-        {/* Post-game check-in — the real test of game shape */}
-        {type === "game" && (
-          <>
-            <Eyebrow>Fourth-quarter legs</Eyebrow>
-            <div style={{ display: "flex", gap: 8, margin: "8px 0 4px" }}>
-              {LEGS_OPTIONS.map(o => {
-                const on = legs === o.key; const col = C[o.colorKey];
-                return (
-                  <button key={o.key} className="btn" onClick={() => setLegs(on ? null : o.key)} style={{
-                    flex: 1, padding: "11px 6px", borderRadius: 12, cursor: "pointer",
-                    border: `1px solid ${on ? col : C.line}`, background: on ? `${col}18` : C.raised,
-                    color: on ? col : C.cream, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 12,
-                    display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
-                  }}>
-                    <span style={{ fontSize: 18 }}>{o.emoji}</span>{o.label}
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginBottom: 18 }}>How were the legs late in the game? Tracked over the season as your game-shape trend.</div>
-
-            {/* Stat line — what the engine actually produced tonight */}
-            <Eyebrow>Box score (optional)</Eyebrow>
-            <div style={{ display: "flex", gap: 10, margin: "8px 0 4px" }}>
-              <div style={{ flex: 1 }}>
-                <input type="number" inputMode="numeric" min="0" placeholder="—" value={points} onChange={e => setPoints(e.target.value)}
-                  style={{ width: "100%", boxSizing: "border-box", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 18, outline: "none", fontFamily: FONT_MONO, fontWeight: 700, textAlign: "center" }} />
-                <div style={{ textAlign: "center", fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 5, letterSpacing: "0.08em" }}>POINTS</div>
-              </div>
-              <div style={{ flex: 1 }}>
-                <input type="number" inputMode="numeric" min="0" placeholder="—" value={rebounds} onChange={e => setRebounds(e.target.value)}
-                  style={{ width: "100%", boxSizing: "border-box", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 18, outline: "none", fontFamily: FONT_MONO, fontWeight: 700, textAlign: "center" }} />
-                <div style={{ textAlign: "center", fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 5, letterSpacing: "0.08em" }}>REBOUNDS</div>
-              </div>
-            </div>
-            <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginBottom: 18 }}>Log your stat line and watch season averages track your engine. FG/FT detail can go in notes.</div>
-          </>
-        )}
-
-        {/* Notes */}
-        <Eyebrow>Notes (optional)</Eyebrow>
-        <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. felt strong, legs heavy…"
-          style={{ width: "100%", margin: "8px 0 18px", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 14, outline: "none" }} />
-
-        <Btn color={C[def.colorKey]} full size="lg" onClick={save}>{editing ? "Save changes" : `Log ${def.label}`}</Btn>
-        {editing && (
-          <button onClick={() => onDelete(editing.id)} className="btn" style={{ width: "100%", marginTop: 10, padding: "12px", borderRadius: 12, border: `1px solid ${C.red}40`, background: "transparent", color: C.red, fontFamily: FONT_MONO, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Delete session</button>
-        )}
+    {type === "game" && <>
+      <div className="engine-grid" style={{ marginTop: 14 }}>
+        <label className="engine-field log-stat">Points<input aria-label="Points" type="number" inputMode="numeric" min="0" step="1" placeholder="—" value={points} onChange={e => { setPoints(e.target.value); setError(""); }}/></label>
+        <label className="engine-field log-stat">Rebounds<input aria-label="Rebounds" type="number" inputMode="numeric" min="0" step="1" placeholder="—" value={rebounds} onChange={e => { setRebounds(e.target.value); setError(""); }}/></label>
       </div>
-    </div>
-  );
+      <div className="engine-label" style={{ marginTop: 6 }}>How was your engine?</div>
+      {choice(COURT_RATINGS, court, setCourt, "Court rating")}
+      <div className="engine-label" style={{ marginTop: 16 }}>Fourth-quarter legs</div>
+      {choice(LEGS_OPTIONS, legs, setLegs, "Fourth-quarter legs")}
+    </>}
+
+    {type === "cross_training" && <>
+      <div className="engine-label" style={{ marginTop: 14 }}>Class focus</div>
+      {choice(S440_FOCUS_OPTIONS, effFocus, v => { setFocus(v); setTouchedFocus(true); }, "Class focus")}
+      <p className="engine-muted">{effClassName ? <><strong>{effClassName.replace("SWEAT440 ", "")}</strong>{!touchedFocus ? (liveName ? " · from the gym’s schedule" : " · from the weekly pattern") : ""}</> : "Mon/Thu lower · Tue/Fri upper · Wed conditioning · weekends full body."}</p>
+    </>}
+
+    <div className="engine-row" style={{ marginTop: 16 }}><span className="engine-label">Effort</span><strong className="log-rpe">{rpe}<span>/10</span></strong></div>
+    <input className="log-range" aria-label="Effort (1–10)" type="range" min="1" max="10" step="1" value={rpe} onChange={e => { setRpe(Number(e.target.value)); setTouchedRpe(true); }}/>
+    <p className="engine-muted">Typical for {def.label}: {def.defaultRPE}. Adjust if it felt easier or harder.</p>
+
+    <details className="engine-details" open={!!editing}><summary>Minutes, date and notes</summary>
+      <label className="engine-field">Minutes<input aria-label="Duration in minutes" type="number" inputMode="decimal" min="1" step="any" placeholder={String(def.defaultDurationMin)} value={duration} onChange={e => { setDuration(e.target.value); setError(""); }}/></label>
+      <label className="engine-field">When<input aria-label="Session date" type="datetime-local" max={toLocalInput(new Date())} value={when} onChange={e => { setWhen(e.target.value); setError(""); }}/></label>
+      <label className="engine-field">Notes<input aria-label="Notes" type="text" placeholder="e.g. felt strong, legs heavy…" value={notes} onChange={e => setNotes(e.target.value)}/></label>
+    </details>
+    {error && <p role="alert">{error}</p>}
+    <button className="engine-button primary" type="submit" style={{ width: "100%", marginTop: 12 }}>{editing ? "Save changes" : type === "game" ? "Save game" : `Log ${def.label}`}</button>
+    {editing && <button type="button" className="engine-link" style={{ width: "100%", marginTop: 6 }} onClick={() => onDelete(editing.id)}>Delete session</button>}
+  </Sheet>;
 }
 
 export function WalkLogger({ state, onClose, onSave, onDelete }) {
@@ -442,27 +368,18 @@ export function WalkLogger({ state, onClose, onSave, onDelete }) {
 }
 export function LiftDateSheet({ row, onClose, onSave, onDelete }) {
   const [when, setWhen] = useState(toLocalInput(row.logged_at));
-  return (
-    <div className="backdrop" style={{ alignItems: "flex-end", padding: 0 }} onClick={onClose}>
-      <div className="slide-up" onClick={e => e.stopPropagation()} style={{
-        width: "100%", maxWidth: 480, margin: "0 auto", background: C.panel,
-        borderRadius: "22px 22px 0 0", borderTop: `1px solid ${C.line}`,
-        padding: "10px 18px calc(24px + env(safe-area-inset-bottom))", maxHeight: "90vh", overflowY: "auto",
-      }}>
-        <div style={{ width: 38, height: 4, borderRadius: 999, background: C.faint, margin: "0 auto 16px" }} />
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
-          <h2 className="h-display" style={{ fontSize: 22, fontWeight: 700, color: C.bone, margin: 0, letterSpacing: "-0.03em" }}>🏋️ Edit lift date</h2>
-          <button onClick={onClose} className="btn" style={{ border: "none", background: "transparent", color: C.dim, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
-        </div>
-        <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO, marginBottom: 12 }}>{row.session_name}</div>
-        <Eyebrow>When</Eyebrow>
-        <input type="datetime-local" value={when} max={toLocalInput(new Date())} onChange={e => setWhen(e.target.value)}
-          style={{ width: "100%", margin: "8px 0 18px", background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "12px 14px", fontSize: 15, outline: "none", fontFamily: FONT_DISPLAY, boxSizing: "border-box" }} />
-        <Btn color={C.rust} full size="lg" onClick={() => onSave(row.id, new Date(when).toISOString())}>Save date</Btn>
-        {onDelete && (
-          <button onClick={() => onDelete(row.id)} className="btn" style={{ width: "100%", marginTop: 10, padding: "12px", borderRadius: 12, border: `1px solid ${C.red}40`, background: "transparent", color: C.red, fontFamily: FONT_MONO, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Delete lift</button>
-        )}
-      </div>
-    </div>
-  );
+  const [error, setError] = useState("");
+  const submit = e => {
+    e.preventDefault();
+    const date = new Date(when);
+    if (!Number.isFinite(date.getTime()) || date > new Date()) { setError("Choose a date and time that has already happened."); return; }
+    onSave(row.id, date.toISOString());
+  };
+  return <Sheet label="Edit lift" title="Change the date" titleId="lift-date-title" onClose={onClose} onSubmit={submit}>
+    <p className="engine-muted">{row.session_name}</p>
+    <label className="engine-field">When<input aria-label="Lift date" type="datetime-local" max={toLocalInput(new Date())} value={when} onChange={e => { setWhen(e.target.value); setError(""); }}/></label>
+    {error && <p role="alert">{error}</p>}
+    <button className="engine-button primary" type="submit" style={{ width: "100%", marginTop: 8 }}>Save date</button>
+    {onDelete && <button type="button" className="engine-link" style={{ width: "100%", marginTop: 6 }} onClick={() => onDelete(row.id)}>Delete lift</button>}
+  </Sheet>;
 }

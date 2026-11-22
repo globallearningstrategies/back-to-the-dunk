@@ -26,44 +26,31 @@ export function SupplementRow({ name, dose, blurb, icon, accent, log, onToggle }
   };
 
   return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <div style={{
-          fontSize: 22, width: 42, height: 42, borderRadius: 12, flexShrink: 0,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          background: accent + "15", border: `1px solid ${accent}30`,
-        }}>{icon}</div>
+    <div className="fuel-supplement">
+      <div className="engine-row">
+        <div className="fuel-icon" aria-hidden="true" style={{ background: `color-mix(in srgb, ${accent} 16%, var(--raised))` }}>{icon}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="h-display" style={{ fontSize: 17, fontWeight: 700, color: C.bone, letterSpacing: "-0.02em" }}>{name}</div>
-          <div style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.06em", marginTop: 2 }}>
+          <strong className="fuel-name">{name}</strong>
+          <div className="engine-muted">
             {dose}{streak > 0 ? ` · 🔥 ${streak} day${streak === 1 ? "" : "s"}` : ""}
           </div>
         </div>
-        <button onClick={toggle} className="btn" style={{
-          flexShrink: 0, padding: "10px 18px", borderRadius: 14,
-          background: takenToday ? accent : "transparent",
-          border: `1px solid ${takenToday ? accent : accent + "55"}`,
-          color: takenToday ? C.ink : accent,
-          fontSize: 13, fontWeight: 700, cursor: "pointer",
-          fontFamily: FONT_DISPLAY, letterSpacing: "-0.01em",
-        }}>{takenToday ? "✓ Taken" : "Log it"}</button>
+        <button type="button" onClick={toggle} className={`engine-button${takenToday ? "" : " primary"}`} aria-pressed={takenToday} aria-label={`${name} taken today`} style={{ flexShrink: 0 }}>
+          {takenToday ? "✓ Taken" : "Log it"}
+        </button>
       </div>
 
       {/* 7-day trail */}
-      <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
+      <div className="fuel-trail" role="img" aria-label={`${name} this week: ${trail.filter(d => d.done).length} of 7 days`}>
         {trail.map(d => (
-          <div key={d.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-            <div style={{
-              width: "100%", height: 6, borderRadius: 3,
-              background: d.done ? accent : C.line,
-              outline: d.isToday ? `1px solid ${accent}` : "none", outlineOffset: 1,
-            }} />
-            <div style={{ fontSize: 9, color: d.isToday ? accent : C.mute, fontFamily: FONT_MONO }}>{d.letter}</div>
+          <div key={d.key} className={d.isToday ? "today" : undefined}>
+            <span data-done={d.done} />
+            {d.letter}
           </div>
         ))}
       </div>
 
-      <p className="h-serif" style={{ fontSize: 13, color: C.cream, margin: "10px 0 0", lineHeight: 1.4 }}>{blurb}</p>
+      <p className="engine-muted">{blurb}</p>
     </div>
   );
 }
@@ -377,319 +364,170 @@ export function NutritionTab({ guideOnly = false, onLogFood, bodyStats, onUpdate
 
       </>}
       {/* ── DAILY SUPPLEMENTS ── */}
-      <div className="ease-up-2">
-        <Surface accent={C.plum}>
-          <Eyebrow color={C.plum}>Daily · Supplements</Eyebrow>
-          <p className="h-serif" style={{ fontSize: 14, color: C.cream, margin: "8px 0 18px", lineHeight: 1.4 }}>
-            Tap to log each day. Consistency is the cheat code — keep the streak alive.
-          </p>
-          <SupplementRow
-            name="Vitamin D3"
-            dose="5,000 IU"
-            icon="☀️"
-            accent={C.amber}
-            blurb="Bones, joints, immune system, mood. Take with a meal that has some fat."
-            log={vitaminD3Log}
-            onToggle={onVitaminD3Toggle}
-          />
-          <div style={{ height: 1, background: C.line, margin: "18px 0" }} />
-          <SupplementRow
-            name="Creatine"
-            dose="5 g monohydrate"
-            icon="⚡"
-            accent={C.electric}
-            blurb="Power, explosiveness, recovery. Daily dose matters more than timing — just don't skip."
-            log={creatineLog}
-            onToggle={onCreatineToggle}
-          />
-        </Surface>
-      </div>
+      <section className="engine-card fuel-card" aria-label="Daily supplements">
+        <span className="engine-label">Daily</span>
+        <h2>Supplements</h2>
+        <p className="engine-muted">
+          Tap to log each day. Consistency is the cheat code — keep the streak alive.
+        </p>
+        <SupplementRow
+          name="Vitamin D3"
+          dose="5,000 IU"
+          icon="☀️"
+          accent={C.amber}
+          blurb="Bones, joints, immune system, mood. Take with a meal that has some fat."
+          log={vitaminD3Log}
+          onToggle={onVitaminD3Toggle}
+        />
+        <SupplementRow
+          name="Creatine"
+          dose="5 g monohydrate"
+          icon="⚡"
+          accent={C.electric}
+          blurb="Power, explosiveness, recovery. Daily dose matters more than timing — just don't skip."
+          log={creatineLog}
+          onToggle={onCreatineToggle}
+        />
+      </section>
 
       {/* ── GOAL MODE SELECTOR ── */}
-      <div className="ease-up-2">
-        <Surface accent={C[goalInfo.color]}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-            <div>
-              <Eyebrow color={C[goalInfo.color]}>Eating Goal</Eyebrow>
-              <p className="h-serif" style={{ fontSize: 14, color: C.cream, margin: "8px 0 0", lineHeight: 1.4 }}>
-                {goalInfo.blurb}
-              </p>
-            </div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
-            {Object.entries(GOAL_MODES).map(([key, info]) => {
-              const active = goal === key;
-              const c = C[info.color];
-              return (
-                <button key={key} onClick={() => setGoal(key)} className="btn" style={{
-                  padding: "12px 4px", borderRadius: 12,
-                  background: active ? c : "transparent",
-                  border: `1px solid ${active ? c : C.line}`,
-                  color: active ? C.ink : C.cream,
-                  fontSize: 12, fontWeight: 700, letterSpacing: "-0.01em",
-                  cursor: "pointer",
-                }}>
-                  <div style={{ fontSize: 14 }}>{info.label}</div>
-                  <div style={{ fontSize: 10, fontFamily: FONT_MONO, marginTop: 3, opacity: 0.85 }}>
-                    {info.delta > 0 ? `+${info.delta}` : info.delta}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </Surface>
-      </div>
+      <section className="engine-card fuel-card" aria-label="Eating goal">
+        <span className="engine-label">Eating goal</span>
+        <h2>{goalInfo.label}</h2>
+        <p className="engine-muted">{goalInfo.blurb}</p>
+        <div className="fuel-goals" role="group" aria-label="Choose eating goal">
+          {Object.entries(GOAL_MODES).map(([key, info]) => (
+            <button key={key} type="button" onClick={() => setGoal(key)} className="engine-button" aria-pressed={goal === key}>
+              {info.label}
+              <small>{info.delta > 0 ? `+${info.delta}` : info.delta}</small>
+            </button>
+          ))}
+        </div>
+      </section>
 
       {/* ── BODY STATS ── */}
-      <div className="ease-up-2">
-        <Surface accent={C.electric}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <Eyebrow color={C.electric}>Your Stats</Eyebrow>
-              <div style={{ display: "flex", gap: 18, marginTop: 12 }}>
-                <div>
-                  <div className="num-tab h-display" style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", color: C.bone }}>
-                    {heightFt}'{heightIn}"
-                  </div>
-                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 3, letterSpacing: "0.08em" }}>HEIGHT</div>
-                </div>
-                <div>
-                  <div className="num-tab h-display" style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", color: C.bone }}>
-                    {bodyStats.weightLbs}<span style={{ fontSize: 11, color: C.dim, fontWeight: 500 }}>lb</span>
-                  </div>
-                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 3, letterSpacing: "0.08em" }}>WEIGHT</div>
-                </div>
-                <div>
-                  <div className="num-tab h-display" style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", color: C.bone }}>
-                    {bodyStats.age}
-                  </div>
-                  <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 3, letterSpacing: "0.08em" }}>AGE</div>
-                </div>
-              </div>
-            </div>
-            {!editingBody && <Btn ghost color={C.electric} size="sm" onClick={() => setEditingBody(true)}>Edit</Btn>}
-          </div>
+      <section className="engine-card fuel-card" aria-label="Your stats and targets">
+        <div className="engine-row">
+          <span className="engine-label">Your stats</span>
+          {!editingBody && <button type="button" className="engine-link" onClick={() => setEditingBody(true)}>Edit</button>}
+        </div>
+        <div className="fuel-stats">
+          <div className="engine-mini"><span className="engine-label">Height</span><strong>{heightFt}'{heightIn}"</strong></div>
+          <div className="engine-mini"><span className="engine-label">Weight</span><strong>{bodyStats.weightLbs}<small> lb</small></strong></div>
+          <div className="engine-mini"><span className="engine-label">Age</span><strong>{bodyStats.age}</strong></div>
+        </div>
 
-          {editingBody && (
-            <div className="ease-up" style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.line}` }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
-                <div>
-                  <div style={{ textAlign: "center" }}><Eyebrow>Height (in)</Eyebrow></div>
-                  <div style={{ height: 5 }} />
-                  <NumIn value={tmpHeight} onChange={setTmpHeight} decimal={true} step="0.5" placeholder="77" />
-                </div>
-                <div>
-                  <div style={{ textAlign: "center" }}><Eyebrow>Weight (lb)</Eyebrow></div>
-                  <div style={{ height: 5 }} />
-                  <NumIn value={tmpWeight} onChange={setTmpWeight} decimal={true} step="0.1" placeholder="222" />
-                </div>
-                <div>
-                  <div style={{ textAlign: "center" }}><Eyebrow>Age</Eyebrow></div>
-                  <div style={{ height: 5 }} />
-                  <NumIn value={tmpAge} onChange={setTmpAge} decimal={false} step="1" placeholder="47" />
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <Btn ghost color={C.dim} onClick={() => { setEditingBody(false); setTmpHeight(bodyStats.heightInches); setTmpWeight(bodyStats.weightLbs); setTmpAge(bodyStats.age); }} style={{ flex: 1 }}>Cancel</Btn>
-                <Btn color={C.electric} onClick={saveBody} style={{ flex: 1.5 }}>Save Stats</Btn>
-              </div>
+        {editingBody && (
+          <div className="fuel-edit">
+            <div className="fuel-stats">
+              <label className="engine-field">Height (in)
+                <input type="number" inputMode="decimal" step="0.5" placeholder="77" value={tmpHeight ?? ""} onChange={e => setTmpHeight(e.target.value)} />
+              </label>
+              <label className="engine-field">Weight (lb)
+                <input type="number" inputMode="decimal" step="0.1" placeholder="222" value={tmpWeight ?? ""} onChange={e => setTmpWeight(e.target.value)} />
+              </label>
+              <label className="engine-field">Age
+                <input type="number" inputMode="numeric" step="1" placeholder="47" value={tmpAge ?? ""} onChange={e => setTmpAge(e.target.value)} />
+              </label>
             </div>
-          )}
-
-          {/* Calculated targets */}
-          <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.line}`, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <Eyebrow color={C.rust}>Daily Protein</Eyebrow>
-              <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 700, color: C.rust, letterSpacing: "-0.03em", marginTop: 6 }}>
-                {proteinTarget}<span style={{ fontSize: 12, color: C.dim, fontWeight: 500, marginLeft: 3 }}>g</span>
-              </div>
-              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4 }}>1g per lb · cut + lift</div>
-            </div>
-            <div>
-              <Eyebrow color={C[goalInfo.color]}>Daily Calories</Eyebrow>
-              <div className="num-tab h-display" style={{ fontSize: 26, fontWeight: 700, color: C[goalInfo.color], letterSpacing: "-0.03em", marginTop: 6 }}>
-                {calorieTarget.toLocaleString()}
-              </div>
-              <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4 }}>
-                {goalInfo.label.toUpperCase()} · {goalInfo.delta > 0 ? `+${goalInfo.delta}` : goalInfo.delta} from TDEE
-              </div>
+            <div className="engine-actions">
+              <button type="button" className="engine-button primary" onClick={saveBody}>Save stats</button>
+              <button type="button" className="engine-button" onClick={() => { setEditingBody(false); setTmpHeight(bodyStats.heightInches); setTmpWeight(bodyStats.weightLbs); setTmpAge(bodyStats.age); }}>Cancel</button>
             </div>
           </div>
-        </Surface>
-      </div>
+        )}
 
-      {/* ── FOOD GUIDE FILTER — horizontal scroll for 5 categories ── */}
-      <div className="ease-up-3" style={{
-        display: "flex", gap: 6, marginBottom: 12,
-        overflowX: "auto", paddingBottom: 4,
-        WebkitOverflowScrolling: "touch",
-        scrollbarWidth: "none",
-      }}>
-        {Object.entries(FOOD_LISTS).map(([key, info]) => (
-          <button key={key} onClick={() => setFoodFilter(key)} className="btn" style={{
-            flexShrink: 0, padding: "10px 14px",
-            background: foodFilter === key ? info.color : "transparent",
-            border: `1px solid ${foodFilter === key ? info.color : C.line}`,
-            color: foodFilter === key ? C.ink : C.cream,
-            borderRadius: 12, cursor: "pointer",
-            fontSize: 12, fontWeight: 700, letterSpacing: "-0.01em",
-            whiteSpace: "nowrap",
-          }}>
-            <span style={{ fontSize: 14, marginRight: 4 }}>{info.icon}</span>
-            {info.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="ease-up-4">
-        <Surface accent={activeList.color}>
-          <div style={{ marginBottom: 14 }}>
-            <Eyebrow color={activeList.color}>{activeList.label} · Kosher</Eyebrow>
-            <p className="h-serif" style={{ fontSize: 16, color: C.cream, margin: "8px 0 0", lineHeight: 1.4 }}>
-              {activeList.blurb}
-            </p>
+        {/* Calculated targets */}
+        <h3 className="engine-label fuel-subhead">Daily targets</h3>
+        <div className="engine-grid">
+          <div className="engine-mini">
+            <span className="engine-label">Protein</span>
+            <strong>{proteinTarget}g</strong>
+            <span className="engine-muted">1g per lb · cut + lift</span>
           </div>
+          <div className="engine-mini">
+            <span className="engine-label">Calories</span>
+            <strong>{calorieTarget.toLocaleString()}</strong>
+            <span className="engine-muted">{goalInfo.label} · {goalInfo.delta > 0 ? `+${goalInfo.delta}` : goalInfo.delta} from TDEE</span>
+          </div>
+        </div>
+      </section>
 
-          {activeList.type === "meal" ? (
-            /* ── MEAL CARDS — full plate view ── */
-            activeList.items.map((meal, i) => (
-              <div key={i} style={{
-                padding: "18px 0",
-                borderBottom: i < activeList.items.length - 1 ? `1px solid ${C.line}` : "none",
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: C.bone, letterSpacing: "-0.015em", marginBottom: 4 }}>
-                      {meal.name}
-                    </div>
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                      <span className="num-tab" style={{
-                        fontSize: 13, color: activeList.color, fontWeight: 700, fontFamily: FONT_MONO,
-                      }}>{meal.totalProtein}g protein</span>
-                      <span style={{ fontSize: 11, color: C.mute, fontFamily: FONT_MONO }}>·</span>
-                      <span className="num-tab" style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>
-                        ~{meal.calories} cal
-                      </span>
-                    </div>
-                    {meal.timing && (
-                      <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 6, letterSpacing: "0.05em" }}>
-                        {meal.timing.toUpperCase()}
-                      </div>
-                    )}
-                  </div>
-                  <button onClick={() => logFood(meal)} className="btn" style={{
-                    background: activeList.color + "15",
-                    border: `1px solid ${activeList.color}40`,
-                    color: activeList.color,
-                    padding: "10px 14px", borderRadius: 10,
-                    fontSize: 12, fontWeight: 700, cursor: "pointer",
-                    fontFamily: FONT_DISPLAY, flexShrink: 0,
-                  }}>
-                    LOG MEAL<br/>
-                    <span style={{ fontSize: 13 }}>+{meal.totalProtein}g · {meal.calories}c</span>
-                  </button>
-                </div>
+      {/* ── FOOD GUIDE — filter chips + list ── */}
+      <section className="engine-card fuel-card" aria-label="Food guide">
+        <span className="engine-label">{activeList.label} · Kosher</span>
+        <h2>Food guide</h2>
+        <div className="engine-chips fuel-chips" role="group" aria-label="Food guide category">
+          {Object.entries(FOOD_LISTS).map(([key, info]) => (
+            <button key={key} type="button" onClick={() => setFoodFilter(key)} className="engine-chip" aria-pressed={foodFilter === key}>
+              <span aria-hidden="true">{info.icon} </span>{info.label}
+            </button>
+          ))}
+        </div>
+        <p className="engine-muted">{activeList.blurb}</p>
 
-                {/* Components — what's actually on the plate */}
-                <div style={{
-                  background: C.raised, borderRadius: 10, padding: "12px 14px",
-                  border: `1px solid ${C.line}`, marginTop: 8,
-                }}>
-                  <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 8 }}>
-                    ON THE PLATE
-                  </div>
-                  {meal.components.map((c, ci) => (
-                    <div key={ci} style={{
-                      fontSize: 13, color: C.cream, lineHeight: 1.5,
-                      paddingLeft: 14, position: "relative", marginBottom: 3,
-                    }}>
-                      <span style={{ position: "absolute", left: 0, color: activeList.color }}>›</span>
-                      {c}
-                    </div>
-                  ))}
-                </div>
-
-                {meal.why && (
-                  <p className="h-serif" style={{ fontSize: 13, color: C.dim, margin: "10px 0 0", lineHeight: 1.45, fontStyle: "italic" }}>
-                    {meal.why}
-                  </p>
-                )}
-                {meal.bestFor && (
-                  <div style={{
-                    display: "inline-block",
-                    fontSize: 10, color: activeList.color, fontFamily: FONT_MONO,
-                    letterSpacing: "0.05em", marginTop: 8,
-                    padding: "3px 8px", borderRadius: 6,
-                    background: activeList.color + "10",
-                    border: `1px solid ${activeList.color}30`,
-                  }}>
-                    BEST FOR: {meal.bestFor.toUpperCase()}
-                  </div>
-                )}
-              </div>
-            ))
-          ) : (
-            /* ── QUICK CARDS — single ingredient/product view ── */
-            activeList.items.map((food, i) => (
-              <div key={i} style={{
-                padding: "14px 0",
-                borderBottom: i < activeList.items.length - 1 ? `1px solid ${C.line}` : "none",
-                display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12,
-              }}>
+        {activeList.type === "meal" ? (
+          /* ── MEAL CARDS — full plate view ── */
+          activeList.items.map((meal, i) => (
+            <div key={i} className="fuel-food">
+              <div className="engine-row" style={{ alignItems: "flex-start" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: C.bone, letterSpacing: "-0.01em" }}>{food.name}</span>
-                    <span className="num-tab" style={{
-                      fontSize: 12, color: activeList.color, fontWeight: 700, fontFamily: FONT_MONO,
-                    }}>{food.protein}g</span>
-                    {food.calories && (
-                      <span className="num-tab" style={{
-                        fontSize: 11, color: C.dim, fontFamily: FONT_MONO,
-                      }}>· {food.calories} cal</span>
-                    )}
-                  </div>
-                  {food.timing && (
-                    <div style={{ fontSize: 10, color: C.dim, fontFamily: FONT_MONO, marginTop: 4, letterSpacing: "0.05em" }}>
-                      {food.timing.toUpperCase()}
-                    </div>
-                  )}
-                  <p className="h-serif" style={{ fontSize: 13, color: C.dim, margin: "4px 0 0", lineHeight: 1.4 }}>
-                    {food.note}
-                  </p>
+                  <strong className="fuel-name">{meal.name}</strong>
+                  <div className="engine-muted fuel-num">{meal.totalProtein}g protein · ~{meal.calories} cal</div>
+                  {meal.timing && <div className="fuel-timing">{meal.timing}</div>}
                 </div>
-                <button onClick={() => logFood(food)} className="btn" style={{
-                  background: activeList.color + "15",
-                  border: `1px solid ${activeList.color}40`,
-                  color: activeList.color,
-                  padding: "8px 14px", borderRadius: 10,
-                  fontSize: 12, fontWeight: 700, cursor: "pointer",
-                  fontFamily: FONT_DISPLAY, flexShrink: 0,
-                }}>
-                  +{food.protein}g{food.calories ? <><br/><span style={{ fontSize: 10, opacity: 0.85 }}>{food.calories}c</span></> : null}
+                <button type="button" onClick={() => logFood(meal)} className="engine-button fuel-log" aria-label={`Log ${meal.name}: ${meal.totalProtein}g protein, ${meal.calories} calories`}>
+                  Log meal
+                  <small>+{meal.totalProtein}g · {meal.calories}c</small>
                 </button>
               </div>
-            ))
-          )}
-        </Surface>
-      </div>
+
+              {/* Components — what's actually on the plate */}
+              <div className="engine-mini fuel-plate">
+                <span className="engine-label">On the plate</span>
+                <ul>
+                  {meal.components.map((c, ci) => <li key={ci}>{c}</li>)}
+                </ul>
+              </div>
+
+              {meal.why && <p className="engine-muted">{meal.why}</p>}
+              {meal.bestFor && <span className="fuel-tag">Best for: {meal.bestFor}</span>}
+            </div>
+          ))
+        ) : (
+          /* ── QUICK CARDS — single ingredient/product view ── */
+          activeList.items.map((food, i) => (
+            <div key={i} className="fuel-food engine-row" style={{ alignItems: "flex-start" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong className="fuel-name">{food.name}</strong>
+                <div className="engine-muted fuel-num">{food.protein}g protein{food.calories ? ` · ${food.calories} cal` : ""}</div>
+                {food.timing && <div className="fuel-timing">{food.timing}</div>}
+                <p className="engine-muted">{food.note}</p>
+              </div>
+              <button type="button" onClick={() => logFood(food)} className="engine-button fuel-log" aria-label={`Log ${food.name}: ${food.protein}g protein${food.calories ? `, ${food.calories} calories` : ""}`}>
+                +{food.protein}g
+                {food.calories ? <small>{food.calories}c</small> : null}
+              </button>
+            </div>
+          ))
+        )}
+      </section>
 
       {/* ── KOSHER NOTES ── */}
-      <Surface accent={C.plum} padding={20}>
-        <Eyebrow color={C.plum}>Kosher Notes</Eyebrow>
-        <p className="h-serif" style={{ fontSize: 15, color: C.cream, margin: "10px 0 0", lineHeight: 1.5 }}>
+      <section className="engine-card fuel-card" aria-label="Kosher notes and hydration">
+        <span className="engine-label">Kosher notes</span>
+        <p>
           All items above are commonly available with reliable hechshers (OU, OK, Star-K). Fairlife Core Power and Quest Bars are widely OU certified — easy gym-bag staples. Always double-check the label, since certifications change. For meat/dairy timing, plan post-workout shakes around your meals.
         </p>
-        <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
-          <Eyebrow color={C.amber}>Hydration</Eyebrow>
-          <p className="h-serif" style={{ fontSize: 14, color: C.cream, margin: "8px 0 0", lineHeight: 1.5 }}>
-            Target ~{Math.round(bodyStats.weightLbs * 0.6)} oz water per day. Add 16–24 oz extra on training days. Electrolytes (LMNT, plain salt + lemon) on heavy sweat sessions.
-          </p>
-        </div>
-      </Surface>
+        <h3 className="engine-label fuel-subhead">Hydration</h3>
+        <p>
+          Target ~{Math.round(bodyStats.weightLbs * 0.6)} oz water per day. Add 16–24 oz extra on training days. Electrolytes (LMNT, plain salt + lemon) on heavy sweat sessions.
+        </p>
+      </section>
 
-      <p className="h-serif" style={{ textAlign: "center", color: C.dim, fontSize: 16, margin: "24px 0 0" }}>
+      <p className="engine-muted fuel-quote">
         "You are what you eat. Eat to be unstoppable."
-        <span style={{ display: "block", fontFamily: FONT_MONO, fontStyle: "normal", fontSize: 10, letterSpacing: "0.15em", marginTop: 6 }}>— THE WORK</span>
+        <span className="engine-label">— The work</span>
       </p>
     </>
   );

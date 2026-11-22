@@ -16,8 +16,12 @@ self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   e.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
-      for (const c of list) if ("focus" in c) return c.focus();
-      return clients.openWindow((e.notification.data && e.notification.data.url) || "/");
+      const url = (e.notification.data && e.notification.data.url) || "/";
+      // Reuse an open window, moving it to the notification's page (e.g. /?log=game).
+      for (const c of list) {
+        if ("focus" in c) return (url !== "/" && "navigate" in c ? c.navigate(url) : Promise.resolve(c)).then(w => (w || c).focus());
+      }
+      return clients.openWindow(url);
     })
   );
 });

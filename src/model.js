@@ -356,6 +356,7 @@ export const SCI = {
   tabataRecover: "That all-out effort flooded your muscles with metabolites and taxed your nervous system. A lighter day clears them out and lets the adaptation set in, so your next hard effort actually feels easier.",
   liftRecover: "Your muscles are still rebuilding from that lift — the 'make me stronger' signal (protein synthesis) stays switched on for a day or two. Give them the day and they come back denser and more powerful.",
   overtrain: "Stacking hard days piles up fatigue faster than your body can clear it — stress hormones like cortisol stay elevated and performance dips. A true rest day resets your nervous system so your next session is sharp, not flat.",
+  brisk: "Zone-2 work — steady effort where you can still talk — grows the heart’s stroke volume and the muscles’ capillaries and mitochondria. It builds the aerobic base that keeps your legs under you in the fourth quarter, and it’s easy enough to recover from by the next hard day.",
   walk: "An easy walk pumps fresh blood through tired muscles — flushing out waste and delivering nutrients — and nudges you into 'rest-and-digest' mode. It actually speeds recovery more than sitting still, with zero added stress.",
   targetsMet: "You've banked the week's hard work. More isn't better here — you get fitter between sessions, not during them. The recovery is part of the plan, not a break from it.",
   gameCovered: "A full game is a huge fuel-burning, high-impact load — it counts as a hard session. Let your legs bounce back before the next push.",
@@ -416,8 +417,12 @@ export function normalizeSessions(rows) {
 // Brisk walks pass the talk test: you can talk but not sing. That moderate,
 // steady effort builds the aerobic base, so it earns full Engine credit at
 // effort 4 (an easy recovery walk earns half credit at effort 3).
-export const BRISK_WALK = { rpe: 4, label: "Brisk walk", test: "Can talk, can’t sing" };
+export const BRISK_WALK = { rpe: 4, label: "Brisk walk", test: "Can talk, can’t sing", defaultDurationMin: 40, weeklyTarget: 3 };
 export const isBriskWalk = s => s && s.type === "walk" && s.pace === "brisk";
+// Plan items: a brisk walk is training, an easy walk is recovery.
+export const planItemLabel = it => it.type === "walk" && it.pace === "brisk" ? BRISK_WALK.label : RECOVERY.TYPES[it.type].label;
+export const planItemMinutes = it => it.type === "walk" && it.pace === "brisk" ? BRISK_WALK.defaultDurationMin : RECOVERY.TYPES[it.type].defaultDurationMin;
+export const isRecoveryPlan = items => !items || !items.length || items.every(it => it.type === "walk" && it.pace !== "brisk");
 
 export function normalizeAll(cardioRows, workoutRows) {
   const out = normalizeSessions(cardioRows);
@@ -492,11 +497,19 @@ export function recommend(allSessions, refDate, constraints = {}) {
   const rest = (reason, science) => mk("rest", [], reason, science);
 
   const walkOwed = done.walk < T.walk.weeklyTarget && !todays.some(s => s.type === "walk");
+  const briskDone = t7.filter(s => s.type === "walk" && s.pace === "brisk").length;
 
   // On a non-hard day, an owed walk is the active-recovery pick; else rest.
   const recoveryDay = (why, restSci) => walkOwed
     ? mk("train", [{ type: "walk" }], `${why} An easy walk is ideal active recovery (${done.walk}/${T.walk.weeklyTarget} over the last 7 days).`, SCI.walk)
     : rest(`${why} You're recovered and on track — take it easy.`, restSci);
+
+  // On an open, non-hard day a brisk walk (talk test: can talk, can't sing)
+  // builds the Engine without adding hard-day load. Easy walks stay the pick
+  // when legs need protecting: after hard work, before a game, on Shabbat.
+  const openDay = (why, restSci) => !todays.some(s => s.type === "walk") && briskDone < BRISK_WALK.weeklyTarget
+    ? mk("train", [{ type: "walk", pace: "brisk" }], `${why} A brisk walk — you can talk but not sing — builds your Engine without adding hard-day load (${briskDone}/${BRISK_WALK.weeklyTarget} this week).`, SCI.brisk)
+    : recoveryDay(why, restSci);
 
   // Which "still recovering" note fits the last hard session?
   const recoverSci = (type) => type === "long_interval" ? SCI.liRecover : type === "lift" || type === "cross_training" ? SCI.liftRecover : type === "game" ? SCI.gameCovered : SCI.tabataRecover;
@@ -572,10 +585,8 @@ export function recommend(allSessions, refDate, constraints = {}) {
 
   // 3) Spacing — keep hard days apart (games/brutal sessions need longer).
   if (lastHard && daysSinceHard < requiredGapAfter(lastHard)) {
-    const why = lastHard.type === "game"
-      ? `Hard game ${agoWord(daysSinceHard)} still counts as load.`
-      : `Hard ${T[lastHard.type].short} ${agoWord(daysSinceHard)} — space the hard days out.`;
-    return recoveryDay(why, recoverSci(lastHard.type));
+    if (lastHard.type === "game") return recoveryDay(`Hard game ${agoWord(daysSinceHard)} still counts as load.`, recoverSci(lastHard.type));
+    return openDay(`Hard ${T[lastHard.type].short} ${agoWord(daysSinceHard)} — space the hard days out.`, recoverSci(lastHard.type));
   }
 
   // ── Eligible hard day. Layoff ramp first: ease a returning athlete in. ──
@@ -607,8 +618,8 @@ export function recommend(allSessions, refDate, constraints = {}) {
   }
   // No standalone lifting recommendation: strength work is covered by Sweat440.
   // Everything's met → recovery day.
-  if (done.game > 0) return recoveryDay("A game in the last 7 days already counts toward your hard sessions.", SCI.gameCovered);
-  return recoveryDay("Weekly conditioning targets met. Recovery is part of the plan.", SCI.targetsMet);
+  if (done.game > 0) return openDay("A game in the last 7 days already counts toward your hard sessions.", SCI.gameCovered);
+  return openDay("Weekly conditioning targets met.", SCI.targetsMet);
 }
 
 // Is there a basketball game on this date? An explicit weekly selection in the
@@ -632,7 +643,7 @@ export function buildPlan(allSessions, fromDate, nDays, constraints = {}) {
     out.push({ date: day, ...r });
     (r.items || []).forEach(it => {
       const def = RECOVERY.TYPES[it.type];
-      work.push({ type: it.type, code: it.code, date: day, rpe: def.defaultRPE, duration: def.defaultDurationMin, planned: true });
+      work.push({ type: it.type, code: it.code, pace: it.pace, date: day, rpe: it.pace === "brisk" ? BRISK_WALK.rpe : def.defaultRPE, duration: it.pace === "brisk" ? BRISK_WALK.defaultDurationMin : def.defaultDurationMin, planned: true });
     });
   }
   return out;
@@ -672,7 +683,9 @@ export function streakInfo(allSessions, refDate) {
   return { streak, layoff };
 }
 
-export function weightProjection(weightLog, goal = 200) {
+// Projects when the trend reaches the goal, in either direction (losing when
+// the goal is below the starting weight, gaining when it is above).
+export function weightProjection(weightLog, goal = 200, start = null) {
   const pts = [...(weightLog || [])]
     .map(w => ({ t: new Date(w.logged_at).getTime(), w: Number(w.weight) }))
     .filter(p => p.w > 0)
@@ -691,9 +704,10 @@ export function weightProjection(weightLog, goal = 200) {
   const perDay = (num / den) * 86400000;
   const weekly = perDay * 7;
   const cur = use[use.length - 1].w;
-  if (cur <= goal) return { weekly, done: true };
-  if (weekly >= -0.1) return { weekly, stalled: true };
-  const days = (cur - goal) / -perDay;
+  const losing = (start != null ? start : pts[0].w) >= goal;
+  if (losing ? cur <= goal : cur >= goal) return { weekly, done: true };
+  if (losing ? weekly >= -0.1 : weekly <= 0.1) return { weekly, stalled: true };
+  const days = (goal - cur) / perDay;
   if (days > 550) return { weekly, stalled: true }; // over ~18 months out isn't a projection, it's noise
   return { weekly, eta: new Date(Date.now() + days * 86400000) };
 }

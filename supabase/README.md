@@ -22,6 +22,10 @@ Keep Weight Gurus credentials, the service-role key and VAPID keys in Supabase. 
 
 Before a future backend redeployment, review scheduler authorization and ownership assumptions. The captured Weight Gurus job chooses the first auth user, and the engine reminder aggregates across accounts. These existing scheduled jobs were not redesigned in this frontend/database reliability release. Multiple-user scheduling requires explicit owner mapping and per-user aggregation.
 
+## Game-night reminder (not yet deployed)
+
+`functions/game-reminder` sends a push around 22:00 ET on game nights if no game has been logged that day; tapping it opens `/?log=game`. It follows the app's game nights (this week's planner selection, else the recurring schedule) and reads `reminder_settings` row `game` (default 22:00, enabled). To turn it on: deploy the function and add it to the existing every-15-minutes reminder dispatcher, the same way `engine-reminder` is called. Like the engine reminder, it is single-owner.
+
 ## Remaining advisor notices
 
 `pg_net` reports `extrelocatable = false`; it cannot be moved using `ALTER EXTENSION ... SET SCHEMA`. Reinstalling it can disrupt cron/reminders, so it was preserved. Address this with a dependency-aware backup and maintenance window.

@@ -66,7 +66,7 @@ function cueChange(from, to) {
   }
 }
 
-export function GameDayWarmup({ onClose }) {
+export function GameDayWarmup({ onClose, onComplete, onLogGame }) {
   const [index, setIndex] = useState(0);              // current drill; WARMUP_DRILLS.length = finished
   const [done, setDone] = useState({});               // drill id -> true
   const [running, setRunning] = useState(false);
@@ -83,6 +83,9 @@ export function GameDayWarmup({ onClose }) {
   closeRef.current = onClose;
 
   useWakeLock(!finished);
+  const completeRef = useRef(onComplete);
+  completeRef.current = onComplete;
+  useEffect(() => { if (finished && completeRef.current) completeRef.current(); }, [finished]);
 
   useEffect(() => {
     const onKey = e => { if (e.key === 'Escape') closeRef.current(); };
@@ -150,8 +153,9 @@ export function GameDayWarmup({ onClose }) {
     {finished ? <section className="warmup-now" aria-live="polite">
       <div className="warmup-kicker">Game Day Warm-Up</div>
       <h1 id="warmup-title" className="warmup-drill">You’re warm.<br/>Go hoop. 🏀</h1>
-      <p className="warmup-cue">{doneCount} of {WARMUP_DRILLS.length} drills done.</p>
+      <p className="warmup-cue">{doneCount} of {WARMUP_DRILLS.length} drills done. After the game, Today will be ready to log your points, rebounds and how your engine felt.</p>
       <div className="warmup-controls"><button className="warmup-primary" onClick={onClose}>Close</button><button className="warmup-secondary" onClick={restart}>Run it again</button></div>
+      {onLogGame && <div className="warmup-row"><button className="warmup-ghost" onClick={onLogGame}>Log the game now</button></div>}
     </section> : <section className="warmup-now" aria-live="polite">
       <div className="warmup-kicker">Phase {drill.phase + 1} of 4 · {drill.phaseTitle}</div>
       <h1 id="warmup-title" className="warmup-drill">{drill.name}</h1>
@@ -190,5 +194,15 @@ export function WarmupCard({ gameNight, onStart }) {
     <h2>Basketball Game Warm-Up</h2>
     <p className="engine-muted">10 minutes · 4 phases · engine, mobility, explosiveness, ball touches.</p>
     <button className="engine-button primary warmup-start" onClick={onStart}>Start warm-up</button>
+  </section>;
+}
+
+export function LogGameCard({ onLog, onWarmup }) {
+  return <section className={`engine-card warmup-card game-night`} aria-label="Log tonight's game">
+    <span className="engine-label">Game night</span>
+    <h2>How did it go tonight?</h2>
+    <p className="engine-muted">Points, rebounds and how your engine felt — one screen, under a minute.</p>
+    <button className="engine-button primary warmup-start" onClick={onLog}>Log tonight’s game</button>
+    {onWarmup && <button className="engine-link" onClick={onWarmup}>Open the warm-up again</button>}
   </section>;
 }
