@@ -53,7 +53,7 @@ Deno.serve(async (_req: Request) => {
     if (!userId) return json({ sent: 0, note: "no owner" });
 
     const { data: rows, error: stErr } = await supabase.from("user_state").select("key, value").eq("user_id", userId)
-      .or("key.eq.weeklyGamePlan,key.like.schedule:%");
+      .in("key", ["weeklyGamePlan", "schedule:gameNight", "schedule:gameDow", "schedule:skipGameWeek"]);
     if (stErr) return json({ error: stErr.message }, 500);
     const state = Object.fromEntries((rows || []).map((r: { key: string; value: unknown }) => [r.key, r.value]));
     if (!isGameNight(today, state)) return json({ sent: 0, note: "not a game night" });
