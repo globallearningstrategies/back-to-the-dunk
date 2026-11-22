@@ -410,6 +410,7 @@ export function normalizeSessions(rows) {
         rpe: r.rpe != null ? Number(r.rpe) : def.defaultRPE,
         duration: r.duration_min != null ? Number(r.duration_min) : def.defaultDurationMin,
         focus: r.focus || null,
+        sprints: r.workout_type === "long_interval" && r.notes === FAST_BREAK_NOTES,
       };
     });
 }
@@ -417,10 +418,17 @@ export function normalizeSessions(rows) {
 // Brisk walks pass the talk test: you can talk but not sing. That moderate,
 // steady effort builds the aerobic base, so it earns full Engine credit at
 // effort 4 (an easy recovery walk earns half credit at effort 3).
+// 10 sprints are stored as a long_interval session marked by these notes.
+export const FAST_BREAK_NOTES = "Fast break · 10 sprints · walk-back recovery";
+export const isSprintSession = s => !!s && s.type === "long_interval" && s.sprints === true;
+
 export const BRISK_WALK = { rpe: 4, label: "Brisk walk", test: "Can talk, can’t sing", defaultDurationMin: 40, weeklyTarget: 3 };
 export const isBriskWalk = s => s && s.type === "walk" && s.pace === "brisk";
 // Plan items: a brisk walk is training, an easy walk is recovery.
-export const planItemLabel = it => it.type === "walk" && it.pace === "brisk" ? BRISK_WALK.label : RECOVERY.TYPES[it.type].label;
+// The plan's long-interval session is logged as 10 sprints, so it's named that way.
+export const planItemLabel = it => it.type === "walk" && it.pace === "brisk" ? BRISK_WALK.label : it.type === "long_interval" ? "10 sprints" : RECOVERY.TYPES[it.type].label;
+// What to call a logged session: the name you logged it under, not its storage type.
+export const sessionLabel = s => isBriskWalk(s) ? BRISK_WALK.label : isSprintSession(s) ? "10 sprints" : s.type === "walk" ? "Walk" : RECOVERY.TYPES[s.type]?.label || s.type;
 export const planItemMinutes = it => it.type === "walk" && it.pace === "brisk" ? BRISK_WALK.defaultDurationMin : RECOVERY.TYPES[it.type].defaultDurationMin;
 export const isRecoveryPlan = items => !items || !items.length || items.every(it => it.type === "walk" && it.pace !== "brisk");
 

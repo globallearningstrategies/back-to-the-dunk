@@ -1,9 +1,9 @@
 import React, { useRef, useState } from 'react';
-import { RECOVERY } from './model';
+import { RECOVERY, FAST_BREAK_NOTES } from './model';
 import { toLocalInput } from './logging';
 import { Sheet } from './ui';
 
-export const FAST_BREAK_NOTES = 'Fast break · 10 sprints · walk-back recovery';
+export { FAST_BREAK_NOTES };
 
 export function FastBreakLog({ onSave, onClose, busy = false }) {
   const [minutes, setMinutes] = useState('10');
