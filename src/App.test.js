@@ -60,7 +60,7 @@ test('a previously running timer can be exited and ordinary conditioning actions
   await flush(()=>root.render(<App/>));await click('Resume workout');await click('Exit timer');
   await click('Today');expect(div.textContent).not.toContain('Resume workout');
   await click('Train');await click('Log Tabata');
-  expect(div.textContent).toContain('Log a session');expect(div.textContent).not.toContain('Start timer');
+  expect(div.querySelector('#conditioning-title').textContent).toBe('Log Tabata');expect(div.textContent).not.toContain('Start timer');
   await flush(()=>div.querySelector('.slide-up button').click());
   await flush(()=>[...div.querySelectorAll('summary')].find(s=>s.textContent==='Optional timers').click());
   await click('Fast break timer');expect(div.textContent).toContain('Start timer');
@@ -128,4 +128,22 @@ test('a brisk walk logged from Today is saved with its pace and raises the Engin
   expect(div.textContent).toContain('Brisk walk recorded');
   expect(div.textContent).toContain('Engine 0.0 → 4.3');
   expect(div.textContent).toContain('Today’s activity');
+});
+test('a game-night notification link opens the game logger, and the court rating saves with the game', async () => {
+  window.history.replaceState(null,'','/?log=game');
+  const upsert=jest.fn().mockResolvedValue({error:null});
+  const query={insert:jest.fn(()=>query),select:jest.fn(()=>query),single:jest.fn(async()=>({data:{id:'game-9',completed_at:new Date().toISOString(),...query.insert.mock.calls[0][0]}})),upsert};
+  supabase.from.mockReturnValue(query);
+  await flush(()=>root.render(<App />));
+  expect(window.location.search).toBe('');
+  expect(div.querySelector('#conditioning-title').textContent).toBe('Log your game');
+  expect(div.querySelector('[aria-label="Session type"]')).toBeNull();
+  const set=(label,v)=>{const i=div.querySelector(`[aria-label="${label}"]`);Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,v);i.dispatchEvent(new Event('input',{bubbles:true}));};
+  await flush(()=>{set('Points','17');set('Rebounds','9');});
+  await click('Strong');
+  await click('Save game');
+  expect(query.insert.mock.calls[0][0]).toEqual(expect.objectContaining({workout_type:'game',points:17,rebounds:9}));
+  expect(upsert.mock.calls.flatMap(c=>c[0])).toContainEqual(expect.objectContaining({key:'court:game-9',value:'strong'}));
+  expect(div.textContent).toContain('Game recorded');
+  expect(div.textContent).toContain('17 pts · 9 reb');
 });

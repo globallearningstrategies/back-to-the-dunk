@@ -186,3 +186,42 @@ details.engine-card > summary { font-weight: 600; }
 /* Walk pace choice */
 .walk-pace { min-height: 70px; }
 .walk-pace[aria-checked="true"] { border: 2px solid var(--action); background: color-mix(in srgb, var(--action) 9%, var(--raised)); }
+
+/* ── Fuel: food guide, targets & supplements ── */
+.engine-card.fuel-card { box-shadow: none; padding: 16px; }
+.engine-card.fuel-card:last-of-type { margin-bottom: 0; }
+.fuel-name { display: block; font-size: 16px; letter-spacing: -.01em; line-height: 1.3; }
+.fuel-num { font-variant-numeric: tabular-nums; }
+.engine-card .fuel-subhead { display: block; margin: 20px 0 8px; line-height: 1.3; letter-spacing: .06em; font-size: 12px; }
+.fuel-supplement { padding: 14px 0; border-top: 1px solid var(--line); }
+.fuel-supplement:first-of-type { margin-top: 6px; }
+.fuel-supplement .engine-muted { margin: 2px 0 0; }
+.fuel-supplement p.engine-muted { margin-top: 10px; }
+.fuel-icon { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-size: 21px; flex-shrink: 0; border: 1px solid var(--line); }
+.fuel-trail { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
+.fuel-trail > div { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: var(--secondary); }
+.fuel-trail > div.today { color: var(--action); }
+.fuel-trail span { width: 100%; height: 6px; border-radius: 3px; background: var(--line); }
+.fuel-trail span[data-done="true"] { background: var(--action); }
+.fuel-trail .today span { outline: 1px solid var(--action); outline-offset: 1px; }
+.fuel-goals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
+.fuel-goals .engine-button, .fuel-log { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; line-height: 1.2; }
+.fuel-goals .engine-button { padding: 10px 4px; min-width: 0; }
+.fuel-goals small, .fuel-log small { font-size: 12px; font-weight: 500; color: var(--secondary); font-variant-numeric: tabular-nums; }
+.fuel-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.fuel-stats .engine-mini strong { font-size: 20px; }
+.fuel-stats .engine-mini strong small { font-size: 13px; font-weight: 500; color: var(--secondary); }
+.fuel-stats .engine-field { margin: 4px 0; font-size: 13px; }
+.fuel-edit { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+.fuel-chips { margin: 4px 0 6px; padding: 2px 0; }
+.fuel-chips .engine-chip { min-height: 44px; }
+.fuel-food { padding: 16px 0; border-top: 1px solid var(--line); }
+.fuel-food p.engine-muted { margin: 6px 0 0; }
+.fuel-timing { margin-top: 4px; font-size: 13px; font-weight: 600; color: var(--secondary); }
+.fuel-log { flex-shrink: 0; padding: 8px 12px; }
+.fuel-plate { margin-top: 12px; }
+.fuel-plate ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; line-height: 1.5; }
+.fuel-plate li::marker { color: var(--action); }
+.fuel-tag { display: inline-block; margin-top: 8px; padding: 4px 10px; border-radius: 999px; background: var(--raised); border: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--secondary); }
+.fuel-quote { text-align: center; margin: 20px 0 4px; }
+.fuel-quote .engine-label { display: block; margin-top: 4px; }

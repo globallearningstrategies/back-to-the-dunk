@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { addDays, buildPlan, BRISK_WALK, C, dateKey, isBriskWalk, isGameNight, RECOVERY, startOfDay } from './model';
-import { WarmupCard } from './GameDayWarmup';
+import { addDays, buildPlan, BRISK_WALK, C, dateKey, isBriskWalk, isGameNight, isRecoveryPlan, planItemLabel, planItemMinutes, RECOVERY, startOfDay } from './model';
+import { WarmupCard, LogGameCard } from './GameDayWarmup';
 import { Icon } from './ui';
 import { ShootingCard, shootingSessions } from './shooting';
 import { COURT_RATINGS, coachMessage, engineBeforeGame, engineSummary, formatEngine, weeklyProgress } from './engine';
@@ -44,15 +44,16 @@ export function TodayAction({ all, constraints, preferences, hasDraft, onResume,
   const rec = buildPlan(all, today, 7, constraints)[0];
   const items = rec.items || [];
   const first = items[0];
-  const recovery = !first || items.every(i => i.type === 'walk');
+  const recovery = isRecoveryPlan(items);
+  const briskWalk = first && first.type === 'walk' && first.pace === 'brisk';
   const logged = all.filter(s => startOfDay(s.date).getTime() === today.getTime());
-  const title = hasDraft ? 'Your workout is ready to resume' : recovery ? 'Recovery is today’s work' : items.map(i => RECOVERY.TYPES[i.type].label).join(' + ');
+  const title = hasDraft ? 'Your workout is ready to resume' : recovery ? 'Recovery is today’s work' : items.map(planItemLabel).join(' + ');
   return <section className="engine-card" aria-label="Today’s next step">
     <div className="engine-label">{hasDraft ? 'Pick up where you left off' : logged.length ? 'Your next step' : 'Today’s plan'}</div>
     <h2>{title}</h2>
     <p className="engine-muted">{hasDraft ? 'Your completed sets and edits are saved on this device.' : coachMessage({ tone: preferences.coachingTone, recovery, complete: logged.length > 0, returning: rec.band === 'restart' })}</p>
-    {!hasDraft && first && !recovery && <p className="engine-muted">About {items.reduce((sum,i) => sum + RECOVERY.TYPES[i.type].defaultDurationMin,0)} min · adjust to the time you have</p>}
-    <button className="engine-button primary" style={{ width: '100%', marginTop: 10 }} onClick={hasDraft ? onResume : recovery ? onPlan : () => onStart(first.type)}>{hasDraft ? 'Resume workout' : recovery ? 'View recovery plan' : first.type === 'tabata' ? 'Log Tabata' : first.type === 'lift' ? 'Start workout' : 'Log this session'}</button>
+    {!hasDraft && first && !recovery && <p className="engine-muted">About {items.reduce((sum,i) => sum + planItemMinutes(i),0)} min{briskWalk ? ` · ${BRISK_WALK.test.toLowerCase()}` : ''} · adjust to the time you have</p>}
+    <button className="engine-button primary" style={{ width: '100%', marginTop: 10 }} onClick={hasDraft ? onResume : recovery ? onPlan : () => onStart(briskWalk ? 'brisk_walk' : first.type)}>{hasDraft ? 'Resume workout' : recovery ? 'View recovery plan' : briskWalk ? 'Log brisk walk' : first.type === 'tabata' ? 'Log Tabata' : first.type === 'lift' ? 'Start workout' : 'Log this session'}</button>
     <div className="engine-row engine-wrap"><button className="engine-link" onClick={onChange}>Choose another session</button>{first?.type === 'lift' && !hasDraft && <button className="engine-link" onClick={() => onStart(first.type, true)}>Shorter session</button>}{recovery && <button className="engine-link" onClick={() => onStart('walk')}>Log an easy walk</button>}</div>
     <details className="engine-details"><summary>Why this plan?</summary><p className="engine-muted">{rec.reason}</p>{(rec.flags || []).map(flag => <p key={flag} className="engine-muted">{flag}</p>)}</details>
   </section>;
@@ -77,7 +78,7 @@ export function WeeklyPlan({ all, constraints, preferences, weeklyGoals, onPlan 
     <div className="engine-week">{Array.from({length:7},(_,i) => {
       const day = addDays(weekly.start,i), done = all.some(s => startOfDay(s.date).getTime() === day.getTime());
       const plan = upcoming.find(p => p.date.getTime() === day.getTime());
-      const rest = plan && (plan.action === 'rest' || plan.items?.every(it => it.type === 'walk'));
+      const rest = plan && (plan.action === 'rest' || isRecoveryPlan(plan.items));
       const label = done ? 'Activity recorded' : rest ? 'Recovery planned' : day < today ? 'No activity recorded' : 'Training planned';
       return <div className={`engine-day ${day.getTime() === today.getTime() ? 'today' : ''}`} key={i} title={`${day.toLocaleDateString()} · ${label}`}><div>{day.toLocaleDateString('en-US',{weekday:'short'})}</div><span aria-label={label}>{done ? '✓' : rest ? '○' : '·'}</span></div>;
     })}</div>
@@ -103,7 +104,7 @@ export function CourtCheckIn({ games, all, ratings, onRate, compact = false }) {
   </section>;
 }
 
-export function SeasonStats({ games, onProgress }) {
+export function SeasonStats({ games, onProgress, onEdit }) {
   const stat = games
     .filter(g => g.workout_type === 'game' && (g.points != null || g.rebounds != null))
     .sort((a,b) => new Date(a.completed_at) - new Date(b.completed_at));
@@ -127,7 +128,7 @@ export function SeasonStats({ games, onProgress }) {
       <div className="engine-mini"><span className="engine-label">Points / game</span><strong style={{ fontSize: 26 }}>{fmt1(avg(pts))}</strong>{trendText(pTrend) && <div className="engine-muted">{trendText(pTrend)}</div>}</div>
       <div className="engine-mini"><span className="engine-label">Rebounds / game</span><strong style={{ fontSize: 26 }}>{fmt1(avg(rbs))}</strong>{trendText(rTrend) && <div className="engine-muted">{trendText(rTrend)}</div>}</div>
     </div>
-    <p className="engine-muted" style={{ marginTop: 10 }}>Last game: <strong>{lastBits}</strong> · {new Date(last.completed_at).toLocaleDateString(undefined,{month:'short',day:'numeric'})} · {stat.length} {stat.length === 1 ? 'game' : 'games'} this season</p>
+    <div className="engine-row" style={{ marginTop: 10 }}><p className="engine-muted" style={{ margin: 0 }}>Last game: <strong>{lastBits}</strong> · {new Date(last.completed_at).toLocaleDateString(undefined,{month:'short',day:'numeric'})} · {stat.length} {stat.length === 1 ? 'game' : 'games'} this season</p>{onEdit && <button className="engine-link" aria-label="Edit last game" onClick={() => onEdit(last)}>Edit</button>}</div>
   </section>;
 }
 
@@ -148,33 +149,35 @@ export function GoalSettings({ preferences, onSave }) {
   </form></section>;
 }
 
-export function EngineProgress({ all, cardioSessions, preferences, courtRatings, onRate, onSettings, shooting, children }) {
+export function EngineProgress({ all, cardioSessions, preferences, courtRatings, onRate, onSettings, onEditGame, shooting, insights, children }) {
   // The detailed breakdown is expensive, so it mounts only once it is opened.
   const [details, setDetails] = useState(false);
-  return <><EngineHero all={all}/><SeasonStats games={cardioSessions}/>{shooting}<EngineMilestone all={all} preferences={preferences} onSettings={onSettings}/><CourtCheckIn games={cardioSessions} all={all} ratings={courtRatings} onRate={onRate}/><details className="engine-card" onToggle={e => { if (e.currentTarget.open) setDetails(true); }}><summary style={{cursor:'pointer',minHeight:44}}>Training history, strength & body details</summary>{details && <div style={{marginTop:16}}>{children}</div>}</details></>;
+  return <><EngineHero all={all}/><SeasonStats games={cardioSessions} onEdit={onEditGame}/>{insights}{shooting}<EngineMilestone all={all} preferences={preferences} onSettings={onSettings}/><CourtCheckIn games={cardioSessions} all={all} ratings={courtRatings} onRate={onRate}/><details className="engine-card" onToggle={e => { if (e.currentTarget.open) setDetails(true); }}><summary style={{cursor:'pointer',minHeight:44}}>Training history, strength & body details</summary>{details && <div style={{marginTop:16}}>{children}</div>}</details></>;
 }
 
 export function PlanOverview({ all, constraints, onStart }) {
   const plan=buildPlan(all,startOfDay(new Date()),7,constraints);
   return <section className="engine-card"><span className="engine-label">Upcoming 7 days</span><h2>Your training plan</h2><p className="engine-muted">A suggested schedule based on your recorded sessions. It updates when you log activity. Adjust it to fit your week.</p>
     {plan.map((p,i)=>{
-      const items=p.items||[],recovery=!items.length||items.every(it=>it.type==='walk');
-      return <div key={p.date.getTime()} style={{padding:'14px 0',borderTop:'1px solid var(--line)'}}><div className="engine-label">{i===0?'Today':p.date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'})}</div><h3>{recovery?'Recovery':items.map(it=>RECOVERY.TYPES[it.type].label).join(' + ')}</h3>
+      const items=p.items||[],recovery=isRecoveryPlan(items);
+      return <div key={p.date.getTime()} style={{padding:'14px 0',borderTop:'1px solid var(--line)'}}><div className="engine-label">{i===0?'Today':p.date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'})}</div><h3>{recovery?'Recovery':items.map(planItemLabel).join(' + ')}</h3>
         <p className="engine-muted">{p.reason}</p>{(p.flags||[]).map(flag=><p className="engine-muted" key={flag}>{flag}</p>)}
-        {i===0 && <div className="engine-actions">{items.map(it=><button className={`engine-button ${recovery?'':'primary'}`} key={it.type} onClick={()=>onStart(it.type)}>{it.type==='walk'?'Log an easy walk':it.type==='game'?'Log basketball':it.type==='cross_training'?'Log class':it.type==='long_interval'?'Log 10 sprints':it.type==='tabata'?'Log Tabata':`Start ${RECOVERY.TYPES[it.type].label}`}</button>)}</div>}
+        {i===0 && <div className="engine-actions">{items.map(it=><button className={`engine-button ${recovery?'':'primary'}`} key={it.type} onClick={()=>onStart(it.type==='walk'&&it.pace==='brisk'?'brisk_walk':it.type)}>{it.type==='walk'?(it.pace==='brisk'?'Log brisk walk':'Log an easy walk'):it.type==='game'?'Log basketball':it.type==='cross_training'?'Log class':it.type==='long_interval'?'Log 10 sprints':it.type==='tabata'?'Log Tabata':`Start ${RECOVERY.TYPES[it.type].label}`}</button>)}</div>}
       </div>;
     })}
     <p className="engine-muted">Recovery is part of this plan. A small Engine dip on a rest day is expected in the formula.</p>
   </section>;
 }
 
-export function EngineHome({ all, shooting = {}, constraints, preferences, cardioSessions, courtRatings, onRate, hasDraft, onResume, onStart, onGoTab, onQuickAdd, onLogType, onFastBreak, onThrees, onWarmup, onWalk }) {
+export function EngineHome({ all, shooting = {}, constraints, preferences, cardioSessions, courtRatings, onRate, hasDraft, onResume, onStart, onGoTab, onQuickAdd, onLogType, onFastBreak, onThrees, onWarmup, onWalk, onLogGame, warmedUp }) {
   const today = dateKey(new Date());
-  const gameNight = isGameNight(constraints, new Date());
+  const gameLogged = cardioSessions.some(g => g.workout_type === 'game' && dateKey(new Date(g.completed_at)) === today);
+  const gameNight = isGameNight(constraints, new Date()) && !gameLogged;
+  const readyToLog = gameNight && onLogGame && (warmedUp || new Date().getHours() >= 20);
   const completed = [...all.filter(s => dateKey(s.date) === today).map(s => isBriskWalk(s) ? BRISK_WALK.label : RECOVERY.TYPES[s.type]?.label || s.type),
     ...shootingSessions(shooting).filter(s => dateKey(s.at) === today).map(s => `${s.attempts} threes`)];
   return <>
-    {onWarmup && gameNight && <WarmupCard gameNight onStart={onWarmup}/>}
+    {readyToLog ? <LogGameCard onLog={onLogGame} onWarmup={onWarmup}/> : onWarmup && gameNight && <WarmupCard gameNight onStart={onWarmup}/>}
     <TodayAction all={all} constraints={constraints} preferences={preferences} hasDraft={hasDraft} onResume={onResume} onStart={onStart} onPlan={() => onGoTab('goals')} onChange={() => onGoTab('workout')}/>
     {completed.length > 0 && <section className="engine-card" aria-label="Today's activity"><div className="engine-row"><span className="engine-label">Today’s activity</span><button className="engine-link" onClick={() => onGoTab('history')}>View log →</button></div><p>{completed.join(' · ')}</p></section>}
     <section className="engine-card" aria-label="Quick log"><span className="engine-label">Quick log</span><p className="engine-muted">Already done? Add it in a tap.</p>

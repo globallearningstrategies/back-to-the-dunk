@@ -19,6 +19,8 @@ Run `npm run lint`, `npm test -- --runInBand`, and `npm run build`. GitHub Actio
 - `src/FoodJournal.js`: individual food entries, portions, favorites and repeat logging.
 - `src/shooting.js`: three-point shooting log (100-shot sessions, makes, percentage trends). Stored in the synced `shooting` map; it never changes the Engine score.
 - `src/GameDayWarmup.js`: the 10-minute, 4-phase pre-game warm-up (optional countdown with chimes/vibration, Skip/Next, check-off mode, screen kept awake). Its card leads Today on game nights.
+- `src/insights.js`: game insights — points after a hard vs light day before, and Engine vs points.
+- `src/WeightScreen.js`: weight progress toward your own start/goal (set in Settings) and the body settings form.
 - `src/ActivityLog.js`: the unified, filterable activity feed.
 - `src/ui.js`: shared controls (bottom sheet, switch, icons) and notifications.
 - `src/training.js`, `statistics.js`, `nutrition.js`, `logging.js`, `home.js`: feature screens.

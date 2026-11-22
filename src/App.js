@@ -4,8 +4,8 @@ import { fetchAll, mutateRecord, restorePayload } from './data/records';
 import { UserDataProvider, useUserData } from './data/UserData';
 import { accountKey, readJSON, writeJSON, DEFAULT_BODY } from './data/storage';
 import { useWorkoutDraft } from './data/useWorkoutDraft';
-import { C, LS_THEME, loadThemePref, applyThemePalette, FONT_DISPLAY, FONT_MONO, injectStyles, SESSIONS, RECOVERY, BRISK_WALK, normalizeAll, weightProjection, computeGameState, DEFAULT_SCHEDULE, requestNotificationPermission, VAPID_PUBLIC_KEY, urlBase64ToUint8Array, pushSupported, daysAgo, getLastPerformance, platesToReach, todayKey, engineModel } from './model';
-import { Surface, Eyebrow, NavItem, Btn, PageTitle, toast, ToastHost, Confetti, Icon, Sheet, Switch } from './ui';
+import { C, LS_THEME, loadThemePref, applyThemePalette, FONT_DISPLAY, FONT_MONO, injectStyles, SESSIONS, RECOVERY, BRISK_WALK, normalizeAll, computeGameState, DEFAULT_SCHEDULE, requestNotificationPermission, VAPID_PUBLIC_KEY, urlBase64ToUint8Array, pushSupported, getLastPerformance, platesToReach, todayKey, engineModel } from './model';
+import { NavItem, PageTitle, toast, ToastHost, Confetti, Icon, Sheet, Switch } from './ui';
 import { RestTimer, DynoCard } from './training';
 import { NutritionTab } from './nutrition';
 import { toLocalInput, ConditioningLogger, WalkLogger, LiftDateSheet } from './logging';
@@ -18,6 +18,9 @@ import { TrainWorkspace } from './WorkoutFlow';
 import { WeeklyGamePlanner } from './WeeklyGamePlanner';
 import { ActivityLog } from './ActivityLog';
 import { GameDayWarmup } from './GameDayWarmup';
+import { GameInsights } from './insights';
+import { WeightScreen, BodySettings } from './WeightScreen';
+import './features.css';
 import { ThreePointLog, ShootingCard, newShotId, formatPct, shotPct } from './shooting';
 import { FoodJournal, newFoodId } from './FoodJournal';
 import { setFeedbackPreferences, vibrate } from './model';
@@ -100,13 +103,21 @@ export function AccountApp({ userId, userEmail }) {
 
   const [history, setHistory] = useState([]);
   const [weightLog, setWeightLog] = useState([]);
-  const [weightInput, setWeightInput] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
   const [cardioSessions, setCardioSessions] = useState([]);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [fastBreakOpen, setFastBreakOpen] = useState(false);
   const [shotState, setShotState] = useState({ open: false }); // { open, editing? }
   const [warmupOpen, setWarmupOpen] = useState(false);
+  const logGame = () => { setWarmupOpen(false); setLoggerState({ open: true, prefillType: 'game', lockType: true }); };
+  // Notification deep link: /?log=game opens the game logger straight away.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('log') === 'game') {
+      setLoggerState({ open: true, prefillType: 'game', lockType: true });
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, []);
   // Conditioning logger sheet: { open, prefillType?, warn?, editing? }
   const [loggerState, setLoggerState] = useState({ open: false });
   const [restTimer, setRestTimer] = useState(null); // null or { seconds }
@@ -436,14 +447,17 @@ export function AccountApp({ userId, userEmail }) {
     setSessionResult({title:'Session recorded',detail:`${payload.duration_min} min · effort ${payload.rpe}/10. Engine ${formatEngine(before)} → ${formatEngine(after)} (+${formatEngine(after-before)} points).`});
   });
   const logDyno = (miles, vo2) => logConditioning({ workout_type: 'long_interval', duration_min: 12, rpe: 10, notes: `Dyno day · Cooper 12-min test · ${miles} mi · est VO₂max ${vo2}` });
-  const saveCardio = ({ id, type, completed_at, duration_min, rpe, notes, legs, points, rebounds, focus, class_name }) => run(async () => {
+  const saveCardio = ({ id, type, completed_at, duration_min, rpe, notes, legs, court, points, rebounds, focus, class_name }) => run(async () => {
     if (!Number.isFinite(duration_min) || duration_min <= 0 || rpe < 1 || rpe > 10) throw new Error('Enter a positive duration and effort from 1 to 10.');
     const row = await write('cardio_sessions', id != null ? 'update' : 'insert', { workout_type: type, completed_at, duration_min, rpe, notes, points, rebounds, focus, class_name }, id);
     setCardioSessions(p => sortCardio(id != null ? p.map(r => r.id === id ? row : r) : [row, ...p]));
-    setGameLegs(row.id, legs); showSave(true); setLoggerState({ open: false });
+    setGameLegs(row.id, legs);
+    if (type === 'game' && (court || courtRatings[row.id])) cloud.set('court', prev => ({...prev,[row.id]:court||null}), {});
+    showSave(true); setLoggerState({ open: false });
     if (id == null) {
       const before=engineModel(all).score;
       const after=engineModel(normalizeAll([row,...cardioSessions],history)).score;
+      if (type === 'game') { setSessionResult({title:'Game recorded',detail:[points != null ? `${points} pts` : null, rebounds != null ? `${rebounds} reb` : null, `${duration_min} min`, `Engine ${formatEngine(before)} → ${formatEngine(after)}`].filter(Boolean).join(' · ') + '.'}); setTab('home'); return; }
       setSessionResult({title:type==='game'?'Game recorded':notes===FAST_BREAK_NOTES?'10 sprints recorded':'Session recorded',detail:`${duration_min} min · effort ${rpe}/10. Engine ${formatEngine(before)} → ${formatEngine(after)}.`});
       setTab('home');
     }
@@ -484,11 +498,11 @@ export function AccountApp({ userId, userEmail }) {
     const row = await write('workouts', 'update', { logged_at: whenISO }, id);
     setHistory(p => sortByLogged(p.map(r => r.id === id ? row : r))); showSave(true); setLiftEdit(null);
   });
-  const logWeight = () => run(async () => {
-    const weight = Number(weightInput);
+  const logWeight = value => run(async () => {
+    const weight = Number(value);
     if (!Number.isFinite(weight) || weight < 100 || weight > 400) throw new Error('Enter a weight between 100 and 400 lb.');
     const row = await write('weight_log', 'insert', { weight });
-    setWeightLog(p => sortByLogged([row, ...p])); setWeightInput(''); showSave(true);
+    setWeightLog(p => sortByLogged([row, ...p])); showSave(true);
     updateBodyStats({ ...bodyStats, weightLbs: weight });
   });
 
@@ -590,7 +604,7 @@ export function AccountApp({ userId, userEmail }) {
 
         {tab === "home" && <>
           {sessionResult && <section className="engine-card" role="status"><div className="engine-row"><strong>{sessionResult.title}</strong><button className="engine-link" onClick={()=>setSessionResult(null)}>Dismiss</button></div><p>{sessionResult.detail}</p></section>}
-          <EngineHome cardioSessions={cardioSessions} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} courtRatings={courtRatings} onRate={rateCourt} hasDraft={hasDraft} onResume={resumeTraining} onStart={startTraining} onGoTab={setTab} onQuickAdd={()=>setQuickAddOpen(true)} onFastBreak={()=>setFastBreakOpen(true)} onThrees={()=>setShotState({open:true})} onWarmup={()=>setWarmupOpen(true)} onWalk={pace=>setWalkState({open:true,pace})} shooting={shooting} all={all} onOpenAwards={()=>setAwardsOpen(true)} onLogType={type=>setLoggerState({open:true,prefillType:type})}
+          <EngineHome cardioSessions={cardioSessions} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} courtRatings={courtRatings} onRate={rateCourt} hasDraft={hasDraft} onResume={resumeTraining} onStart={startTraining} onGoTab={setTab} onQuickAdd={()=>setQuickAddOpen(true)} onFastBreak={()=>setFastBreakOpen(true)} onThrees={()=>setShotState({open:true})} onWarmup={()=>setWarmupOpen(true)} onLogGame={logGame} warmedUp={preferences.lastWarmup===todayKey()} onWalk={pace=>setWalkState({open:true,pace})} shooting={shooting} all={all} onOpenAwards={()=>setAwardsOpen(true)} onLogType={type=>setLoggerState({open:true,prefillType:type})}
             stack={{ d3: !!vitaminD3Log[todayKey()], creatine: !!creatineLog[todayKey()] }}
             onStack={(which) => {
               const day = todayKey();
@@ -628,133 +642,10 @@ export function AccountApp({ userId, userEmail }) {
           onDelete={f => f.kind === 'cardio' ? deleteCardio(f.id) : f.kind === 'shooting' ? deleteShooting(f.id) : deleteLog(f.id)}/>}
 
         {/* ── STATS ── */}
-        {tab === "stats" && <EngineProgress all={all} cardioSessions={cardioSessions} preferences={preferences} courtRatings={courtRatings} onRate={rateCourt} onSettings={()=>setTab("settings")} shooting={<ShootingCard log={shooting} onLog={()=>setShotState({open:true})}/>}><Suspense fallback={<p className="engine-muted" role="status">Loading details…</p>}><StatsTab history={history} weightLog={weightLog} cardioSessions={cardioSessions} legsLog={legsLog} /></Suspense></EngineProgress>}
+        {tab === "stats" && <EngineProgress all={all} cardioSessions={cardioSessions} preferences={preferences} courtRatings={courtRatings} onRate={rateCourt} onSettings={()=>setTab("settings")} onEditGame={g=>setLoggerState({open:true,editing:g})} insights={<GameInsights cardioSessions={cardioSessions} all={all} ratings={courtRatings} onEditGame={g=>setLoggerState({open:true,editing:g})}/>} shooting={<ShootingCard log={shooting} onLog={()=>setShotState({open:true})}/>}><Suspense fallback={<p className="engine-muted" role="status">Loading details…</p>}><StatsTab history={history} weightLog={weightLog} cardioSessions={cardioSessions} legsLog={legsLog} /></Suspense></EngineProgress>}
 
         {/* ── WEIGHT ── */}
-        {tab === "weight" && (() => {
-          const sorted = [...weightLog].sort((a,b) => new Date(a.logged_at)-new Date(b.logged_at));
-          const cur = weightLog[0]?.weight || 225;
-          const lost = 225-cur, remaining = cur-200;
-          const pct = Math.min(100, Math.max(0, (lost/25)*100));
-          const last8 = sorted.slice(-8);
-          return (
-            <>
-              <div className="ease-up"><PageTitle kicker="225 → 200 · Weekly check-in">Weight</PageTitle></div>
-
-              <div className="ease-up-1">
-                <Surface accent={C.rust} padding={24}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
-                    <div>
-                      <Eyebrow>Current</Eyebrow>
-                      <div className="num-tab h-display" style={{ fontSize: 56, fontWeight: 700, color: C.bone, letterSpacing: "-0.05em", lineHeight: 0.9, marginTop: 6 }}>
-                        {cur}<span style={{ fontSize: 18, color: C.dim, fontWeight: 500, marginLeft: 4, letterSpacing: 0 }}>lbs</span>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <Eyebrow color={C.moss}>Lost</Eyebrow>
-                      <div className="num-tab h-display" style={{ fontSize: 32, fontWeight: 700, color: C.moss, letterSpacing: "-0.03em", lineHeight: 1, marginTop: 6 }}>
-                        {lost > 0 ? "−"+lost.toFixed(1) : "0"}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ background: C.raised, borderRadius: 999, height: 8, overflow: "hidden", border: `1px solid ${C.line}` }}>
-                    <div style={{
-                      width: pct+"%", height: "100%",
-                      background: `linear-gradient(90deg, ${C.rust}, ${C.amber} 50%, ${C.moss})`,
-                      borderRadius: 999, transition: "width 0.8s cubic-bezier(0.22, 1, 0.36, 1)",
-                    }} />
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 11, color: C.dim, fontFamily: FONT_MONO }}>
-                    <span>225</span><span style={{ color: C.amber }}>{remaining > 0 ? remaining.toFixed(1) : "0"} TO GO</span><span style={{ color: C.moss }}>200</span>
-                  </div>
-                  {(() => {
-                    const proj = weightProjection(weightLog, 200);
-                    if (!proj) return null;
-                    const rate = `${proj.weekly < 0 ? "▼" : "▲"} ${Math.abs(proj.weekly).toFixed(1)} lb/week`;
-                    return (
-                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
-                        {proj.done ? (
-                          <p className="h-serif" style={{ fontSize: 15, color: C.moss, margin: 0 }}>You're at goal. 200 is here. 🎉</p>
-                        ) : proj.stalled ? (
-                          <div style={{ fontSize: 12, color: C.dim, fontFamily: FONT_MONO }}>{rate} · trend is flat right now — the projection kicks back in once the scale starts moving.</div>
-                        ) : (
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-                            <span style={{ fontSize: 12, color: C.moss, fontFamily: FONT_MONO, fontWeight: 600 }}>{rate}</span>
-                            <span className="h-serif" style={{ fontSize: 15, color: C.cream }}>On pace for <b style={{ color: C.moss }}>200</b> by <b style={{ color: C.moss }}>{proj.eta.toLocaleDateString("en-US", { month: "long", day: "numeric" })}</b></span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </Surface>
-              </div>
-
-              <div className="ease-up-2">
-                <Surface>
-                  <Eyebrow>Log Weight</Eyebrow>
-                  <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-                    <input type="number" inputMode="decimal" min="100" max="400" step="0.1" placeholder="223.5" value={weightInput} onChange={e => setWeightInput(e.target.value)} onKeyDown={e => e.key==="Enter" && logWeight()}
-                      style={{ background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, color: C.bone, padding: "13px 16px", fontSize: 18, flex: 1, outline: "none", fontWeight: 600, fontFamily: FONT_DISPLAY }} />
-                    <Btn color={C.rust} onClick={logWeight}>Log</Btn>
-                  </div>
-                </Surface>
-              </div>
-
-              {last8.length >= 2 && (
-                <div className="ease-up-3">
-                  <Surface>
-                    <Eyebrow>Trend · last {last8.length}</Eyebrow>
-                    <svg width="100%" height="100" viewBox="0 0 300 100" style={{ overflow: "visible", marginTop: 12 }}>
-                      {(() => {
-                        const ws = last8.map(e => e.weight);
-                        const mn = Math.min(...ws)-1, mx = Math.max(...ws)+1;
-                        const pts = ws.map((w,i) => ({ x: (i/(ws.length-1))*280+10, y: 80-((w-mn)/(mx-mn))*70 }));
-                        const path = pts.map((p,i) => i === 0 ? `M${p.x},${p.y}` : `L${p.x},${p.y}`).join(" ");
-                        const area = path + ` L${pts[pts.length-1].x},90 L${pts[0].x},90 Z`;
-                        return <>
-                          <defs>
-                            <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor={C.rust} stopOpacity="0.3"/>
-                              <stop offset="100%" stopColor={C.rust} stopOpacity="0"/>
-                            </linearGradient>
-                          </defs>
-                          <path d={area} fill="url(#grad)" />
-                          <path d={path} fill="none" stroke={C.rust} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-                          {pts.map((p,i) => <circle key={i} cx={p.x} cy={p.y} r="3.5" fill={C.rust} stroke={C.panel} strokeWidth="2" />)}
-                        </>;
-                      })()}
-                    </svg>
-                  </Surface>
-                </div>
-              )}
-
-              {weightLog.map((e,i) => {
-                const prev = weightLog[i+1];
-                const delta = prev ? e.weight-prev.weight : null;
-                return (
-                  <Surface key={e.id} padding={14}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div>
-                        <div className="num-tab h-display" style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" }}>{e.weight} <span style={{ fontSize: 12, color: C.dim, fontWeight: 500 }}>lbs</span></div>
-                        <div style={{ fontSize: 11, color: C.dim, marginTop: 4, fontFamily: FONT_MONO }}>
-                          {new Date(e.logged_at).toLocaleDateString("en-CA",{weekday:"short",month:"short",day:"numeric"})} · {daysAgo(e.logged_at)}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                        {delta !== null && (
-                          <div className="num-tab" style={{ fontSize: 14, fontWeight: 700, color: delta < 0 ? C.moss : delta > 0 ? C.red : C.dim, fontFamily: FONT_MONO }}>
-                            {delta < 0 ? "▼" : delta > 0 ? "▲" : "—"} {Math.abs(delta).toFixed(1)}
-                          </div>
-                        )}
-                        <button aria-label="Delete weight entry" disabled={busy} onClick={() => deleteWeight(e.id)} className="btn" style={{ background: "transparent", border: "none", color: C.mute, cursor: "pointer", fontSize: 14, padding: 6 }}>✕</button>
-                      </div>
-                    </div>
-                  </Surface>
-                );
-              })}
-            </>
-          );
-        })()}
+        {tab === "weight" && <WeightScreen weightLog={weightLog} body={bodyStats} busy={busy} onLog={logWeight} onDelete={deleteWeight} onEditGoal={()=>{setTab('settings');window.scrollTo({top:0,behavior:'auto'});}}/>}
 
         {/* ── PLAN ── */}
         {tab === "goals" && (
@@ -769,6 +660,7 @@ export function AccountApp({ userId, userEmail }) {
         {tab === "settings" && <>
           <PageTitle kicker="The Work">Settings</PageTitle>
           <GoalSettings preferences={preferences} onSave={saveGoals}/>
+          <BodySettings body={bodyStats} latestWeight={weightLog[0] ? Number(weightLog[0].weight) : null} onSave={next=>{updateBodyStats(next);toast('Body & weight goal saved');}}/>
           <section className="engine-card"><h2>Make it yours</h2>
             <label className="engine-field">Coaching tone<select aria-label="Coaching tone" value={preferences.coachingTone} onChange={e=>updatePreferences({coachingTone:e.target.value})}><option value="calm">Calm</option><option value="encouraging">Encouraging</option><option value="intense">Intense</option></select></label>
             <label className="engine-field">Appearance<select aria-label="Appearance" value={theme} onChange={e=>setTheme(e.target.value)}><option value="light">Light</option><option value="dark">Dark</option></select></label>
@@ -819,13 +711,13 @@ export function AccountApp({ userId, userEmail }) {
       </Sheet>}
 
       {fastBreakOpen && <FastBreakLog onSave={saveCardio} onClose={()=>setFastBreakOpen(false)} busy={busy}/>}
-      {warmupOpen && <GameDayWarmup onClose={()=>setWarmupOpen(false)}/>}
+      {warmupOpen && <GameDayWarmup onClose={()=>setWarmupOpen(false)} onComplete={()=>updatePreferences({lastWarmup:todayKey()})} onLogGame={logGame}/>}
       {shotState.open && <ThreePointLog editing={shotState.editing} onSave={saveShooting} onDelete={deleteShooting} onClose={()=>setShotState({open:false})}/>}
 
       {/* ── CONDITIONING LOGGER sheet ── */}
       {loggerState.open && (
         <ConditioningLogger
-          state={{ ...loggerState, legs: loggerState.editing ? legsLog[loggerState.editing.id] || null : null }}
+          state={{ ...loggerState, legs: loggerState.editing ? legsLog[loggerState.editing.id] || null : null, court: loggerState.editing ? courtRatings[loggerState.editing.id] || null : null }}
           onClose={() => setLoggerState({ open: false })}
           onSave={saveCardio}
           onDelete={deleteCardio}
