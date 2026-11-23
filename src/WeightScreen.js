@@ -64,7 +64,7 @@ export function WeightScreen({ weightLog, body, busy, onLog, onDelete, onEditGoa
     {weightLog.length >= 2 && <section className="engine-card"><span className="engine-label">Trend · last {Math.min(12, weightLog.length)} check-ins</span><WeightTrend entries={weightLog}/></section>}
     {weightLog.length > 0 && <div className="engine-feed">{weightLog.map((e, i) => {
       const prev = weightLog[i + 1], delta = prev ? Number(e.weight) - Number(prev.weight) : null;
-      const when = `${new Date(e.logged_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · ${daysAgo(e.logged_at)}`;
+      const when = `${new Date(e.logged_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · ${daysAgo(e.logged_at)}${e._pending ? ' · waiting to sync' : ''}`;
       return <div className="engine-entry" key={e.id}>
         <div className="engine-entry-body"><strong>{fmt(Number(e.weight))} lb</strong><span>{when}</span></div>
         {delta !== null && <span className="weight-delta" data-dir={delta === 0 ? 'flat' : (delta < 0) === losing ? 'good' : 'bad'}>{delta < 0 ? '▼' : delta > 0 ? '▲' : '—'} {fmt(Math.abs(delta))}</span>}

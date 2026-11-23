@@ -236,7 +236,7 @@ export const RECOVERY = {
       blurb: "4-min all-out intervals",
     },
     long_interval: {
-      key: "long_interval", label: "Long Interval", short: "Long Int", emoji: "⚡", colorKey: "electric",
+      key: "long_interval", label: "Intervals", short: "Intervals", emoji: "⚡", colorKey: "electric",
       defaultDurationMin: 20, defaultRPE: 9,
       hard: true, scheduled: true, weeklyTarget: 1,
       blurb: "~20-min hard intervals",
@@ -411,6 +411,7 @@ export function normalizeSessions(rows) {
         duration: r.duration_min != null ? Number(r.duration_min) : def.defaultDurationMin,
         focus: r.focus || null,
         sprints: r.workout_type === "long_interval" && r.notes === FAST_BREAK_NOTES,
+        test: typeof r.notes === "string" && r.notes.startsWith("Dyno day"),
       };
     });
 }
@@ -428,7 +429,11 @@ export const isBriskWalk = s => s && s.type === "walk" && s.pace === "brisk";
 // The plan's long-interval session is logged as 10 sprints, so it's named that way.
 export const planItemLabel = it => it.type === "walk" && it.pace === "brisk" ? BRISK_WALK.label : it.type === "long_interval" ? "10 sprints" : RECOVERY.TYPES[it.type].label;
 // What to call a logged session: the name you logged it under, not its storage type.
-export const sessionLabel = s => isBriskWalk(s) ? BRISK_WALK.label : isSprintSession(s) ? "10 sprints" : s.type === "walk" ? "Walk" : RECOVERY.TYPES[s.type]?.label || s.type;
+export const sessionLabel = s => isBriskWalk(s) ? BRISK_WALK.label : isSprintSession(s) ? "10 sprints" : s.test ? "Conditioning test" : s.type === "walk" ? "Walk" : s.type === "game" ? "Basketball game" : RECOVERY.TYPES[s.type]?.label || s.type;
+// The same names for raw cardio rows (activity log, exports).
+export const cardioRowLabel = r => r.workout_type === "long_interval" && r.notes === FAST_BREAK_NOTES ? "10 sprints"
+  : typeof r.notes === "string" && r.notes.startsWith("Dyno day") ? "Conditioning test"
+  : r.workout_type === "game" ? "Basketball game" : RECOVERY.TYPES[r.workout_type]?.label || r.workout_type;
 export const planItemMinutes = it => it.type === "walk" && it.pace === "brisk" ? BRISK_WALK.defaultDurationMin : RECOVERY.TYPES[it.type].defaultDurationMin;
 export const isRecoveryPlan = items => !items || !items.length || items.every(it => it.type === "walk" && it.pace !== "brisk");
 
@@ -618,7 +623,7 @@ export function recommend(allSessions, refDate, constraints = {}) {
   const primary = owedLI > 0 ? "long_interval" : owedTab > 0 ? "tabata" : null;
 
   if (primary === "long_interval") {
-    return mk("train", [{ type: "long_interval" }], `Long Interval owed (${done.long_interval}/${targetLI}) and you're recovered — the week's marquee session.`, SCI.liDo);
+    return mk("train", [{ type: "long_interval" }], `Sprint session owed (${done.long_interval}/${targetLI}) and you're recovered — the week's marquee session.`, SCI.liDo);
   }
   if (primary === "tabata") {
     // Keep conditioning recommendations focused; strength work belongs inside Sweat440 classes.
@@ -768,7 +773,7 @@ export const ACHIEVEMENTS = [
   { id: "streak14", emoji: "🌋", name: "Unstoppable",     desc: "14-day streak",               goal: 14,  val: s => s.bestStreak },
   { id: "streak30", emoji: "🏆", name: "Iron Will",       desc: "30-day streak",               goal: 30,  val: s => s.bestStreak },
   { id: "tab10",    emoji: "⚡", name: "Tabata Ten",      desc: "10 Tabatas done",             goal: 10,  val: s => s.byType.tabata },
-  { id: "li5",      emoji: "🌀", name: "Long Hauler",     desc: "5 Long Intervals",            goal: 5,   val: s => s.byType.long_interval },
+  { id: "li5",      emoji: "🌀", name: "Long Hauler",     desc: "5 sprint or interval sessions",            goal: 5,   val: s => s.byType.long_interval },
   { id: "lift25",   emoji: "🏋️", name: "Iron Paradise",   desc: "25 lifts",                    goal: 25,  val: s => s.byType.lift },
   { id: "game1",    emoji: "🏀", name: "Baller",          desc: "Play a game",                 goal: 1,   val: s => s.byType.game },
   { id: "game10",   emoji: "🔟", name: "Run It Back",     desc: "10 games played",             goal: 10,  val: s => s.byType.game },
@@ -840,50 +845,7 @@ export function computeGameState(history, cardioSessions, weightLog) {
   };
 }
 
-export const LS_GAME = "bttd_game_seen";
-
-export const LS_SCHEDULE = "bttd_schedule";
-
 export const DEFAULT_SCHEDULE = { shabbat: true, gameNight: true, gameDow: 4, skipGameWeek: null, crossClass: false, classDows: [1, 3, 5] };
-
-export const DOW_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-export const PHASES = [
-  { weeks: "01—04", color: C.rust,     weight: "225 → 218", focus: "Build the habit. Nail form. Ease in.",         goals: ["2× gym/week", "1× cardio/week", "Sleep 7+ hrs", "Cut late-night eating"] },
-  { weeks: "05—08", color: C.amber,    weight: "218 → 212", focus: "Add intensity. Move more.",                    goals: ["Progress the weights", "Add interval cardio", "Drop processed meals", "Hit protein daily"] },
-  { weeks: "09—12", color: C.moss,     weight: "212 → 206", focus: "Peak conditioning. Build real strength.",      goals: ["Push compound lifts", "3 sessions/week", "Nutrition locked", "Conditioning every week"] },
-  { weeks: "13—16", color: C.plum,     weight: "206 → 200", focus: "Lock it in. Set a new baseline.",              goals: ["Test your strength", "Hit goal weight", "Progress photos", "Plan the next cycle"] },
-];
-
-export const WORK_QUOTES = [
-  ["Hard work beats talent when talent doesn't work hard.", "TIM NOTKE"],
-  ["Discipline is choosing what you want most over what you want now.", "ABRAHAM LINCOLN"],
-  ["Don't count the days. Make the days count.", "MUHAMMAD ALI"],
-  ["Suffer the pain of discipline or suffer the pain of regret.", "JIM ROHN"],
-  ["Every rep is a vote for the person you're becoming.", "THE WORK"],
-  ["Fall in love with the process and the results will come.", "ERIC THOMAS"],
-  ["Pressure is a privilege.", "BILLIE JEAN KING"],
-  ["You don't have to be great to start — you have to start to be great.", "ZIG ZIGLAR"],
-  ["The only bad workout is the one that didn't happen.", "THE WORK"],
-  ["Consistency is the cheat code.", "THE WORK"],
-  ["Be stronger than your excuses.", "THE WORK"],
-  ["The body achieves what the mind believes.", "THE WORK"],
-  ["Show up on the days you don't feel like it. That's the whole game.", "THE WORK"],
-  ["You're one workout away from a good mood.", "THE WORK"],
-  ["Everybody wants to be a beast — until it's time to do what beasts do.", "ERIC THOMAS"],
-  ["Take care of your body. It's the only place you have to live.", "JIM ROHN"],
-  ["Strength does not come from winning. Your struggles develop your strength.", "ARNOLD SCHWARZENEGGER"],
-  ["The successful warrior is the average person, with laser-like focus.", "BRUCE LEE"],
-  ["Today's effort is tomorrow's strength.", "THE WORK"],
-  ["Discipline equals freedom.", "JOCKO WILLINK"],
-];
-
-export function quoteOfDay() {
-  const now = new Date();
-  const startOfYear = new Date(now.getFullYear(), 0, 0);
-  const dayOfYear = Math.floor((now - startOfYear) / 86400000);
-  return WORK_QUOTES[dayOfYear % WORK_QUOTES.length];
-}
 
 export const PRE_WORKOUT_FOODS = [
   { name: "Banana + 2 tbsp peanut butter",   protein: 8,  calories: 295, timing: "30–60 min before", note: "Quick carbs + sustained energy. Classic." },
@@ -1230,49 +1192,7 @@ export function daysAgo(iso) {
   return d === 0 ? "Today" : d === 1 ? "Yesterday" : d + "d ago";
 }
 
-export function calcVolume(exercises, checked, vals) {
-  return exercises.reduce((v, ex) => {
-    if (!checked[ex.id] || ex.noWeight || ex.timed || ex.bodyweight) return v;
-    const w = ex.barbell ? 45 + (parseFloat(vals[ex.id]?.perSide) || 0) * 2 : parseFloat(vals[ex.id]?.weight) || 0;
-    const s = parseInt(vals[ex.id]?.setsDone || ex.sets);
-    // Use custom reps per set if available, otherwise default
-    const customReps = vals[ex.id]?.customReps || {};
-    let totalReps = 0;
-    for (let i = 0; i < s; i++) {
-      totalReps += parseFloat(customReps[i]) || parseFloat(ex.reps) || 0;
-    }
-    return v + w * totalReps;
-  }, 0);
-}
-
 export const fmtNum = (n) => n >= 10000 ? Math.round(n/1000) + "k" : n >= 1000 ? (n/1000).toFixed(1) + "k" : n.toLocaleString();
-
-export function calcStreak(history) {
-  if (!history.length) return 0;
-  const dayStrings = [...new Set(history.map(h => new Date(h.logged_at).toDateString()))];
-  const today = new Date(); today.setHours(0,0,0,0);
-  let streak = 0;
-  for (let i = 0; i < 365; i++) {
-    const d = new Date(today); d.setDate(today.getDate() - i);
-    if (dayStrings.includes(d.toDateString())) {
-      streak++;
-    } else if (i === 0) {
-      // Allow yesterday to count if today has nothing yet
-      continue;
-    } else {
-      break;
-    }
-  }
-  return streak;
-}
-
-export function getLastWeight(history, exerciseName) {
-  for (const h of history) {
-    const ex = (h.exercises || []).find(e => e.name === exerciseName);
-    if (ex && ex.weight > 0) return ex.weight;
-  }
-  return null;
-}
 
 export function getLastPerformance(history, exerciseName) {
   for (const h of history) {
@@ -1314,42 +1234,6 @@ export function platesToReach(totalLbs) {
   return result;
 }
 
-export function isPR(history, exerciseName, weight) {
-  if (!weight || weight <= 0) return false;
-  let max = 0;
-  for (const h of history) {
-    for (const ex of (h.exercises || [])) {
-      if (ex.name === exerciseName && ex.weight > max) max = ex.weight;
-    }
-  }
-  return weight > max;
-}
-
-export function thisWeekRange() {
-  const start = new Date(); start.setDate(start.getDate() - ((start.getDay() + 6) % 7)); start.setHours(0,0,0,0);
-  const end = new Date(start); end.setDate(start.getDate() + 7);
-  return { start, end };
-}
-
-export function greeting() {
-  const h = new Date().getHours();
-  if (h < 5) return "Late night";
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  if (h < 21) return "Good evening";
-  return "Late session";
-}
-
-export const LS_BODY = "bttd_body_stats";
-
-export const LS_PROTEIN = "bttd_protein_log_v1";
-
-export const LS_CALORIES = "bttd_calorie_log_v1";
-
-export const LS_VITAMIN_D3 = "bttd_vitamin_d3_log_v1";
-
-export const LS_CREATINE = "bttd_creatine_log_v1";
-
 export function todayKey() {
   const d = new Date();
   const y = d.getFullYear();
@@ -1378,8 +1262,6 @@ export function weekKeysMonday() {
   }
   return keys;
 }
-
-export const LS_GAME_LEGS = "bttd_game_legs_v1";
 
 export const LEGS_OPTIONS = [
   { key: "gassed", emoji: "💨", label: "Gassed", colorKey: "red" },

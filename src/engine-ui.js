@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { addDays, buildPlan, BRISK_WALK, C, dateKey, isGameNight, isRecoveryPlan, planItemLabel, sessionLabel, planItemMinutes, RECOVERY, startOfDay } from './model';
 import { WarmupCard, LogGameCard } from './GameDayWarmup';
+import { ALL_TIME, currentSeason, filterSeason, SeasonPicker, seasonRanges } from './seasons';
 import { Icon } from './ui';
-import { ShootingCard, shootingSessions } from './shooting';
+import { ShootingCard, shootingSessions, shotLabel } from './shooting';
 import { COURT_RATINGS, coachMessage, engineBeforeGame, engineSummary, formatEngine, weeklyProgress } from './engine';
 
 export function EngineChart({ series, compact = false }) {
@@ -69,25 +70,6 @@ export function EngineMilestone({ all, preferences, onSettings }) {
   </section>;
 }
 
-export function WeeklyPlan({ all, constraints, preferences, weeklyGoals, onPlan }) {
-  const weekly = weeklyProgress(all,preferences.weeklyGoal,weeklyGoals);
-  const today = startOfDay(new Date());
-  const upcoming = buildPlan(all,today,7,constraints);
-  return <section className="engine-card"><div className="engine-row"><span className="engine-label">This week · Mon–Sun</span><button className="engine-link" onClick={onPlan}>View plan</button></div>
-    <h2>{weekly.count} / {weekly.goal} sessions</h2>
-    <div className="engine-week">{Array.from({length:7},(_,i) => {
-      const day = addDays(weekly.start,i), done = all.some(s => startOfDay(s.date).getTime() === day.getTime());
-      const plan = upcoming.find(p => p.date.getTime() === day.getTime());
-      const rest = plan && (plan.action === 'rest' || isRecoveryPlan(plan.items));
-      const label = done ? 'Activity recorded' : rest ? 'Recovery planned' : day < today ? 'No activity recorded' : 'Training planned';
-      return <div className={`engine-day ${day.getTime() === today.getTime() ? 'today' : ''}`} key={i} title={`${day.toLocaleDateString()} · ${label}`}><div>{day.toLocaleDateString('en-US',{weekday:'short'})}</div><span aria-label={label}>{done ? '✓' : rest ? '○' : '·'}</span></div>;
-    })}</div>
-    <p className="engine-muted">{weekly.count >= weekly.goal ? 'Weekly goal complete. Enjoy the recovery built into your plan.' : 'Your goal is weekly. Planned rest leaves room for the next session.'}</p>
-    <p className="engine-muted">✓ Activity recorded · ○ Recovery planned</p>
-    {weekly.weeksMet > 0 && <p className="engine-muted">{weekly.weeksMet} saved weekly {weekly.weeksMet === 1 ? 'goal' : 'goals'} completed.</p>}
-  </section>;
-}
-
 export function CourtCheckIn({ games, all, ratings, onRate, compact = false }) {
   const sorted = [...games].filter(g => g.workout_type === 'game' && new Date(g.completed_at) <= new Date()).sort((a,b) => new Date(b.completed_at)-new Date(a.completed_at));
   const pending = sorted.find(g => !ratings[g.id]);
@@ -104,31 +86,29 @@ export function CourtCheckIn({ games, all, ratings, onRate, compact = false }) {
   </section>;
 }
 
-export function SeasonStats({ games, onProgress, onEdit }) {
+export function SeasonStats({ games, onProgress, onEdit, seasonName = 'this season' }) {
   const stat = games
-    .filter(g => g.workout_type === 'game' && (g.points != null || g.rebounds != null))
+    .filter(g => g.workout_type === 'game' && ['points','rebounds','assists','steals','threes_made'].some(k => g[k] != null))
     .sort((a,b) => new Date(a.completed_at) - new Date(b.completed_at));
-  if (!stat.length) return null;
+  if (!stat.length) return <section className="engine-card" aria-label="Season stats"><span className="engine-label">Box score · {seasonName}</span><p className="engine-muted">No games with stats yet in {seasonName}.</p></section>;
   const avg = arr => arr.length ? arr.reduce((s,n) => s+n,0)/arr.length : null;
   const fmt1 = n => n == null ? '—' : String(Math.round(n*10)/10);
-  const pts = stat.filter(g => g.points != null).map(g => g.points);
-  const rbs = stat.filter(g => g.rebounds != null).map(g => g.rebounds);
-  const trendOf = vals => {
-    if (vals.length < 4) return null;
-    const half = Math.floor(vals.length/2);
-    return avg(vals.slice(-half)) - avg(vals.slice(0,half));
+  const vals = k => stat.filter(g => g[k] != null).map(g => g[k]);
+  const trendOf = v => {
+    if (v.length < 4) return null;
+    const half = Math.floor(v.length/2);
+    return avg(v.slice(-half)) - avg(v.slice(0,half));
   };
-  const pTrend = trendOf(pts), rTrend = trendOf(rbs);
-  const trendText = t => t == null ? null : `${t >= 0 ? '▲' : '▼'} ${fmt1(Math.abs(t))} vs early season`;
+  const trendText = t => t == null ? null : `${t >= 0 ? '▲' : '▼'} ${fmt1(Math.abs(t))} vs earlier games`;
+  const tile = (k, label, big) => { const v = vals(k); return <div className="engine-mini" key={k}><span className="engine-label">{label}</span><strong style={{ fontSize: big ? 26 : 22 }}>{fmt1(avg(v))}</strong>{big && trendText(trendOf(v)) && <div className="engine-muted">{trendText(trendOf(v))}</div>}{!big && <div className="engine-muted">{v.length} {v.length === 1 ? 'game' : 'games'}</div>}</div>; };
+  const extras = [['assists','Assists / game'],['steals','Steals / game'],['threes_made','3PM / game']].filter(([k]) => vals(k).length);
   const last = stat[stat.length-1];
-  const lastBits = [last.points != null ? `${last.points} pts` : null, last.rebounds != null ? `${last.rebounds} rebounds` : null].filter(Boolean).join(' · ');
+  const lastBits = [['points','pts'],['rebounds','reb'],['assists','ast'],['steals','stl'],['threes_made','3PM']].filter(([k]) => last[k] != null).map(([k,u]) => `${last[k]} ${u}`).join(' · ');
   return <section className="engine-card" aria-label="Season stats">
-    <div className="engine-row"><span className="engine-label">Season · points & rebounds</span>{onProgress && <button className="engine-link" onClick={onProgress}>Full box score →</button>}</div>
-    <div className="engine-grid" style={{ marginTop: 10 }}>
-      <div className="engine-mini"><span className="engine-label">Points / game</span><strong style={{ fontSize: 26 }}>{fmt1(avg(pts))}</strong>{trendText(pTrend) && <div className="engine-muted">{trendText(pTrend)}</div>}</div>
-      <div className="engine-mini"><span className="engine-label">Rebounds / game</span><strong style={{ fontSize: 26 }}>{fmt1(avg(rbs))}</strong>{trendText(rTrend) && <div className="engine-muted">{trendText(rTrend)}</div>}</div>
-    </div>
-    <div className="engine-row" style={{ marginTop: 10 }}><p className="engine-muted" style={{ margin: 0 }}>Last game: <strong>{lastBits}</strong> · {new Date(last.completed_at).toLocaleDateString(undefined,{month:'short',day:'numeric'})} · {stat.length} {stat.length === 1 ? 'game' : 'games'} this season</p>{onEdit && <button className="engine-link" aria-label="Edit last game" onClick={() => onEdit(last)}>Edit</button>}</div>
+    <div className="engine-row"><span className="engine-label">Box score · {seasonName}</span>{onProgress && <button className="engine-link" onClick={onProgress}>Full box score →</button>}</div>
+    <div className="engine-grid" style={{ marginTop: 10 }}>{tile('points','Points / game',true)}{tile('rebounds','Rebounds / game',true)}</div>
+    {extras.length > 0 && <div className="season-extras" style={{ marginTop: 10 }}>{extras.map(([k,l]) => tile(k,l,false))}</div>}
+    <div className="engine-row" style={{ marginTop: 10 }}><p className="engine-muted" style={{ margin: 0 }}>Last game: <strong>{lastBits}</strong> · {new Date(last.completed_at).toLocaleDateString(undefined,{month:'short',day:'numeric'})} · {stat.length} {stat.length === 1 ? 'game' : 'games'}</p>{onEdit && <button className="engine-link" aria-label="Edit last game" onClick={() => onEdit(last)}>Edit</button>}</div>
   </section>;
 }
 
@@ -149,34 +129,25 @@ export function GoalSettings({ preferences, onSave }) {
   </form></section>;
 }
 
-export function EngineProgress({ all, cardioSessions, preferences, courtRatings, onRate, onSettings, onEditGame, shooting, insights, children }) {
+export function EngineProgress({ all, cardioSessions, preferences, courtRatings, onRate, onSettings, onEditGame, shooting, insights, extra, children }) {
+  const seasons = preferences.seasons || [];
+  const [seasonId, setSeasonId] = useState(() => currentSeason(seasons).id);
+  const range = seasonId === 'all' ? ALL_TIME : seasonRanges(seasons).find(r => r.id === seasonId) || currentSeason(seasons);
+  const seasonGames = filterSeason(cardioSessions, range);
   // The detailed breakdown is expensive, so it mounts only once it is opened.
   const [details, setDetails] = useState(false);
-  return <><EngineHero all={all}/><SeasonStats games={cardioSessions} onEdit={onEditGame}/>{insights}{shooting}<EngineMilestone all={all} preferences={preferences} onSettings={onSettings}/><CourtCheckIn games={cardioSessions} all={all} ratings={courtRatings} onRate={onRate}/><details className="engine-card" onToggle={e => { if (e.currentTarget.open) setDetails(true); }}><summary style={{cursor:'pointer',minHeight:44}}>Training history, strength & body details</summary>{details && <div style={{marginTop:16}}>{children}</div>}</details></>;
+  return <><EngineHero all={all}/><SeasonPicker seasons={seasons} value={range.id} onChange={setSeasonId}/><SeasonStats games={seasonGames} onEdit={onEditGame} seasonName={range.id === 'all' ? 'all games' : range.name}/>{insights && insights(seasonGames, range)}{shooting}{extra}<EngineMilestone all={all} preferences={preferences} onSettings={onSettings}/><CourtCheckIn games={cardioSessions} all={all} ratings={courtRatings} onRate={onRate}/><details className="engine-card" onToggle={e => { if (e.currentTarget.open) setDetails(true); }}><summary style={{cursor:'pointer',minHeight:44}}>Training history, strength & body details</summary>{details && <div style={{marginTop:16}}>{children}</div>}</details></>;
 }
 
-export function PlanOverview({ all, constraints, onStart }) {
-  const plan=buildPlan(all,startOfDay(new Date()),7,constraints);
-  return <section className="engine-card"><span className="engine-label">Upcoming 7 days</span><h2>Your training plan</h2><p className="engine-muted">A suggested schedule based on your recorded sessions. It updates when you log activity. Adjust it to fit your week.</p>
-    {plan.map((p,i)=>{
-      const items=p.items||[],recovery=isRecoveryPlan(items);
-      return <div key={p.date.getTime()} style={{padding:'14px 0',borderTop:'1px solid var(--line)'}}><div className="engine-label">{i===0?'Today':p.date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'})}</div><h3>{recovery?'Recovery':items.map(planItemLabel).join(' + ')}</h3>
-        <p className="engine-muted">{p.reason}</p>{(p.flags||[]).map(flag=><p className="engine-muted" key={flag}>{flag}</p>)}
-        {i===0 && <div className="engine-actions">{items.map(it=><button className={`engine-button ${recovery?'':'primary'}`} key={it.type} onClick={()=>onStart(it.type==='walk'&&it.pace==='brisk'?'brisk_walk':it.type)}>{it.type==='walk'?(it.pace==='brisk'?'Log brisk walk':'Log an easy walk'):it.type==='game'?'Log basketball':it.type==='cross_training'?'Log class':it.type==='long_interval'?'Log 10 sprints':it.type==='tabata'?'Log Tabata':`Start ${RECOVERY.TYPES[it.type].label}`}</button>)}</div>}
-      </div>;
-    })}
-    <p className="engine-muted">Recovery is part of this plan. A small Engine dip on a rest day is expected in the formula.</p>
-  </section>;
-}
-
-export function EngineHome({ all, shooting = {}, constraints, preferences, cardioSessions, courtRatings, onRate, hasDraft, onResume, onStart, onGoTab, onQuickAdd, onLogType, onFastBreak, onThrees, onWarmup, onWalk, onLogGame, warmedUp }) {
+export function EngineHome({ all, shooting = {}, constraints, preferences, cardioSessions, courtRatings, onRate, hasDraft, onResume, onStart, onGoTab, onQuickAdd, onLogType, onFastBreak, onThrees, onWarmup, onWalk, onLogGame, warmedUp, extraCards, recap }) {
   const today = dateKey(new Date());
   const gameLogged = cardioSessions.some(g => g.workout_type === 'game' && dateKey(new Date(g.completed_at)) === today);
   const gameNight = isGameNight(constraints, new Date()) && !gameLogged;
   const readyToLog = gameNight && onLogGame && (warmedUp || new Date().getHours() >= 20);
   const completed = [...all.filter(s => dateKey(s.date) === today).map(sessionLabel),
-    ...shootingSessions(shooting).filter(s => dateKey(s.at) === today).map(s => `${s.attempts} threes`)];
+    ...shootingSessions(shooting).filter(s => dateKey(s.at) === today).map(shotLabel)];
   return <>
+    {recap}
     {readyToLog ? <LogGameCard onLog={onLogGame} onWarmup={onWarmup}/> : onWarmup && gameNight && <WarmupCard gameNight onStart={onWarmup}/>}
     <TodayAction all={all} constraints={constraints} preferences={preferences} hasDraft={hasDraft} onResume={onResume} onStart={onStart} onPlan={() => onGoTab('goals')} onChange={() => onGoTab('workout')}/>
     {completed.length > 0 && <section className="engine-card" aria-label="Today's activity"><div className="engine-row"><span className="engine-label">Today’s activity</span><button className="engine-link" onClick={() => onGoTab('history')}>View log →</button></div><p>{completed.join(' · ')}</p></section>}
@@ -192,6 +163,7 @@ export function EngineHome({ all, shooting = {}, constraints, preferences, cardi
     </section>
     {onWarmup && !gameNight && <WarmupCard onStart={onWarmup}/>}
     <ShootingCard log={shooting} onLog={onThrees} compact/>
+    {extraCards}
     <CourtCheckIn games={cardioSessions} all={all} ratings={courtRatings} onRate={onRate} compact/>
   </>;
 }

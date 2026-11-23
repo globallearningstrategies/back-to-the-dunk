@@ -34,3 +34,16 @@
 .log-rpe span { font-size: 13px; color: var(--secondary); font-weight: 600; }
 .log-range { width: 100%; min-height: 36px; accent-color: var(--action); margin: 4px 0 0; }
 .insight-axis { color: var(--secondary); font-size: 11px; margin-top: 10px; }
+.log-stat-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.log-stat-row .log-stat input { font-size: 22px; min-height: 54px; }
+.log-more { margin-top: 0; }
+.season-extras { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 10px; }
+
+/* Pre-game check */
+.pregame-row { margin-top: 10px; }
+.pregame-row .engine-actions { margin-top: 6px; }
+.warmup-pregame { border: 2px solid #2c2c2c; border-radius: 18px; padding: 12px 14px 14px; margin-bottom: 18px; }
+.pregame-q { display: block; font-size: 17px; font-weight: 700; margin: 10px 0 8px; }
+.pregame-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.warmup .warmup-choice { min-height: 56px; border-radius: 14px; border: 2px solid #3a3a3a; background: #121212; color: #fff; font-size: 18px; font-weight: 700; }
+.warmup .warmup-choice[aria-pressed="true"] { background: #ffb547; border-color: #ffb547; color: #000; }

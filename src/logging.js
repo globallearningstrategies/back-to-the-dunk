@@ -2,206 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { C, FONT_DISPLAY, FONT_SERIF, FONT_MONO, RECOVERY, CONDITIONING_TYPES, S440_CLASSES, S440_NAME_BY_FOCUS, focusFromClassName, fetchS440Schedule, S440_FOCUS_OPTIONS, startOfDay, addDays, startOfWeek, fmtDur, normalizeAll, buildPlan, trailingSummary, streakInfo, fatigueSignal, dateKey, LEGS_OPTIONS, ENGINE_TAU, engineLoadOf, BRISK_WALK, engineModel, engineBumpPreview } from './model';
 import { Surface, Eyebrow, Btn, Sheet } from './ui';
 import { COURT_RATINGS } from './engine';
+import { PregameCheck, dayKeyOf, pregameLabel } from './pregame';
 
 export function toLocalInput(d) {
   const x = new Date(d); const p = n => String(n).padStart(2, "0");
   return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}T${p(x.getHours())}:${p(x.getMinutes())}`;
-}
-
-export function TodayCard({ cardioSessions, workouts, constraints, onOpenLogger, onChooseLift, onGoWalk }) {
-  const [showOverride, setShowOverride] = useState(false);
-  const [showSci, setShowSci] = useState(false);
-  const engine = normalizeAll(cardioSessions, workouts);
-  const today = startOfDay(new Date());
-  const plan = buildPlan(engine, today, 7, constraints);
-  const rec = plan[0];
-  const s7 = trailingSummary(engine, today, 7);
-  const s14 = trailingSummary(engine, today, 14);
-  const s30 = trailingSummary(engine, today, 30);
-  const { streak, layoff } = streakInfo(engine, today);
-  const engStat = engineModel(engine);
-
-  // Projected engine bump for one scheduled item, using type defaults.
-  const itemBumpPct = (it) => {
-    const def = RECOVERY.TYPES[it.type];
-    if (!def) return 0;
-    let mins = def.defaultDurationMin, rpe = def.defaultRPE;
-    if (it.type === "walk") mins *= 0.5;
-    else if (it.type === "lift") return 0;
-    else if (it.type === "cross_training") {
-      const cls = S440_CLASSES[today.getDay()];
-      if (!cls || cls.focus !== "cardio") return 0;
-    }
-    return engineBumpPreview(engStat.score, mins, rpe);
-  };
-
-  // Short label for one scheduled item (lifts show their A/B/C day).
-  const itemLabel = (it) => RECOVERY.TYPES[it.type].short;
-  const itemsOf = (p) => (p.action === "train" ? (p.items || []) : []);
-
-  const items = itemsOf(rec);
-  const trained = items.length > 0;
-  const primDef = trained ? RECOVERY.TYPES[items[0].type] : null;
-  const recColor = trained ? C[primDef.colorKey] : C.dim;
-  const headEmoji = trained ? items.map(it => RECOVERY.TYPES[it.type].emoji).join(" ") : "🛌";
-  const headline = trained ? items.map(itemLabel).join(" + ") : "Rest";
-
-  // Tap a scheduled item → take the right action (log sheet, or jump to the tab).
-  const actOn = (it, warn) => {
-    if (it.type === "lift") onChooseLift();
-    else if (it.type === "walk") onGoWalk();
-    else onOpenLogger(warn ? { prefillType: it.type, warn } : { prefillType: it.type });
-  };
-  const actLabel = (it) => it.type === "lift" ? "🏋️ Lift" : it.type === "walk" ? "🚶 Log a walk" : `${RECOVERY.TYPES[it.type].emoji} ${RECOVERY.TYPES[it.type].short}`;
-
-  const bandNote = {
-    restart: layoff != null ? `Restart · ${layoff}d layoff` : "Restart",
-    ease: layoff != null ? `Ease back · ${layoff}d off` : "Ease back",
-    fresh: "Day one",
-    normal: null,
-  }[rec.band];
-
-  return (
-    <Surface accent={recColor} padding={22}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <Eyebrow color={recColor}>Today · {new Date().toLocaleDateString("en-US", { weekday: "long" })}</Eyebrow>
-        {bandNote && <span style={{ fontSize: 10, color: C.amber, fontFamily: FONT_MONO, letterSpacing: "0.06em" }}>{bandNote}</span>}
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
-        <span style={{ fontSize: 30, lineHeight: 1 }}>{headEmoji}</span>
-        <h2 className="h-display" style={{ fontSize: 32, margin: 0, color: recColor, letterSpacing: "-0.04em", lineHeight: 1 }}>{headline}</h2>
-      </div>
-      <p className="h-serif" style={{ fontSize: 17, color: C.cream, margin: "10px 0 0", lineHeight: 1.45 }}>{rec.reason}</p>
-
-      {/* What's happening in your body — recovery science, tap to collapse */}
-      {rec.science && (
-        <div style={{ marginTop: 12 }}>
-          <button onClick={() => setShowSci(v => !v)} className="btn" style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 10, color: C.electric, fontFamily: FONT_MONO, letterSpacing: "0.1em", fontWeight: 700 }}>🧬 PLAN DETAILS</span>
-            <span style={{ fontSize: 9, color: C.dim }}>{showSci ? "▲" : "▼"}</span>
-          </button>
-          {showSci && (
-            <p className="h-serif" style={{ fontSize: 14.5, color: C.cream, margin: "8px 0 0", lineHeight: 1.55, padding: "12px 14px", background: C.raised, borderRadius: 12, border: `1px solid ${C.line}` }}>{rec.science}</p>
-          )}
-        </div>
-      )}
-
-      {(rec.flags || []).map((f, i) => (
-        <div key={i} style={{ marginTop: 10, fontSize: 12, color: C.red, fontFamily: FONT_MONO, display: "flex", gap: 6, alignItems: "center" }}>⚠ {f}</div>
-      ))}
-
-      {/* Fatigue guard — the same work has been feeling harder lately */}
-      {(() => {
-        const fat = fatigueSignal(engine, today);
-        if (!fat) return null;
-        return (
-          <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 10, background: `${C.amber}12`, border: `1px solid ${C.amber}40`, fontSize: 12, color: C.amber, fontFamily: FONT_MONO, lineHeight: 1.5 }}>
-            ⚠ Your last {fat.n} hard sessions felt about +{fat.delta.toFixed(1)} RPE harder than your usual. Fatigue may be building — an extra easy day now beats a flat week later.
-          </div>
-        );
-      })()}
-
-      {/* Primary action(s) — one button per scheduled item (e.g. Tabata + Lift) */}
-      {trained ? (
-        <>
-          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-            {items.map((it, i) => (
-              <Btn key={i} color={C[RECOVERY.TYPES[it.type].colorKey]} full={items.length === 1} size="lg" style={{ flex: 1 }} onClick={() => actOn(it)}>
-                {actLabel(it)}
-              </Btn>
-            ))}
-          </div>
-          {/* What today's plan is worth to the engine — see the points before you spend the sweat */}
-          {(() => {
-            const totalPct = items.reduce((a, it) => a + itemBumpPct(it), 0);
-            if (totalPct < 0.1) return null;
-            return (
-              <div style={{ marginTop: 8, fontSize: 12.5, color: C.moss, fontFamily: FONT_MONO, fontWeight: 700, textAlign: "center" }}>
-                ⛽ Estimated score contribution +{totalPct.toFixed(1)}% ({Math.round(engStat.score)} → {Math.round(engStat.score * (1 + totalPct / 100))})
-              </div>
-            );
-          })()}
-        </>
-      ) : (
-        <>
-          <Btn color={C.dim} ghost full style={{ marginTop: 16 }} onClick={() => setShowOverride(v => !v)}>
-            {showOverride ? "Never mind" : "Train anyway →"}
-          </Btn>
-          {showOverride && (
-            <div className="ease-up" style={{ marginTop: 12, padding: 14, borderRadius: 12, background: `${C.amber}12`, border: `1px solid ${C.amber}40` }}>
-              <div style={{ fontSize: 12, color: C.amber, fontFamily: FONT_MONO, marginBottom: 10, lineHeight: 1.5 }}>⚠ Today's a recovery day. Pushing through cuts into recovery — go lighter than usual.</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {[{ type: "tabata" }, { type: "long_interval" }, { type: "lift" }, { type: "cross_training" }, { type: "walk" }].map((it, i) => {
-                  const d = RECOVERY.TYPES[it.type];
-                  return <Btn key={i} color={C[d.colorKey]} size="sm" style={{ flex: "1 1 40%" }} onClick={() => actOn(it, "Recovery day — logging this as an override.")}>{actLabel(it)}</Btn>;
-                })}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Tentative next-days plan */}
-      <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.line}` }}>
-        <Eyebrow>Coming up · this week</Eyebrow>
-        <div style={{ marginTop: 10 }}>
-          {plan.slice(1).map((p, i) => {
-            const its = itemsOf(p);
-            const col = its.length ? C[RECOVERY.TYPES[its[0].type].colorKey] : C.dim;
-            const emoji = its.length ? its.map(it => RECOVERY.TYPES[it.type].emoji).join(" ") : "🛌";
-            const lbl = its.length ? its.map(itemLabel).join(" + ") : "Rest";
-            const hasLift = its.some(it => it.type === "lift");
-            return (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: i < plan.length - 2 ? `1px solid ${C.line}` : "none" }}>
-                <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO, width: 36, flexShrink: 0 }}>{p.date.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()}</span>
-                <span style={{ fontSize: 17, width: 48, flexShrink: 0 }}>{emoji}</span>
-                <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: col, letterSpacing: "-0.01em" }}>{lbl}</span>
-                {hasLift && <span style={{ fontSize: 9, color: C.amber, fontFamily: FONT_MONO, fontWeight: 700, border: `1px solid ${C.amber}55`, borderRadius: 6, padding: "2px 6px" }}>+ LIFT</span>}
-              </div>
-            );
-          })}
-        </div>
-        <div style={{ fontSize: 10, color: C.mute, fontFamily: FONT_MONO, marginTop: 8 }}>Tentative — updates every time you log.</div>
-        {/* Tip-off forecast — where the engine will idle to by game day */}
-        {(() => {
-          if (constraints.gameDow == null || engStat.score <= 0) return null;
-          const days = (constraints.gameDow - today.getDay() + 7) % 7;
-          const gameDay = addDays(today, days);
-          if (constraints.skipGameWeekStart === startOfWeek(gameDay).getTime()) return null;
-          const forecast = engStat.score * Math.pow(1 - 1 / ENGINE_TAU, days);
-          return (
-            <div style={{ marginTop: 10, fontSize: 12, color: C.dim, fontFamily: FONT_MONO, lineHeight: 1.5 }}>
-              🏀 {days === 0 ? "Tonight's game" : `${gameDay.toLocaleDateString("en-US", { weekday: "long" })}'s game`}: engine ≈ <b style={{ color: C.bone }}>{Math.round(forecast)}</b> at tip-off on idle alone — every session before then raises it.
-            </div>
-          );
-        })()}
-      </div>
-
-      {/* Trailing summaries */}
-      <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.line}`, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-        {[["7-DAY", s7], ["14-DAY", s14], ["30-DAY", s30]].map(([lbl, s]) => (
-          <div key={lbl} style={{ background: C.raised, border: `1px solid ${C.line}`, borderRadius: 12, padding: "12px 12px" }}>
-            <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT_MONO, letterSpacing: "0.08em" }}>{lbl}</div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 6 }}>
-              <span className="num-tab h-display" style={{ fontSize: 24, fontWeight: 700, color: C.bone, letterSpacing: "-0.03em" }}>{s.count}</span>
-              <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT_MONO }}>· {s.hard} hard</span>
-            </div>
-            <div style={{ fontSize: 10, color: C.electric, fontFamily: FONT_MONO, marginTop: 5 }}>⏱ {fmtDur(s.minutes)}</div>
-            <div style={{ display: "flex", gap: 6, marginTop: 7, fontSize: 11, fontFamily: FONT_MONO, color: C.dim, flexWrap: "wrap" }}>
-              {["tabata", "long_interval", "lift", "cross_training", "walk", "game"].map(k => (
-                <span key={k} title={RECOVERY.TYPES[k].label}>{RECOVERY.TYPES[k].emoji} {s.byType[k]}</span>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: C.dim, fontFamily: FONT_MONO }}>
-        <span>{streak > 0 ? `🔥 ${streak}-day streak` : (layoff != null ? `${layoff}d since last session` : "No sessions yet")}</span>
-        <button onClick={() => onOpenLogger({})} className="btn" style={{ background: "transparent", border: "none", color: C.electric, fontFamily: FONT_MONO, fontSize: 11, cursor: "pointer", padding: 0, fontWeight: 700 }}>+ Log a session</button>
-      </div>
-    </Surface>
-  );
 }
 
 export function ConditioningLogger({ state, onClose, onSave, onDelete }) {
@@ -220,6 +25,9 @@ export function ConditioningLogger({ state, onClose, onSave, onDelete }) {
   // Box score — Thursday-night stat line, points and boards.
   const [points, setPoints] = useState(editing && editing.points != null ? String(editing.points) : "");
   const [rebounds, setRebounds] = useState(editing && editing.rebounds != null ? String(editing.rebounds) : "");
+  const [assists, setAssists] = useState(editing && editing.assists != null ? String(editing.assists) : "");
+  const [steals, setSteals] = useState(editing && editing.steals != null ? String(editing.steals) : "");
+  const [threes, setThrees] = useState(editing && editing.threes_made != null ? String(editing.threes_made) : "");
   // Sweat440 focus: default follows the class rotation for the session's weekday,
   // until the user picks one explicitly.
   const [focus, setFocus] = useState(editing ? (editing.focus || null) : null);
@@ -252,6 +60,9 @@ export function ConditioningLogger({ state, onClose, onSave, onDelete }) {
       court: type === "game" ? court : null,
       points: type === "game" && points !== "" ? Number(points) : null,
       rebounds: type === "game" && rebounds !== "" ? Number(rebounds) : null,
+      assists: type === "game" && assists !== "" ? Number(assists) : null,
+      steals: type === "game" && steals !== "" ? Number(steals) : null,
+      threes_made: type === "game" && threes !== "" ? Number(threes) : null,
       focus: type === "cross_training" ? effFocus : null,
       class_name: type === "cross_training" ? effClassName : null,
     });
@@ -264,7 +75,8 @@ export function ConditioningLogger({ state, onClose, onSave, onDelete }) {
     if (!Number.isFinite(mins) || mins <= 0 || mins > 1440) { setError("Enter a positive number of minutes."); return; }
     const date = new Date(when);
     if (!Number.isFinite(date.getTime()) || date > new Date()) { setError("Choose a date and time that has already happened."); return; }
-    if (type === "game" && (badStat(points) || badStat(rebounds))) { setError("Points and rebounds should be whole numbers."); return; }
+    if (type === "game" && [points, rebounds, assists, steals, threes].some(badStat)) { setError("Stats should be whole numbers."); return; }
+    if (type === "game" && threes !== "" && points !== "" && Number(threes) * 3 > Number(points)) { setError("Made threes can’t add up to more than your points."); return; }
     setError("");
     save();
   };
@@ -285,6 +97,16 @@ export function ConditioningLogger({ state, onClose, onSave, onDelete }) {
         <label className="engine-field log-stat">Points<input aria-label="Points" type="number" inputMode="numeric" min="0" step="1" placeholder="—" value={points} onChange={e => { setPoints(e.target.value); setError(""); }}/></label>
         <label className="engine-field log-stat">Rebounds<input aria-label="Rebounds" type="number" inputMode="numeric" min="0" step="1" placeholder="—" value={rebounds} onChange={e => { setRebounds(e.target.value); setError(""); }}/></label>
       </div>
+      <details className="engine-details log-more" open={!!(assists || steals || threes)}><summary>Assists, steals, threes made</summary>
+        <div className="log-stat-row">
+          <label className="engine-field log-stat">Assists<input aria-label="Assists" type="number" inputMode="numeric" min="0" step="1" placeholder="—" value={assists} onChange={e => { setAssists(e.target.value); setError(""); }}/></label>
+          <label className="engine-field log-stat">Steals<input aria-label="Steals" type="number" inputMode="numeric" min="0" step="1" placeholder="—" value={steals} onChange={e => { setSteals(e.target.value); setError(""); }}/></label>
+          <label className="engine-field log-stat">3PM<input aria-label="Threes made" type="number" inputMode="numeric" min="0" step="1" placeholder="—" value={threes} onChange={e => { setThrees(e.target.value); setError(""); }}/></label>
+        </div>
+      </details>
+      {state.onPregame && <details className="engine-details" open={!state.pregame?.[dayKeyOf(when)]}><summary>Before the game{state.pregame?.[dayKeyOf(when)] ? ` · ${pregameLabel(state.pregame[dayKeyOf(when)])}` : ' · optional'}</summary>
+        <PregameCheck value={state.pregame?.[dayKeyOf(when)] || {}} onChange={v => state.onPregame(dayKeyOf(when), v)}/>
+      </details>}
       <div className="engine-label" style={{ marginTop: 6 }}>How was your engine?</div>
       {choice(COURT_RATINGS, court, setCourt, "Court rating")}
       <div className="engine-label" style={{ marginTop: 16 }}>Fourth-quarter legs</div>

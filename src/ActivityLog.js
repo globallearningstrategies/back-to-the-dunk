@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { RECOVERY, s440FocusFor, daysAgo, fmtNum } from './model';
+import { RECOVERY, s440FocusFor, daysAgo, fmtNum, cardioRowLabel } from './model';
 import { FAST_BREAK_NOTES } from './FastBreakLog';
-import { shootingSessions, formatPct, shotPct } from './shooting';
+import { shootingSessions, formatPct, shotPct, shotLabel } from './shooting';
 import { Icon } from './ui';
 
 const FILTERS = [['all', 'All'], ['game', 'Games'], ['shooting', 'Shooting'], ['conditioning', 'Conditioning'], ['strength', 'Strength'], ['walk', 'Walks']];
@@ -15,8 +15,8 @@ export function buildFeed(cardioSessions, history, shooting) {
       const className = s.workout_type === 'cross_training' && s.class_name ? s.class_name.replace('SWEAT440 ', '') : null;
       const sprints = s.workout_type === 'long_interval' && s.notes === FAST_BREAK_NOTES;
       return { key: `cardio${s.id}`, kind: 'cardio', group: s.workout_type === 'game' ? 'game' : 'conditioning', id: s.id, date: new Date(s.completed_at), emoji: def.emoji || '•',
-        title: sprints ? 'Fast break · 10 sprints' : def.label || s.workout_type,
-        detail: [className ? `${focus ? focus.emoji + ' ' : ''}${className}` : focus ? `${focus.emoji} ${focus.label} day` : null, s.points != null ? `${s.points} pts` : null, s.rebounds != null ? `${s.rebounds} reb` : null, s.duration_min != null ? `${s.duration_min} min` : null, s.rpe != null ? `Effort ${s.rpe}/10` : null, sprints ? null : s.notes].filter(Boolean).join(' · '), raw: s };
+        title: cardioRowLabel(s),
+        detail: [className ? `${focus ? focus.emoji + ' ' : ''}${className}` : focus ? `${focus.emoji} ${focus.label} day` : null, s.points != null ? `${s.points} pts` : null, s.rebounds != null ? `${s.rebounds} reb` : null, s.assists != null ? `${s.assists} ast` : null, s.steals != null ? `${s.steals} stl` : null, s.threes_made != null ? `${s.threes_made} 3PM` : null, s.duration_min != null ? `${s.duration_min} min` : null, s.rpe != null ? `Effort ${s.rpe}/10` : null, sprints ? null : s.notes].filter(Boolean).join(' · '), raw: s };
     }),
     ...history.map(w => {
       const walk = w.session_name === 'Treadmill Walk';
@@ -27,7 +27,7 @@ export function buildFeed(cardioSessions, history, shooting) {
         exercises: walk ? null : exercises, raw: w };
     }),
     ...shootingSessions(shooting).map(s => ({ key: `shot${s.id}`, kind: 'shooting', group: 'shooting', id: s.id, date: s.at, emoji: '🎯',
-      title: `${s.attempts} threes`, detail: s.makes == null ? 'Reps logged · no count' : `${s.makes} made · ${formatPct(shotPct(s.makes, s.attempts))}`, raw: s })),
+      title: shotLabel(s), detail: s.makes == null ? 'Reps logged · no count' : `${s.makes} made · ${formatPct(shotPct(s.makes, s.attempts))}`, raw: s })),
   ].sort((a, b) => b.date - a.date);
 }
 
@@ -59,7 +59,7 @@ export function ActivityLog({ cardioSessions, history, shooting, busy, onAdd, on
       <div className="engine-label engine-month">{month.label}</div>
       <div className="engine-feed">{month.items.map(f => {
         const expandable = f.exercises && f.exercises.length > 0;
-        const when = `${f.date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · ${daysAgo(f.date)}`;
+        const when = `${f.date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · ${daysAgo(f.date)}${f.raw && f.raw._pending ? ' · waiting to sync' : ''}`;
         return <div key={f.key}>
           <div className="engine-entry">
             <div className="engine-entry-icon" aria-hidden="true">{f.emoji}</div>

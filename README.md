@@ -21,6 +21,10 @@ Run `npm run lint`, `npm test -- --runInBand`, and `npm run build`. GitHub Actio
 - `src/GameDayWarmup.js`: the 10-minute, 4-phase pre-game warm-up (optional countdown with chimes/vibration, Skip/Next, check-off mode, screen kept awake). Its card leads Today on game nights.
 - `src/insights.js`: game insights — points after a hard vs light day before, and Engine vs points.
 - `src/WeightScreen.js`: weight progress toward your own start/goal (set in Settings) and the body settings form.
+- `src/data/outbox.js`: offline queue — games, sessions, walks, lifts and weigh-ins saved with no connection are kept on the device and synced in order later.
+- `src/seasons.js`: named seasons (each runs until the next starts) used by season stats and game insights.
+- `src/recap.js`: weekly recap card (Mon–Sun). `src/pregame.js`: sleep/legs pre-game check. `src/conditioningTest.js`: 12-minute test (VO₂max) trend.
+- `src/exportData.js`: CSV/JSON export from Settings.
 - `src/ActivityLog.js`: the unified, filterable activity feed.
 - `src/ui.js`: shared controls (bottom sheet, switch, icons) and notifications.
 - `src/training.js`, `statistics.js`, `nutrition.js`, `logging.js`, `home.js`: feature screens.

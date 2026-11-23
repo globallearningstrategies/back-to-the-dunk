@@ -58,8 +58,6 @@ export function engineBeforeGame(all, game) {
   return engineModel(all.filter(s => s.date < when && String(s.id) !== String(game.id)), when).score;
 }
 
-export function sessionContribution(session) { return engineLoadOf(session) / ENGINE_TAU; }
-
 export function coachMessage({ tone, recovery, complete, returning }) {
   const messages = {
     calm: { recovery: 'Recovery is on the plan today.', complete: 'Today’s session is recorded. Your next step is ready.', returning: 'Welcome back. Take the next session at your pace.', train: 'Your next session is ready.' },

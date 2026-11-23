@@ -108,7 +108,7 @@ test('10 sprints are named as sprints in Today’s activity and in plans, not "L
     { id: 'o', workout_type: 'long_interval', completed_at: at(0, 12), duration_min: 20, rpe: 9, notes: null },
   ], []);
   expect(sessionLabel(sprints)).toBe('10 sprints');
-  expect(sessionLabel(other)).toBe('Long Interval');
+  expect(sessionLabel(other)).toBe('Intervals');
   expect(planItemLabel({ type: 'long_interval' })).toBe('10 sprints');
   const div = document.createElement('div'); document.body.appendChild(div); const root = createRoot(div);
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -116,4 +116,67 @@ test('10 sprints are named as sprints in Today’s activity and in plans, not "L
   expect(div.querySelector('[aria-label="Today\'s activity"]').textContent).toContain('10 sprints');
   expect(div.querySelector('[aria-label="Today\'s activity"]').textContent).not.toContain('Long Interval');
   await act(async () => root.unmount()); div.remove();
+});
+
+test('conditioning tests combine saved results with older session notes and know when a re-test is due', () => {
+  const { conditioningTests, testStatus } = require('./conditioningTest');
+  const { cardioRowLabel } = require('./model');
+  const notes = 'Dyno day · Cooper 12-min test · 1.5 mi · est VO₂max 42.7';
+  const tests = conditioningTests([{ date: '2026-10-01T10:00:00Z', miles: 1.6, vo2: 46.3 }], [
+    { completed_at: '2026-08-15T10:00:00Z', notes }, { completed_at: '2026-10-01T10:00:00Z', notes },
+  ]);
+  expect(tests.map(t => t.vo2)).toEqual([42.7, 46.3]);
+  expect(testStatus(tests, new Date('2026-11-01T10:00:00Z'))).toMatchObject({ due: false, daysSince: 31 });
+  expect(testStatus(tests, new Date('2026-11-20T10:00:00Z')).due).toBe(true);
+  expect(testStatus([], new Date()).due).toBe(false);
+  expect(cardioRowLabel({ workout_type: 'long_interval', notes })).toBe('Conditioning test');
+  expect(cardioRowLabel({ workout_type: 'long_interval', notes: null })).toBe('Intervals');
+  expect(cardioRowLabel({ workout_type: 'game' })).toBe('Basketball game');
+});
+
+test('pre-game sleep and legs answers split scoring once each side has two games', () => {
+  const { gameInsights } = require('./insights');
+  const { dayKeyOf } = require('./pregame');
+  const cardio = [game('a', 1, 20, 5), game('b', 8, 18, 5), game('c', 15, 10, 5), game('d', 22, 12, 5)];
+  const pre = { [dayKeyOf(cardio[0].completed_at)]: { sleep: 'good', legs: 'fresh' }, [dayKeyOf(cardio[1].completed_at)]: { sleep: 'good' },
+    [dayKeyOf(cardio[2].completed_at)]: { sleep: 'poor', legs: 'heavy' }, [dayKeyOf(cardio[3].completed_at)]: { sleep: 'ok' } };
+  const r = gameInsights(cardio, normalizeAll(cardio, []), {}, new Date(), pre);
+  const sleep = r.factors.find(f => f.key === 'sleep'), legs = r.factors.find(f => f.key === 'legs');
+  expect(sleep).toMatchObject({ comparable: true, top: { games: 2, points: 19 }, rest: { games: 2, points: 11 } });
+  expect(legs.comparable).toBe(false);
+  expect(legs.answered).toBe(2);
+});
+
+test('the warm-up asks the pre-game questions before the timer starts', async () => {
+  const { GameDayWarmup } = require('./GameDayWarmup');
+  const { setFeedbackPreferences } = require('./model');
+  setFeedbackPreferences({ sound: false, vibration: false });
+  const onPregame = jest.fn();
+  const div = document.createElement('div'); document.body.appendChild(div); const root = createRoot(div);
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  await act(async () => root.render(<GameDayWarmup onClose={() => {}} pregame={{ legs: 'fresh' }} onPregame={onPregame}/>));
+  const sleepGood = [...div.querySelectorAll('[aria-label="Sleep last night"] button')].find(b => b.textContent === 'Good');
+  await act(async () => sleepGood.click());
+  expect(onPregame).toHaveBeenCalledWith({ legs: 'fresh', sleep: 'good' });
+  await act(async () => [...div.querySelectorAll('button')].find(b => b.textContent === 'Start timer').click());
+  expect(div.querySelector('[aria-label="Sleep last night"]')).toBeNull();
+  await act(async () => root.unmount()); div.remove();
+});
+
+test('weekly recap covers the week so far on Sunday and the finished week after', () => {
+  const { recapWeekStart, weekRecap, recapHeadline } = require('./recap');
+  expect(recapWeekStart(new Date('2026-11-22T19:00:00')).getDate()).toBe(16); // Sunday → this week (Mon 16th)
+  expect(recapWeekStart(new Date('2026-11-23T09:00:00')).getDate()).toBe(16); // Monday → last week
+  const cardio = [
+    { id: 'g', workout_type: 'game', completed_at: '2026-11-19T19:00:00', duration_min: 44, rpe: 8, points: 18, rebounds: 7 },
+    { id: 't', workout_type: 'tabata', completed_at: '2026-11-17T08:00:00', duration_min: 4, rpe: 8 },
+    { id: 'old', workout_type: 'tabata', completed_at: '2026-11-10T08:00:00', duration_min: 4, rpe: 8 },
+  ];
+  const walks = [{ id: 1, session_name: 'Treadmill Walk', logged_at: '2026-11-21T09:00:00', exercises: [{ duration: 45, pace: 'brisk' }] }];
+  const shooting = { a: { at: '2026-11-18T10:00:00', attempts: 100, makes: 36 }, b: { at: '2026-11-20T10:00:00', attempts: 50, makes: 40, kind: 'ft' } };
+  const r = weekRecap({ all: normalizeAll(cardio, walks), cardioSessions: cardio, shooting, goal: 3 }, recapWeekStart(new Date('2026-11-23T09:00:00')), new Date('2026-11-23T09:00:00'));
+  expect(r).toMatchObject({ sessions: 3, briskWalks: 1, briskMinutes: 45, threes: { attempts: 100, pct: 36 } });
+  expect(r.games).toHaveLength(1); expect(r.best.points).toBe(18);
+  expect(r.engineChange).toBeGreaterThan(0);
+  expect(recapHeadline(r)).toBe('Weekly goal hit — 3 sessions.');
 });
