@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 import { supabase } from './data/client';
 import { fetchAll, mutateRecord, restorePayload } from './data/records';
+import { applyOutbox, enqueue, flushOutbox, isLocalId, isNetworkError, newUUID, readOutbox, writeOutbox } from './data/outbox';
 import { UserDataProvider, useUserData } from './data/UserData';
 import { accountKey, readJSON, writeJSON, DEFAULT_BODY } from './data/storage';
 import { useWorkoutDraft } from './data/useWorkoutDraft';
 import { C, LS_THEME, loadThemePref, applyThemePalette, FONT_DISPLAY, FONT_MONO, injectStyles, SESSIONS, RECOVERY, BRISK_WALK, normalizeAll, computeGameState, DEFAULT_SCHEDULE, requestNotificationPermission, VAPID_PUBLIC_KEY, urlBase64ToUint8Array, pushSupported, getLastPerformance, platesToReach, todayKey, engineModel } from './model';
 import { NavItem, PageTitle, toast, ToastHost, Confetti, Icon, Sheet, Switch } from './ui';
 import { RestTimer, DynoCard } from './training';
-import { NutritionTab } from './nutrition';
 import { toLocalInput, ConditioningLogger, WalkLogger, LiftDateSheet } from './logging';
 import { FastBreakLog, FAST_BREAK_NOTES } from './FastBreakLog';
 import { AchievementsSheet, CelebrationOverlay } from './home';
@@ -15,20 +15,44 @@ import { AuthGate } from './auth';
 import { EngineHome, EngineProgress, GoalSettings } from './engine-ui';
 import { DEFAULT_PREFERENCES, engineAchievements, exerciseRecord, formatEngine, nutritionTotals, weekKey } from './engine';
 import { TrainWorkspace } from './WorkoutFlow';
-import { WeeklyGamePlanner } from './WeeklyGamePlanner';
 import { ActivityLog } from './ActivityLog';
 import { GameDayWarmup } from './GameDayWarmup';
 import { GameInsights } from './insights';
 import { WeightScreen, BodySettings } from './WeightScreen';
+import { SeasonSettings } from './seasons';
 import './features.css';
-import { ThreePointLog, ShootingCard, newShotId, formatPct, shotPct } from './shooting';
+import { ThreePointLog, ShootingCard, newShotId, formatPct, shotPct, shotLabel } from './shooting';
+import { conditioningTests, ConditioningTestCard } from './conditioningTest';
+import { recapWeekStart, weekRecap, WeekRecap } from './recap';
 import { FoodJournal, newFoodId } from './FoodJournal';
 import { setFeedbackPreferences, vibrate } from './model';
 import './engine.css';
 
 // The detailed statistics screen is the heaviest module and sits behind a
 // collapsed section, so it loads only when someone opens it.
-const StatsTab = lazy(() => import('./statistics').then(m => ({ default: m.StatsTab })));
+const loaders = {
+  stats: () => import('./statistics'),
+  nutrition: () => import('./nutrition'),
+  planner: () => import('./WeeklyGamePlanner'),
+  exportData: () => import('./exportData'),
+};
+const StatsTab = lazy(() => loaders.stats().then(m => ({ default: m.StatsTab })));
+// Screens that are opened less often load on demand as well.
+const NutritionTab = lazy(() => loaders.nutrition().then(m => ({ default: m.NutritionTab })));
+const WeeklyGamePlanner = lazy(() => loaders.planner().then(m => ({ default: m.WeeklyGamePlanner })));
+const DataExport = lazy(() => loaders.exportData().then(m => ({ default: m.DataExport })));
+// Fetch them in the background soon after start-up, so they open even if the
+// connection drops later (e.g. in a gym with no signal).
+const prefetchScreens = () => Object.values(loaders).forEach(load => load().catch(() => {}));
+function Loading() { return <p className="engine-muted" role="status">Loading…</p>; }
+export class LoadBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { failed: false }; }
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (!this.state.failed) return <Suspense fallback={<Loading/>}>{this.props.children}</Suspense>;
+    return <p className="engine-muted" role="alert">This section couldn’t load — you may be offline. <button className="engine-link" onClick={() => window.location.reload()}>Try again</button></p>;
+  }
+}
 
 function Boot({ title, message, children }) {
   return <div className="engine-app engine-boot" data-theme={loadThemePref()} role={children ? 'alert' : 'status'}><div>
@@ -79,9 +103,28 @@ export function AccountApp({ userId, userEmail }) {
     catch (e) { if (mounted.current) { showSave(false); toast(e.message || 'Could not save. Please try again.'); } return false; }
     finally { busyRef.current = false; if (mounted.current) setBusy(false); }
   };
+  // Offline outbox: writes that fail for lack of a connection are saved on the
+  // device, shown immediately, and sent in order once the connection is back.
+  const rowsRef = useRef({});
+  const [outbox, setOutboxState] = useState(() => readOutbox(userId));
+  const outboxRef = useRef(outbox);
+  const offlineNoticeRef = useRef(false);
+  const setOutbox = ops => { outboxRef.current = ops; try { writeOutbox(userId, ops); } catch { /* storage full: still kept in memory */ } if (mounted.current) setOutboxState(ops); };
   const write = async (table, operation, payload, id) => {
-    const row = await mutateRecord(supabase, userId, table, operation, payload, id);
-    if (!mounted.current) throw new Error('Account changed.');
+    const body = operation === 'insert' && table === 'cardio_sessions' && !payload.id ? { ...payload, id: newUUID() } : payload;
+    // Changes to an entry that is still waiting to sync stay queued behind it.
+    const queued = id != null && outboxRef.current.some(o => o.table === table && String(o.id) === String(id));
+    if (!queued) {
+      try {
+        const row = await mutateRecord(supabase, userId, table, operation, body, id);
+        if (!mounted.current) throw new Error('Account changed.');
+        return row;
+      } catch (e) { if (!isNetworkError(e)) throw e; }
+    }
+    const current = id != null ? (rowsRef.current[table] || []).find(r => String(r.id) === String(id)) : null;
+    const { ops, row } = enqueue(outboxRef.current, { table, operation, payload: body, id, current, userId });
+    setOutbox(ops);
+    if (!offlineNoticeRef.current) { offlineNoticeRef.current = true; toast('No connection — saved on this phone. It will sync automatically.'); }
     return row;
   };
   const [theme, setTheme] = useState(loadThemePref);
@@ -110,13 +153,13 @@ export function AccountApp({ userId, userEmail }) {
   const [shotState, setShotState] = useState({ open: false }); // { open, editing? }
   const [warmupOpen, setWarmupOpen] = useState(false);
   const logGame = () => { setWarmupOpen(false); setLoggerState({ open: true, prefillType: 'game', lockType: true }); };
-  // Notification deep link: /?log=game opens the game logger straight away.
+  // Notification deep links: /?log=game opens the game logger; /?recap=week shows the weekly recap.
+  const [recapRequested, setRecapRequested] = useState(false);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('log') === 'game') {
-      setLoggerState({ open: true, prefillType: 'game', lockType: true });
-      window.history.replaceState(null, '', window.location.pathname);
-    }
+    if (params.get('log') === 'game') setLoggerState({ open: true, prefillType: 'game', lockType: true });
+    if (params.get('recap') === 'week') setRecapRequested(true);
+    if (params.get('log') || params.get('recap')) window.history.replaceState(null, '', window.location.pathname);
   }, []);
   // Conditioning logger sheet: { open, prefillType?, warn?, editing? }
   const [loggerState, setLoggerState] = useState({ open: false });
@@ -134,6 +177,15 @@ export function AccountApp({ userId, userEmail }) {
   const foodEntries = cloud.get('foodEntries', {});
   const foodFavorites = cloud.get('foodFavorites', {});
   const shooting = cloud.get('shooting', {});
+  const dynoSaved = cloud.get('dyno', []);
+  const pregame = cloud.get('pregame', {});
+  const recapStart = recapWeekStart(new Date());
+  const recapKey = weekKey(recapStart);
+  const setPregame = (day, value) => cloud.set('pregame', prev => ({ ...prev, [day]: value && (value.sleep || value.legs) ? value : null }), {});
+  const openConditioningTest = () => {
+    setTab('workout');
+    setTimeout(() => { const el = document.getElementById('conditioning-test'); if (el) { el.open = true; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, 50);
+  };
   const setShot = (id, value) => cloud.set('shooting', prev => ({...prev,[id]:value}), {});
   const setPreferences = next => cloud.set('preferences', next, DEFAULT_PREFERENCES);
   const updatePreferences = patch => setPreferences(prev => ({...prev,...patch}));
@@ -146,7 +198,8 @@ export function AccountApp({ userId, userEmail }) {
     if (id) { toast('Shooting session updated'); return; }
     if (preferences.motion) setConfetti(true);
     const pct = shotPct(value.makes, value.attempts);
-    setSessionResult({title:`${value.attempts} threes recorded`,detail:pct == null ? 'Reps banked. Add your makes next time to track your percentage.' : `${value.makes} of ${value.attempts} made · ${formatPct(pct)} from three.`});
+    const ft = value.kind === 'ft';
+    setSessionResult({title:`${shotLabel(value)} recorded`,detail:pct == null ? 'Reps banked. Add your makes next time to track your percentage.' : `${value.makes} of ${value.attempts} made · ${formatPct(pct)}${ft ? ' at the line' : ' from three'}.`});
     setTab('home'); window.scrollTo({top:0,behavior:'auto'});
     toast('Shooting logged', { actionLabel: 'UNDO', onAction: () => { setShot(key, null); setSessionResult(null); } });
   };
@@ -227,6 +280,10 @@ export function AccountApp({ userId, userEmail }) {
 
   // Gamification state, derived purely from logged data.
   const all = useMemo(() => normalizeAll(cardioSessions, history), [cardioSessions, history]);
+  const recapGoal = weeklyGoals[recapKey] || preferences.weeklyGoal;
+  const recap = useMemo(() => weekRecap({ all, cardioSessions, shooting, goal: recapGoal }, recapStart), [all, cardioSessions, shooting, recapGoal, recapKey]);
+  const recapDay = [0, 1].includes(new Date().getDay());
+  const showRecap = recapRequested || (recapDay && preferences.recapDismissed !== recapKey && recap.sessions > 0);
   const game = useMemo(() => engineAchievements(computeGameState(history, cardioSessions, weightLog), all, preferences, weeklyGoals), [history, cardioSessions, weightLog, all, preferences, weeklyGoals]);
 
   // Post-game legs check-ins, keyed by cardio session id.
@@ -322,6 +379,52 @@ export function AccountApp({ userId, userEmail }) {
     }
   }, [game, loading]);
 
+  const sortCardio = rows => [...rows].sort((a,b) => new Date(b.completed_at)-new Date(a.completed_at));
+  const sortByLogged = rows => [...rows].sort((a,b) => new Date(b.logged_at)-new Date(a.logged_at));
+  rowsRef.current = { cardio_sessions: cardioSessions, workouts: history, weight_log: weightLog };
+  const flushingRef = useRef(false);
+  const flush = async () => {
+    if (flushingRef.current || !outboxRef.current.length || navigator.onLine === false) return;
+    flushingRef.current = true;
+    const setRows = { cardio_sessions: setCardioSessions, workouts: setHistory, weight_log: setWeightLog };
+    const sorter = table => table === 'cardio_sessions' ? sortCardio : sortByLogged;
+    const replace = (table, oldId, row) => setRows[table](p => sorter(table)(p.some(r => String(r.id) === String(oldId)) ? p.map(r => String(r.id) === String(oldId) ? row : r) : [row, ...p]));
+    const drop = op => setOutbox(outboxRef.current.filter(o => o.opId !== op.opId));
+    try {
+      const { stopped } = await flushOutbox(outboxRef.current, async op => {
+        try {
+          if (op.operation === 'delete') return await mutateRecord(supabase, userId, op.table, 'delete', null, op.id);
+          const { id: _ignored, ...withoutId } = op.payload;
+          const payload = op.operation === 'insert' && isLocalId(op.id) ? withoutId : op.payload;
+          return await mutateRecord(supabase, userId, op.table, op.operation, payload, op.operation === 'update' ? op.id : undefined);
+        } catch (e) {
+          if (op.operation === 'delete' && e.code === 'PGRST116') return null;          // already gone
+          if (op.operation === 'insert' && e.code === '23505') return { ...op.payload, id: op.id, user_id: userId }; // already sent
+          throw e;
+        }
+      }, {
+        onSynced: (op, row) => { drop(op); if (row && op.operation !== 'delete' && mounted.current) replace(op.table, op.id, row); },
+        onRejected: (op, e) => {
+          drop(op);
+          if (op.operation === 'insert' && mounted.current) setRows[op.table](p => p.filter(r => String(r.id) !== String(op.id)));
+          toast(`An entry saved offline couldn’t sync: ${e.message || 'rejected by the server'}`);
+        },
+      });
+      if (!stopped && !outboxRef.current.length && offlineNoticeRef.current) { offlineNoticeRef.current = false; toast('Back online — everything synced'); }
+    } finally {
+      flushingRef.current = false;
+      if (outboxRef.current.length && navigator.onLine !== false && mounted.current) setTimeout(() => flushRef.current(), 5000);
+    }
+  };
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
+  useEffect(() => {
+    const go = () => flushRef.current();
+    window.addEventListener('online', go); window.addEventListener('focus', go);
+    const timer = setInterval(go, 30000);
+    return () => { window.removeEventListener('online', go); window.removeEventListener('focus', go); clearInterval(timer); };
+  }, []);
+
   const loadController = useRef(null);
   const loadData = useCallback(async () => {
     if (loadController.current) loadController.current.abort();
@@ -334,11 +437,14 @@ export function AccountApp({ userId, userEmail }) {
         fetchAll(supabase, 'cardio_sessions', userId, 'completed_at', controller.signal),
       ]);
       if (controller.signal.aborted) return;
-      setHistory(workouts); setWeightLog(weights); setCardioSessions(cardio);
+      const ops = outboxRef.current;
+      setHistory(sortByLogged(applyOutbox(workouts, 'workouts', ops, userId))); setWeightLog(sortByLogged(applyOutbox(weights, 'weight_log', ops, userId))); setCardioSessions(sortCardio(applyOutbox(cardio, 'cardio_sessions', ops, userId)));
+      if (ops.length) flushRef.current();
     } catch(e) { if (!controller.signal.aborted) setLoadError(e.message || 'Could not load your history.'); }
     finally { if (!controller.signal.aborted) setLoading(false); }
   }, [userId]);
   useEffect(() => { loadData(); return () => { if (loadController.current) loadController.current.abort(); }; }, [loadData]);
+  useEffect(() => { const t = setTimeout(prefetchScreens, 4000); return () => clearTimeout(t); }, []);
   const signOut = async () => {
     await cloud.retry();
     const { error } = await supabase.auth.signOut();
@@ -416,8 +522,6 @@ export function AccountApp({ userId, userEmail }) {
 
   };
 
-  const sortCardio = rows => [...rows].sort((a,b) => new Date(b.completed_at)-new Date(a.completed_at));
-  const sortByLogged = rows => [...rows].sort((a,b) => new Date(b.logged_at)-new Date(a.logged_at));
   const logSession = () => run(async () => {
     const exVols = session.exercises.map(ex => {
       const value = vals[sk+"_"+ex.id] || {};
@@ -447,9 +551,9 @@ export function AccountApp({ userId, userEmail }) {
     setSessionResult({title:'Session recorded',detail:`${payload.duration_min} min · effort ${payload.rpe}/10. Engine ${formatEngine(before)} → ${formatEngine(after)} (+${formatEngine(after-before)} points).`});
   });
   const logDyno = (miles, vo2) => logConditioning({ workout_type: 'long_interval', duration_min: 12, rpe: 10, notes: `Dyno day · Cooper 12-min test · ${miles} mi · est VO₂max ${vo2}` });
-  const saveCardio = ({ id, type, completed_at, duration_min, rpe, notes, legs, court, points, rebounds, focus, class_name }) => run(async () => {
+  const saveCardio = ({ id, type, completed_at, duration_min, rpe, notes, legs, court, points, rebounds, assists, steals, threes_made, focus, class_name }) => run(async () => {
     if (!Number.isFinite(duration_min) || duration_min <= 0 || rpe < 1 || rpe > 10) throw new Error('Enter a positive duration and effort from 1 to 10.');
-    const row = await write('cardio_sessions', id != null ? 'update' : 'insert', { workout_type: type, completed_at, duration_min, rpe, notes, points, rebounds, focus, class_name }, id);
+    const row = await write('cardio_sessions', id != null ? 'update' : 'insert', { workout_type: type, completed_at, duration_min, rpe, notes, points, rebounds, ...(type === 'game' ? { assists: assists ?? null, steals: steals ?? null, threes_made: threes_made ?? null } : {}), focus, class_name }, id);
     setCardioSessions(p => sortCardio(id != null ? p.map(r => r.id === id ? row : r) : [row, ...p]));
     setGameLegs(row.id, legs);
     if (type === 'game' && (court || courtRatings[row.id])) cloud.set('court', prev => ({...prev,[row.id]:court||null}), {});
@@ -457,7 +561,7 @@ export function AccountApp({ userId, userEmail }) {
     if (id == null) {
       const before=engineModel(all).score;
       const after=engineModel(normalizeAll([row,...cardioSessions],history)).score;
-      if (type === 'game') { setSessionResult({title:'Game recorded',detail:[points != null ? `${points} pts` : null, rebounds != null ? `${rebounds} reb` : null, `${duration_min} min`, `Engine ${formatEngine(before)} → ${formatEngine(after)}`].filter(Boolean).join(' · ') + '.'}); setTab('home'); return; }
+      if (type === 'game') { setSessionResult({title:'Game recorded',detail:[points != null ? `${points} pts` : null, rebounds != null ? `${rebounds} reb` : null, assists != null ? `${assists} ast` : null, steals != null ? `${steals} stl` : null, threes_made != null ? `${threes_made} 3PM` : null, `${duration_min} min`, `Engine ${formatEngine(before)} → ${formatEngine(after)}`].filter(Boolean).join(' · ') + '.'}); setTab('home'); return; }
       setSessionResult({title:type==='game'?'Game recorded':notes===FAST_BREAK_NOTES?'10 sprints recorded':'Session recorded',detail:`${duration_min} min · effort ${rpe}/10. Engine ${formatEngine(before)} → ${formatEngine(after)}.`});
       setTab('home');
     }
@@ -573,7 +677,7 @@ export function AccountApp({ userId, userEmail }) {
             </div>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:10}}>
-            <span role="status" className="engine-status" data-state={saveMsg==='Failed'||cloud.error?'error':busy||cloud.syncing||cloud.pendingCount?'busy':'ok'}>{saveMsg==='Failed'?'Not saved':busy?'Saving…':cloud.syncing?'Syncing…':cloud.pendingCount?'Pending':saveMsg||'Synced'}</span>
+            <span role="status" className="engine-status" data-state={saveMsg==='Failed'||cloud.error?'error':busy||cloud.syncing||cloud.pendingCount||outbox.length?'busy':'ok'}>{saveMsg==='Failed'?'Not saved':busy?'Saving…':outbox.length?`${outbox.length} to sync`:cloud.syncing?'Syncing…':cloud.pendingCount?'Pending':saveMsg||'Synced'}</span>
             <button className="engine-icon-button framed" aria-label="Settings" aria-current={tab==='settings'?'page':undefined} onClick={()=>{setTab('settings');window.scrollTo({top:0,behavior:'auto'});}}><Icon name="gear" size={20}/></button>
           </div>
         </div>
@@ -604,7 +708,7 @@ export function AccountApp({ userId, userEmail }) {
 
         {tab === "home" && <>
           {sessionResult && <section className="engine-card" role="status"><div className="engine-row"><strong>{sessionResult.title}</strong><button className="engine-link" onClick={()=>setSessionResult(null)}>Dismiss</button></div><p>{sessionResult.detail}</p></section>}
-          <EngineHome cardioSessions={cardioSessions} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} courtRatings={courtRatings} onRate={rateCourt} hasDraft={hasDraft} onResume={resumeTraining} onStart={startTraining} onGoTab={setTab} onQuickAdd={()=>setQuickAddOpen(true)} onFastBreak={()=>setFastBreakOpen(true)} onThrees={()=>setShotState({open:true})} onWarmup={()=>setWarmupOpen(true)} onLogGame={logGame} warmedUp={preferences.lastWarmup===todayKey()} onWalk={pace=>setWalkState({open:true,pace})} shooting={shooting} all={all} onOpenAwards={()=>setAwardsOpen(true)} onLogType={type=>setLoggerState({open:true,prefillType:type})}
+          <EngineHome cardioSessions={cardioSessions} constraints={constraints} preferences={preferences} weeklyGoals={weeklyGoals} courtRatings={courtRatings} onRate={rateCourt} hasDraft={hasDraft} onResume={resumeTraining} onStart={startTraining} onGoTab={setTab} onQuickAdd={()=>setQuickAddOpen(true)} onFastBreak={()=>setFastBreakOpen(true)} onThrees={()=>setShotState({open:true})} onWarmup={()=>setWarmupOpen(true)} onLogGame={logGame} warmedUp={preferences.lastWarmup===todayKey()} onWalk={pace=>setWalkState({open:true,pace})} extraCards={<><ConditioningTestCard compact tests={conditioningTests(dynoSaved, cardioSessions)} onStart={openConditioningTest}/></>} recap={showRecap ? <WeekRecap recap={recap} onDismiss={()=>{setRecapRequested(false);updatePreferences({recapDismissed:recapKey});}} onOpenLog={()=>setTab('history')}/> : null} shooting={shooting} all={all} onOpenAwards={()=>setAwardsOpen(true)} onLogType={type=>setLoggerState({open:true,prefillType:type})}
             stack={{ d3: !!vitaminD3Log[todayKey()], creatine: !!creatineLog[todayKey()] }}
             onStack={(which) => {
               const day = todayKey();
@@ -620,7 +724,7 @@ export function AccountApp({ userId, userEmail }) {
         {/* ── NUTRITION ── */}
         {tab === "nutrition" && (
           <FoodJournal entries={foodEntries} favorites={foodFavorites} onEntry={setFoodEntry} onFavorite={setFavorite} proteinLog={nutrition.protein} calorieLog={nutrition.calories} bodyStats={bodyStats}>
-          <NutritionTab guideOnly onLogFood={food=>{const id=newFoodId();setFoodEntry(id,{name:food.name,protein:food.protein||food.totalProtein||0,calories:food.calories||0,portions:1,day:todayKey(),createdAt:new Date().toISOString()});toast('Food added',{actionLabel:'UNDO',onAction:()=>setFoodEntry(id,null)});}}
+          <LoadBoundary><NutritionTab guideOnly onLogFood={food=>{const id=newFoodId();setFoodEntry(id,{name:food.name,protein:food.protein||food.totalProtein||0,calories:food.calories||0,portions:1,day:todayKey(),createdAt:new Date().toISOString()});toast('Food added',{actionLabel:'UNDO',onAction:()=>setFoodEntry(id,null)});}}
             bodyStats={bodyStats}
             onUpdateBody={updateBodyStats}
             proteinLog={proteinLog}
@@ -631,7 +735,7 @@ export function AccountApp({ userId, userEmail }) {
             onVitaminD3Toggle={toggleVitaminD3}
             creatineLog={creatineLog}
             onCreatineToggle={toggleCreatine}
-          />
+          /></LoadBoundary>
           </FoodJournal>
         )}
 
@@ -642,7 +746,7 @@ export function AccountApp({ userId, userEmail }) {
           onDelete={f => f.kind === 'cardio' ? deleteCardio(f.id) : f.kind === 'shooting' ? deleteShooting(f.id) : deleteLog(f.id)}/>}
 
         {/* ── STATS ── */}
-        {tab === "stats" && <EngineProgress all={all} cardioSessions={cardioSessions} preferences={preferences} courtRatings={courtRatings} onRate={rateCourt} onSettings={()=>setTab("settings")} onEditGame={g=>setLoggerState({open:true,editing:g})} insights={<GameInsights cardioSessions={cardioSessions} all={all} ratings={courtRatings} onEditGame={g=>setLoggerState({open:true,editing:g})}/>} shooting={<ShootingCard log={shooting} onLog={()=>setShotState({open:true})}/>}><Suspense fallback={<p className="engine-muted" role="status">Loading details…</p>}><StatsTab history={history} weightLog={weightLog} cardioSessions={cardioSessions} legsLog={legsLog} /></Suspense></EngineProgress>}
+        {tab === "stats" && <EngineProgress all={all} cardioSessions={cardioSessions} preferences={preferences} courtRatings={courtRatings} onRate={rateCourt} onSettings={()=>setTab("settings")} onEditGame={g=>setLoggerState({open:true,editing:g})} insights={(games, season)=><GameInsights pregame={pregame} cardioSessions={games} seasonName={season.id==='all'?null:season.name} all={all} ratings={courtRatings} onEditGame={g=>setLoggerState({open:true,editing:g})}/>} shooting={<ShootingCard log={shooting} onLog={()=>setShotState({open:true})} onLogFt={()=>setShotState({open:true,kind:'ft'})}/>} extra={<><WeekRecap recap={recap}/><ConditioningTestCard tests={conditioningTests(dynoSaved, cardioSessions)} onStart={openConditioningTest}/></>}><LoadBoundary><StatsTab history={history} weightLog={weightLog} cardioSessions={cardioSessions} legsLog={legsLog} /></LoadBoundary></EngineProgress>}
 
         {/* ── WEIGHT ── */}
         {tab === "weight" && <WeightScreen weightLog={weightLog} body={bodyStats} busy={busy} onLog={logWeight} onDelete={deleteWeight} onEditGoal={()=>{setTab('settings');window.scrollTo({top:0,behavior:'auto'});}}/>}
@@ -652,7 +756,7 @@ export function AccountApp({ userId, userEmail }) {
           <>
             <div className="ease-up"><PageTitle kicker="Games first · recovery built in">Your week</PageTitle></div>
 
-            <WeeklyGamePlanner value={weeklyGamePlan} onChange={saveWeeklyGamePlan} all={all} />
+            <LoadBoundary><WeeklyGamePlanner value={weeklyGamePlan} onChange={saveWeeklyGamePlan} all={all} /></LoadBoundary>
 
           </>
         )}
@@ -660,6 +764,8 @@ export function AccountApp({ userId, userEmail }) {
         {tab === "settings" && <>
           <PageTitle kicker="The Work">Settings</PageTitle>
           <GoalSettings preferences={preferences} onSave={saveGoals}/>
+          <SeasonSettings seasons={preferences.seasons||[]} onChange={seasons=>{updatePreferences({seasons});toast('Seasons updated');}}/>
+          <LoadBoundary><DataExport cardioSessions={cardioSessions} history={history} weightLog={weightLog} shooting={shooting} courtRatings={courtRatings} legsLog={legsLog} foodEntries={foodEntries} cloudState={{ preferences, weeklyGoals, schedule, weeklyGamePlan, body: bodyStats, protein: proteinLog, calories: calorieLog, vitaminD3: vitaminD3Log, creatine: creatineLog, foodFavorites }}/></LoadBoundary>
           <BodySettings body={bodyStats} latestWeight={weightLog[0] ? Number(weightLog[0].weight) : null} onSave={next=>{updateBodyStats(next);toast('Body & weight goal saved');}}/>
           <section className="engine-card"><h2>Make it yours</h2>
             <label className="engine-field">Coaching tone<select aria-label="Coaching tone" value={preferences.coachingTone} onChange={e=>updatePreferences({coachingTone:e.target.value})}><option value="calm">Calm</option><option value="encouraging">Encouraging</option><option value="intense">Intense</option></select></label>
@@ -702,8 +808,8 @@ export function AccountApp({ userId, userEmail }) {
 
       {/* ── QUICK ADD bottom sheet ── */}
       {quickAddOpen && <Sheet label="Quick add" title="Log your work" titleId="quick-add-title" onClose={()=>setQuickAddOpen(false)}>
-        {[['On the court',[['game','Basketball','Game or pickup','ball',()=>setLoggerState({open:true,prefillType:'game'})],['threes','100 threes','Shots and makes','target',()=>setShotState({open:true})]]],
-          ['Conditioning',[['sprints','10 sprints','Fast breaks','bolt',()=>setFastBreakOpen(true)],['cross_training','Class','Sweat440','drop',()=>setLoggerState({open:true,prefillType:'cross_training'})],['tabata','Tabata','4-minute intervals','flame',()=>setLoggerState({open:true,prefillType:'tabata'})],['long_interval','Conditioning','Longer intervals','chart',()=>setLoggerState({open:true,prefillType:'long_interval'})],['brisk_walk','Brisk walk','Can talk, can’t sing','walk',()=>setWalkState({open:true,pace:'brisk'})],['walk','Easy walk','Recovery stroll','walk',()=>setWalkState({open:true,pace:'easy'})]]],
+        {[['On the court',[['game','Basketball','Game or pickup','ball',()=>setLoggerState({open:true,prefillType:'game'})],['threes','100 threes','Total or by spot','target',()=>setShotState({open:true})],['ft','Free throws','Shots and makes','target',()=>setShotState({open:true,kind:'ft'})]]],
+          ['Conditioning',[['sprints','10 sprints','Fast breaks','bolt',()=>setFastBreakOpen(true)],['cross_training','Class','Sweat440','drop',()=>setLoggerState({open:true,prefillType:'cross_training'})],['tabata','Tabata','4-minute intervals','flame',()=>setLoggerState({open:true,prefillType:'tabata'})],['long_interval','Intervals','Other interval work','chart',()=>setLoggerState({open:true,prefillType:'long_interval'})],['brisk_walk','Brisk walk','Can talk, can’t sing','walk',()=>setWalkState({open:true,pace:'brisk'})],['walk','Easy walk','Recovery stroll','walk',()=>setWalkState({open:true,pace:'easy'})]]],
           ['Body',[['food','Food','Meals and protein','fuel',()=>setTab('nutrition')],['weight','Weight','Weekly check-in','scale',()=>setTab('weight')]]]].map(([heading,items])=><React.Fragment key={heading}>
           <div className="engine-label engine-section-label">{heading}</div>
           <div className="engine-tiles">{items.map(([key,name,hint,icon,go])=><button key={key} className="engine-tile" aria-label={name} onClick={()=>{setQuickAddOpen(false);go();}}><span className="engine-tile-icon"><Icon name={icon} size={20}/></span><span><strong>{name}</strong><small>{hint}</small></span></button>)}</div>
@@ -711,13 +817,13 @@ export function AccountApp({ userId, userEmail }) {
       </Sheet>}
 
       {fastBreakOpen && <FastBreakLog onSave={saveCardio} onClose={()=>setFastBreakOpen(false)} busy={busy}/>}
-      {warmupOpen && <GameDayWarmup onClose={()=>setWarmupOpen(false)} onComplete={()=>updatePreferences({lastWarmup:todayKey()})} onLogGame={logGame}/>}
-      {shotState.open && <ThreePointLog editing={shotState.editing} onSave={saveShooting} onDelete={deleteShooting} onClose={()=>setShotState({open:false})}/>}
+      {warmupOpen && <GameDayWarmup onClose={()=>setWarmupOpen(false)} onComplete={()=>updatePreferences({lastWarmup:todayKey()})} onLogGame={logGame} pregame={pregame[todayKey()]} onPregame={v=>setPregame(todayKey(), v)}/>}
+      {shotState.open && <ThreePointLog kind={shotState.kind} editing={shotState.editing} onSave={saveShooting} onDelete={deleteShooting} onClose={()=>setShotState({open:false})}/>}
 
       {/* ── CONDITIONING LOGGER sheet ── */}
       {loggerState.open && (
         <ConditioningLogger
-          state={{ ...loggerState, legs: loggerState.editing ? legsLog[loggerState.editing.id] || null : null, court: loggerState.editing ? courtRatings[loggerState.editing.id] || null : null }}
+          state={{ ...loggerState, legs: loggerState.editing ? legsLog[loggerState.editing.id] || null : null, court: loggerState.editing ? courtRatings[loggerState.editing.id] || null : null, pregame, onPregame: setPregame }}
           onClose={() => setLoggerState({ open: false })}
           onSave={saveCardio}
           onDelete={deleteCardio}
@@ -740,9 +846,16 @@ export function AccountApp({ userId, userEmail }) {
 /* ── Reminder schedule — pick when each daily push arrives (Eastern time).
    Stored in reminder_settings; the server checks it every 15 minutes and
    sends each reminder once per day after its time passes. ── */
+const REMINDERS = [
+  { id: 'd3', label: 'D3 reminder time', hint: 'Every day at this time', time: '07:00', toggle: false },
+  { id: 'engine', label: 'Engine nudge', hint: 'Only on days with nothing logged yet', time: '18:00', toggle: true, on: '⛽ Engine nudge on', off: 'Engine nudge off' },
+  { id: 'game', label: 'Game-night reminder', hint: 'On game nights, if the game isn’t logged yet', time: '22:00', toggle: true, on: '🏀 Game-night reminder on', off: 'Game-night reminder off' },
+  { id: 'recap', label: 'Sunday recap', hint: 'Your week in one notification, on Sundays', time: '19:00', toggle: true, on: '📊 Sunday recap on', off: 'Sunday recap off' },
+];
+
 function ReminderTimes() {
-  const [times, setTimes] = useState({ d3: "07:00", engine: "18:00" });
-  const [engineOn, setEngineOn] = useState(true);
+  const [times, setTimes] = useState(() => Object.fromEntries(REMINDERS.map(r => [r.id, r.time])));
+  const [enabled, setEnabled] = useState(() => Object.fromEntries(REMINDERS.map(r => [r.id, true])));
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     let active = true;
@@ -753,8 +866,7 @@ function ReminderTimes() {
       if (!active) return;
       if (data && data.length) {
         setTimes(t => { const n = { ...t }; data.forEach(r => { if (r.send_time) n[r.id] = r.send_time.slice(0, 5); }); return n; });
-        const eng = data.find(r => r.id === "engine");
-        if (eng) setEngineOn(eng.enabled !== false);
+        setEnabled(e => { const n = { ...e }; data.forEach(r => { n[r.id] = r.enabled !== false; }); return n; });
       }
       setLoaded(true);
     }).catch(() => { if (active) setLoaded(true); });
@@ -773,20 +885,16 @@ function ReminderTimes() {
     setTimes(p => ({ ...p, [id]: val }));
     persist({ id, send_time: val }, "⏰ Reminder time saved");
   };
-  const toggleEngine = () => {
-    const next = !engineOn;
-    setEngineOn(next);
-    persist({ id: "engine", enabled: next }, next ? "⛽ Engine nudge on" : "Engine nudge off");
+  const toggle = r => {
+    const next = !enabled[r.id];
+    setEnabled(p => ({ ...p, [r.id]: next }));
+    persist({ id: r.id, enabled: next, send_time: times[r.id] }, next ? r.on : r.off);
   };
-  const timeInput = (id) => (
-    <input type="time" value={times[id]} disabled={!loaded} onChange={e => saveTime(id, e.target.value)}
-      aria-label={id === "d3" ? "D3 reminder time" : "Engine nudge time"}
-      style={{ background: C.raised, border: `1px solid ${C.line}`, borderRadius: 10, color: C.bone, minHeight: 44, padding: "8px 10px", fontSize: 16, fontWeight: 600, flexShrink: 0 }} />
-  );
-  return <>
-    <div className="engine-setting"><div><strong>D3 reminder time</strong><small>Every day at this time</small></div>{timeInput("d3")}</div>
-    <div className="engine-setting"><div><strong>Engine nudge</strong><small>Only on days with nothing logged yet</small></div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>{timeInput("engine")}<Switch label="Engine nudge" checked={engineOn} onChange={toggleEngine}/></div>
+  return <>{REMINDERS.map(r => <div className="engine-setting" key={r.id}><div><strong>{r.label}</strong><small>{r.hint}</small></div>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+      <input type="time" value={times[r.id]} disabled={!loaded} onChange={e => saveTime(r.id, e.target.value)} aria-label={`${r.label} time`}
+        style={{ background: C.raised, border: `1px solid ${C.line}`, borderRadius: 10, color: C.bone, minHeight: 44, padding: "8px 10px", fontSize: 16, fontWeight: 600, flexShrink: 0 }} />
+      {r.toggle && <Switch label={r.label} checked={enabled[r.id]} onChange={() => toggle(r)}/>}
     </div>
-  </>;
+  </div>)}</>;
 }

@@ -31,5 +31,6 @@ export function restorePayload(row, table) {
   const copy = { ...row };
   if (table !== 'cardio_sessions') delete copy.id;
   delete copy.endpoint; // generated column, when restoring a push subscription
+  delete copy._pending; // local marker for entries saved offline
   return copy;
 }

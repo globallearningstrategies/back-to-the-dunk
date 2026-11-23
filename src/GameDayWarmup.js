@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { beep, speak, vibrate } from './model';
+import { PregameCheck } from './pregame';
 
 /* Game Day Warm-Up — a 10-minute pre-game routine in 4 timed phases.
    Works two ways: start the countdown and it moves through each drill on its
@@ -66,7 +67,7 @@ function cueChange(from, to) {
   }
 }
 
-export function GameDayWarmup({ onClose, onComplete, onLogGame }) {
+export function GameDayWarmup({ onClose, onComplete, onLogGame, pregame, onPregame }) {
   const [index, setIndex] = useState(0);              // current drill; WARMUP_DRILLS.length = finished
   const [done, setDone] = useState({});               // drill id -> true
   const [running, setRunning] = useState(false);
@@ -157,6 +158,10 @@ export function GameDayWarmup({ onClose, onComplete, onLogGame }) {
       <div className="warmup-controls"><button className="warmup-primary" onClick={onClose}>Close</button><button className="warmup-secondary" onClick={restart}>Run it again</button></div>
       {onLogGame && <div className="warmup-row"><button className="warmup-ghost" onClick={onLogGame}>Log the game now</button></div>}
     </section> : <section className="warmup-now" aria-live="polite">
+      {onPregame && index === 0 && !touched && <div className="warmup-pregame">
+        <div className="warmup-kicker">Before you start · optional</div>
+        <PregameCheck variant="court" value={pregame || {}} onChange={onPregame}/>
+      </div>}
       <div className="warmup-kicker">Phase {drill.phase + 1} of 4 · {drill.phaseTitle}</div>
       <h1 id="warmup-title" className="warmup-drill">{drill.name}</h1>
       <p className="warmup-cue">{drill.cue}</p>

@@ -53,7 +53,7 @@ test('Today and Train expose timer-free sprint logging and save it to account hi
   expect(div.querySelector('[role="dialog"]')).toBeNull();
   expect(div.textContent).toContain('10 sprints recorded');
   expect(div.textContent).toContain('Engine 0.0 → 2.1');
-  await click('Progress'); await click('Log'); expect(div.textContent).toContain('Fast break · 10 sprints');
+  await click('Progress'); await click('Log'); expect(div.textContent).toContain('10 sprints10 min');
 });
 test('a previously running timer can be exited and ordinary conditioning actions open logging',async()=>{
   localStorage.setItem('bttd:user:alice:workout-draft',JSON.stringify({version:1,activeSession:0,checked:{},vals:{},liftDate:'2026-09-15T12:00',flow:{active:true,mode:'long_interval',minutes:10,timer:{elapsed:30,startedAt:Date.now(),running:true}}}));
@@ -143,7 +143,55 @@ test('a game-night notification link opens the game logger, and the court rating
   await click('Strong');
   await click('Save game');
   expect(query.insert.mock.calls[0][0]).toEqual(expect.objectContaining({workout_type:'game',points:17,rebounds:9}));
-  expect(upsert.mock.calls.flatMap(c=>c[0])).toContainEqual(expect.objectContaining({key:'court:game-9',value:'strong'}));
+  const gameId=query.insert.mock.calls[0][0].id;
+  expect(gameId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(upsert.mock.calls.flatMap(c=>c[0])).toContainEqual(expect.objectContaining({key:`court:${gameId}`,value:'strong'}));
   expect(div.textContent).toContain('Game recorded');
   expect(div.textContent).toContain('17 pts · 9 reb');
+});
+test('a game logged with no connection is kept on the phone, shown as waiting, and synced when back online', async () => {
+  let online=false;
+  const inserted=[];
+  const query={insert:jest.fn(p=>{inserted.push(p);return query;}),select:jest.fn(()=>query),single:jest.fn(async()=>{ if(!online) throw new TypeError('Failed to fetch'); return {data:{...inserted[inserted.length-1]}}; }),upsert:jest.fn().mockResolvedValue({error:null})};
+  supabase.from.mockReturnValue(query);
+  await flush(()=>root.render(<App />));
+  await flush(()=>div.querySelector('[aria-label="Basketball"]').click());
+  const set=(label,v)=>{const i=div.querySelector(`[aria-label="${label}"]`);Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,v);i.dispatchEvent(new Event('input',{bubbles:true}));};
+  await flush(()=>set('Points','11'));
+  await flush(()=>div.querySelector('form[role="dialog"]').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  expect(div.textContent).toContain('Game recorded');
+  expect(div.textContent).toContain('saved on this phone');
+  expect(div.textContent).toContain('1 to sync');
+  const queued=JSON.parse(localStorage.getItem('bttd:user:alice:outbox'));
+  expect(queued).toHaveLength(1);
+  const id=queued[0].id;
+  await click('Progress'); await click('Log');
+  expect(div.textContent).toContain('waiting to sync');
+  online=true;
+  await flush(()=>window.dispatchEvent(new Event('online')));
+  expect(inserted[inserted.length-1]).toEqual(expect.objectContaining({id,workout_type:'game',points:11,user_id:'alice'}));
+  expect(JSON.parse(localStorage.getItem('bttd:user:alice:outbox'))).toEqual([]);
+  expect(div.textContent).not.toContain('waiting to sync');
+  expect(div.textContent).toContain('everything synced');
+});
+test('settings let you set the game-night and Sunday recap reminders', async () => {
+  const upsert=jest.fn().mockResolvedValue({error:null});
+  const select=jest.fn(()=>Promise.resolve({data:[{id:'game',send_time:'22:30:00',enabled:true}]}));
+  supabase.from.mockReturnValue({select,upsert});
+  await flush(()=>root.render(<App />));
+  await flush(()=>div.querySelector('[aria-label="Settings"]').click());
+  expect(div.querySelector('[aria-label="Game-night reminder time"]').value).toBe('22:30');
+  await flush(()=>div.querySelector('[role="switch"][aria-label="Sunday recap"]').click());
+  expect(upsert).toHaveBeenCalledWith(expect.objectContaining({id:'recap',enabled:false,send_time:'19:00'}));
+  expect(div.querySelector('[aria-label="Your data"]')).toBeTruthy();
+  expect(div.querySelector('[aria-label="Seasons"]')).toBeTruthy();
+});
+test('a section that fails to load shows a retry message instead of breaking the app', async () => {
+  const { LoadBoundary } = require('./App');
+  const Broken = React.lazy(() => Promise.reject(new TypeError('Failed to fetch dynamically imported module')));
+  const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+  await flush(()=>root.render(<div><p>Still here</p><LoadBoundary><Broken/></LoadBoundary></div>));
+  spy.mockRestore();
+  expect(div.textContent).toContain('Still here');
+  expect(div.querySelector('[role="alert"]').textContent).toContain('couldn’t load');
 });

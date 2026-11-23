@@ -16,7 +16,7 @@ Older production migrations predate this snapshot. Compare remote migration hist
 
 ## Edge Functions
 
-The five deployed functions are versioned under `functions/`, with JWT-verification settings in `config.toml`. They were not invoked or redeployed in this release. Source now accepts `VAPID_SUBJECT`, falling back to the project URL instead of embedding a personal email.
+The six deployed functions are versioned under `functions/`, with JWT-verification settings in `config.toml`. They were not invoked or redeployed in this release. Source now accepts `VAPID_SUBJECT`, falling back to the project URL instead of embedding a personal email.
 
 Keep Weight Gurus credentials, the service-role key and VAPID keys in Supabase. `app_config` intentionally has RLS without client policies. Never commit secret-bearing cron commands.
 
@@ -25,6 +25,14 @@ Before a future backend redeployment, review scheduler authorization and ownersh
 ## Game-night reminder
 
 `functions/game-reminder` (deployed 2026-11-22, cron job `game-reminder-dispatch`, every 15 minutes like the D3 and engine reminders) sends a push around 22:00 ET on game nights if no game has been logged that day; tapping it opens `/?log=game`. It follows the app's game nights (this week's planner selection, else the recurring schedule) and reads `reminder_settings` row `game` (default 22:00, enabled; the row is created on the first send). Like the engine reminder, it is single-owner. The cron command was created by copying the engine reminder's command with only the function path changed, so it carries the same authorization header; never commit that command.
+
+## Weekly recap
+
+`functions/weekly-recap` (deployed 2026-11-23, cron job `weekly-recap-dispatch`, every 15 minutes) sends one push on Sundays after `reminder_settings('recap').send_time` (default 19:00 ET): sessions this week, Engine and its weekly change, games with best points/rebounds, threes and %, brisk walks. Tapping opens `/?recap=week`. Its cron command was copied from the engine reminder's with only the function path changed. Single-owner, like the other reminders.
+
+## Game stats migration
+
+`migrations/20261123011532_add_more_game_stats_to_cardio_sessions.sql` (applied 2026-11-23) adds optional `assists`, `steals` and `threes_made` to `cardio_sessions` with 0–200 checks.
 
 ## Remaining advisor notices
 
